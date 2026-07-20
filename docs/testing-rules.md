@@ -155,13 +155,13 @@
 Docker環境では以下を使う。
 
 ```powershell
-docker compose run --rm app php artisan test
+docker compose run --rm test php artisan test
 ```
 
 特定テストだけ実行する場合は以下とする。
 
 ```powershell
-docker compose run --rm app php artisan test --filter=HealthCheckTest
+docker compose run --rm test php artisan test --filter=HealthCheckTest
 ```
 
 ## 11. 完了条件

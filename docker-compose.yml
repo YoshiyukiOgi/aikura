@@ -32,6 +32,30 @@ services:
       - ./:/var/www/html
       - ./docker/php/conf.d/opcache.ini:/usr/local/etc/php/conf.d/99-aikura-opcache.ini:ro
       - ./docker/php/php-fpm.d/zz-aikura.conf:/usr/local/etc/php-fpm.d/zz-aikura.conf:ro
+
+  test:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    working_dir: /var/www/html
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      APP_ENV: testing
+      APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: aikura_testing
+      DB_USERNAME: aikura
+      DB_PASSWORD: aikura
+      CACHE_STORE: array
+      QUEUE_CONNECTION: sync
+      SESSION_DRIVER: array
+      LOG_CHANNEL: stderr
+      BCRYPT_ROUNDS: 4
+    volumes:
+      - ./:/var/www/html
   nginx:
     image: nginx:1.27-alpine
     container_name: aikura_nginx

@@ -23,7 +23,7 @@ http://localhost:8080
 ## テスト
 
 ```powershell
-docker compose run --rm app php artisan test
+docker compose run --rm test php artisan test
 ```
 
 ## この段階の対象
@@ -39,4 +39,3 @@ docker compose run --rm app php artisan test
 * Feature Test実行環境
 
 業務テーブル、認証、権限、監査ログ、状態遷移は次段階で作成します。
-
