@@ -1,0 +1,208 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\BillingCycle;
+use App\Models\Customer;
+use App\Models\Employee;
+use App\Models\PriceList;
+use App\Models\PriceRule;
+use App\Models\Product;
+use App\Models\Role;
+use App\Models\SettlementReceivableCategory;
+use App\Models\ShipmentHeader;
+use App\Models\TransactionCategory;
+use App\Models\Unit;
+use App\Models\User;
+use App\Services\Shipment\ApplyDraftShipmentPricingService;
+use App\Services\Shipment\ConfirmShipmentService;
+use App\Services\Shipment\CreateDraftShipmentData;
+use App\Services\Shipment\CreateDraftShipmentLineData;
+use App\Services\Shipment\CreateDraftShipmentService;
+use Database\Seeders\DatabaseSeeder;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
+
+class BillingApiTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_user_with_permission_can_create_confirm_schedule_pay_cancel_and_view_receivable(): void
+    {
+        [$user, $customer, $shipment] = $this->prepareData();
+
+        $createInvoice = $this->actingAs($user)
+            ->postJson('/api/v1/billing/invoices', [
+                'customer_id' => $customer->id,
+                'invoice_date' => '2026-06-30',
+                'due_date' => '2026-07-31',
+                'shipment_header_ids' => [$shipment->id],
+                'reason' => 'api invoice draft',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.invoice.status', 'draft')
+            ->assertJsonPath('data.invoice.total_amount', '3300.00');
+
+        $invoiceId = $createInvoice->json('data.invoice.id');
+
+        $this->actingAs($user)
+            ->postJson("/api/v1/billing/invoices/{$invoiceId}/confirm", [
+                'reason' => 'api invoice confirm',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.invoice.status', 'confirmed');
+
+        $createSchedule = $this->actingAs($user)
+            ->postJson('/api/v1/billing/payment-schedules', [
+                'invoice_header_id' => $invoiceId,
+                'reason' => 'api payment schedule',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.payment_schedule.status', 'open')
+            ->assertJsonPath('data.payment_schedule.outstanding_amount', '3300.00');
+
+        $scheduleId = $createSchedule->json('data.payment_schedule.id');
+
+        $createPayment = $this->actingAs($user)
+            ->postJson('/api/v1/billing/payments', [
+                'payment_schedule_id' => $scheduleId,
+                'amount' => '1000.00',
+                'payment_date' => '2026-07-20',
+                'payment_method' => 'bank_transfer',
+                'reference_number' => 'API-PAY-001',
+                'reason' => 'api payment register',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.payment.status', 'allocated')
+            ->assertJsonPath('data.payment.amount', '1000.00');
+
+        $paymentId = $createPayment->json('data.payment.id');
+
+        $this->actingAs($user)
+            ->getJson("/api/v1/billing/receivables?customer_id={$customer->id}")
+            ->assertOk()
+            ->assertJsonPath('data.receivable_balance.scheduled_amount', '3300.00')
+            ->assertJsonPath('data.receivable_balance.received_amount', '1000.00')
+            ->assertJsonPath('data.receivable_balance.outstanding_amount', '2300.00');
+
+        $this->actingAs($user)
+            ->postJson("/api/v1/billing/payments/{$paymentId}/cancel", [
+                'reason' => 'wrong payment by api',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.payment.status', 'cancelled')
+            ->assertJsonPath('data.payment.cancelled_reason', 'wrong payment by api');
+
+        $this->actingAs($user)
+            ->getJson("/api/v1/billing/invoices/{$invoiceId}")
+            ->assertOk()
+            ->assertJsonPath('data.invoice.id', $invoiceId)
+            ->assertJsonPath('data.invoice.status', 'confirmed');
+    }
+
+    public function test_user_without_billing_invoice_create_permission_cannot_create_invoice(): void
+    {
+        [, $customer, $shipment] = $this->prepareData();
+        $user = $this->createUser('limited-billing@example.com');
+
+        $this->actingAs($user)
+            ->postJson('/api/v1/billing/invoices', [
+                'customer_id' => $customer->id,
+                'invoice_date' => '2026-06-30',
+                'shipment_header_ids' => [$shipment->id],
+            ])
+            ->assertForbidden()
+            ->assertJsonPath('permission', 'billing.invoice.create');
+    }
+
+    public function test_invoice_create_api_validates_required_invoice_date(): void
+    {
+        [$user, $customer, $shipment] = $this->prepareData();
+
+        $this->actingAs($user)
+            ->postJson('/api/v1/billing/invoices', [
+                'customer_id' => $customer->id,
+                'shipment_header_ids' => [$shipment->id],
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['invoice_date']);
+    }
+
+    /**
+     * @return array{0: User, 1: Customer, 2: ShipmentHeader}
+     */
+    private function prepareData(): array
+    {
+        $this->seed(DatabaseSeeder::class);
+
+        $user = $this->createUser('billing-admin@example.com');
+        $user->roles()->attach(Role::where('code', 'admin')->firstOrFail());
+
+        $transactionCategory = TransactionCategory::where('code', 'wholesale')->firstOrFail();
+        $settlementCategory = SettlementReceivableCategory::where('code', 'accounts_receivable_1')->firstOrFail();
+        $billingCycle = BillingCycle::where('code', 'monthly_end_next_month_end')->firstOrFail();
+        $bottle = Unit::where('code', 'bottle')->firstOrFail();
+        $milliliter = Unit::where('code', 'milliliter')->firstOrFail();
+
+        $customer = Customer::create([
+            'customer_code' => 'API-BILL-CUST-001',
+            'name' => 'API Billing Customer',
+            'transaction_category_id' => $transactionCategory->id,
+            'settlement_receivable_category_id' => $settlementCategory->id,
+            'billing_cycle_id' => $billingCycle->id,
+        ]);
+
+        $product = Product::create([
+            'product_code' => 'API-BILL-SAKE-001',
+            'product_type' => 'sake',
+            'name' => 'API Billing Sake',
+            'display_name' => 'API Billing Sake 720ml',
+            'base_unit_id' => $bottle->id,
+            'sales_unit_id' => $bottle->id,
+            'inventory_unit_id' => $bottle->id,
+            'capacity_value' => '720.0000',
+            'capacity_unit_id' => $milliliter->id,
+            'alcohol_percentage' => '15.50',
+            'is_alcohol' => true,
+        ]);
+
+        PriceRule::create([
+            'price_list_id' => PriceList::where('code', 'common')->firstOrFail()->id,
+            'product_id' => $product->id,
+            'unit_id' => $bottle->id,
+            'unit_price' => '1500.0000',
+            'priority' => 300,
+            'effective_from' => '2026-01-01',
+        ]);
+
+        $shipment = app(CreateDraftShipmentService::class)->create(new CreateDraftShipmentData(
+            customerId: $customer->id,
+            documentDate: '2026-06-20',
+            billingTargetDate: '2026-06-20',
+            lines: [
+                new CreateDraftShipmentLineData($product->id, '2.0000', $bottle->id),
+            ],
+        ));
+        $shipment = app(ApplyDraftShipmentPricingService::class)->apply($shipment);
+        $shipment = app(ConfirmShipmentService::class)->confirm($shipment);
+
+        return [$user, $customer, $shipment];
+    }
+
+    private function createUser(string $email): User
+    {
+        $employee = Employee::create([
+            'employee_code' => 'BILLAPI'.str_pad((string) (Employee::count() + 1), 3, '0', STR_PAD_LEFT),
+            'name' => 'Billing API Employee',
+            'email' => 'employee-'.$email,
+        ]);
+
+        return User::create([
+            'employee_id' => $employee->id,
+            'name' => 'Billing API User',
+            'email' => $email,
+            'password' => 'password',
+            'is_active' => true,
+        ]);
+    }
+}

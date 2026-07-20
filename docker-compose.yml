@@ -1,0 +1,78 @@
+name: aikura
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    container_name: aikura_app
+    working_dir: /var/www/html
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      APP_ENV: local
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: aikura
+      DB_USERNAME: aikura
+      DB_PASSWORD: aikura
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_CLIENT: predis
+      SESSION_DRIVER: redis
+      CACHE_STORE: redis
+      QUEUE_CONNECTION: redis
+      LOG_CHANNEL: stderr
+      LOG_STACK: stderr
+      OPERATION_JOB_LOG_CHANNEL: stderr
+      BCRYPT_ROUNDS: 4
+      APP_DEBUG: "false"
+    volumes:
+      - ./:/var/www/html
+      - ./docker/php/conf.d/opcache.ini:/usr/local/etc/php/conf.d/99-aikura-opcache.ini:ro
+      - ./docker/php/php-fpm.d/zz-aikura.conf:/usr/local/etc/php-fpm.d/zz-aikura.conf:ro
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: aikura_nginx
+    ports:
+      - "8080:80"
+    volumes:
+      - ./:/var/www/html:ro
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - app
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: aikura_postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: aikura
+      POSTGRES_USER: aikura
+      POSTGRES_PASSWORD: aikura
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aikura -d aikura"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: aikura_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  redis_data:

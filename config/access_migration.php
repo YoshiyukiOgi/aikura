@@ -1,0 +1,32 @@
+<?php
+
+return [
+    'package_version' => 1,
+
+    'tables' => [
+        '取引先マスター' => ['source_key' => ['取引先ID'], 'required' => true],
+        '商品マスター' => ['source_key' => ['商品ID'], 'required' => true],
+        '主商品' => ['source_key' => ['主商品ID'], 'required' => true],
+        '商品詳細名称' => ['source_key' => ['ID'], 'required' => true],
+        '商品分類' => ['source_key' => ['商品分類'], 'required' => false],
+        '商品グループ' => ['source_key' => ['ID'], 'required' => false],
+        '主商品グループ' => ['source_key' => ['ID'], 'required' => false],
+        '取引先別価格-商品' => ['source_key' => [], 'required' => false],
+        '既定価格記録' => ['source_key' => [], 'required' => false],
+        '既定価格記録b' => ['source_key' => [], 'required' => false],
+        '出荷伝票・取引先' => ['source_key' => ['伝票番号'], 'required' => true],
+        '出荷伝票・商品' => ['source_key' => ['ID'], 'required' => true],
+        '伝票外在庫出入' => ['source_key' => ['ID'], 'required' => true],
+        '入金' => ['source_key' => ['ID'], 'required' => true],
+        '酒税' => ['source_key' => ['インデックス', '酒類', 'Alc%', '施行開始日'], 'required' => true],
+        '酒税区分' => ['source_key' => ['ID'], 'required' => true],
+        '酒税軽減率' => ['source_key' => ['ID'], 'required' => true],
+        '酒類' => ['source_key' => ['ID'], 'required' => true],
+        '酒種類マスター' => ['source_key' => ['酒種類ID'], 'required' => false],
+        '消費税' => ['source_key' => ['消費税率', '軽減税率', '施行開始日'], 'required' => true],
+        '都道府県' => ['source_key' => ['ID'], 'required' => false],
+        '取引区分マスター' => ['source_key' => ['取引区分'], 'required' => false],
+        '業種区分' => ['source_key' => ['業種区分'], 'required' => false],
+        '伝票外在庫出入名' => ['source_key' => ['ID'], 'required' => false],
+    ],
+];

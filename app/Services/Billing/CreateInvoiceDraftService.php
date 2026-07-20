@@ -1,0 +1,275 @@
+<?php
+
+namespace App\Services\Billing;
+
+use App\Exceptions\Billing\InvoiceDraftException;
+use App\Models\Customer;
+use App\Models\InvoiceHeader;
+use App\Models\Payment;
+use App\Models\PaymentSchedule;
+use App\Models\ShipmentHeader;
+use App\Services\Audit\AuditLogData;
+use App\Services\Audit\AuditLogService;
+use App\Services\NumberSequence\NumberSequenceService;
+use App\Services\Tax\TaxRoundingService;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+
+class CreateInvoiceDraftService
+{
+    public function __construct(
+        private readonly BillableShipmentQuery $billableShipmentQuery,
+        private readonly NumberSequenceService $numberSequenceService,
+        private readonly AuditLogService $auditLogService,
+        private readonly TaxRoundingService $taxRoundingService,
+    ) {
+    }
+
+    public function create(CreateInvoiceDraftData $data): InvoiceHeader
+    {
+        return DB::transaction(function () use ($data): InvoiceHeader {
+            $customer = Customer::query()->findOrFail($data->customerId);
+            $shipments = $this->resolveShipments($data);
+
+            if ($shipments->isEmpty()) {
+                throw InvoiceDraftException::noBillableShipments();
+            }
+
+            $invoiceNumber = $this->numberSequenceService
+                ->next('invoice_document')
+                ->formatted;
+
+            $invoice = InvoiceHeader::create([
+                'invoice_number' => $invoiceNumber,
+                'status' => 'draft',
+                'customer_id' => $customer->id,
+                'billing_cycle_id' => $customer->billing_cycle_id,
+                'invoice_date' => $data->invoiceDate,
+                'billing_period_start' => $data->billingPeriodStart,
+                'billing_period_end' => $data->billingPeriodEnd,
+                'due_date' => $data->dueDate,
+                'previous_balance_amount' => '0.00',
+                'period_payment_amount' => '0.00',
+                'carried_forward_amount' => '0.00',
+                'current_sales_amount' => '0.00',
+                'current_tax_amount' => '0.00',
+                'current_invoice_amount' => '0.00',
+                'tax_calculation_unit' => $customer->tax_calculation_unit,
+                'tax_rounding_method' => $customer->tax_rounding_method,
+                'amount_rounding_method' => $customer->amount_rounding_method,
+                'note' => $data->note,
+            ]);
+
+            $lineNo = 1;
+            $subtotal = '0.00';
+            $taxableGroups = [];
+
+            foreach ($shipments as $shipment) {
+                if ($shipment->customer_id !== $customer->id) {
+                    throw InvoiceDraftException::shipmentCustomerMismatch($shipment->id);
+                }
+
+                foreach ($shipment->lines as $shipmentLine) {
+                    if ($shipmentLine->confirmed_unit_price === null || $shipmentLine->confirmed_product_code === null) {
+                        throw InvoiceDraftException::shipmentLineMissingSnapshot($shipmentLine->id);
+                    }
+
+                    $amount = bcmul($shipmentLine->confirmed_quantity, $shipmentLine->confirmed_unit_price, 2);
+                    $taxAmount = $customer->tax_calculation_unit === 'line'
+                        ? $this->calculateTaxAmount($amount, $shipmentLine->confirmed_consumption_tax_rate, $customer->tax_rounding_method)
+                        : '0.00';
+                    $lineTotal = bcadd($amount, $taxAmount, 2);
+                    $subtotal = bcadd($subtotal, $amount, 2);
+
+                    if ($customer->tax_calculation_unit === 'invoice' && $shipmentLine->confirmed_consumption_tax_rate !== null) {
+                        $groupKey = (string) $shipmentLine->confirmed_consumption_tax_rate_id;
+                        $taxableGroups[$groupKey] ??= [
+                            'amount' => '0.00',
+                            'line_ids' => [],
+                        ];
+                        $taxableGroups[$groupKey]['amount'] = bcadd($taxableGroups[$groupKey]['amount'], $amount, 2);
+                    }
+
+                    $line = $invoice->lines()->create([
+                        'shipment_header_id' => $shipment->id,
+                        'shipment_line_id' => $shipmentLine->id,
+                        'line_no' => $lineNo++,
+                        'product_id' => $shipmentLine->product_id,
+                        'product_code' => $shipmentLine->confirmed_product_code,
+                        'product_name' => $shipmentLine->confirmed_product_name,
+                        'display_name' => $shipmentLine->confirmed_display_name,
+                        'quantity' => $shipmentLine->confirmed_quantity,
+                        'unit_code' => $shipmentLine->confirmed_unit_code,
+                        'unit_name' => $shipmentLine->confirmed_unit_name,
+                        'unit_price' => $shipmentLine->confirmed_unit_price,
+                        'amount' => $amount,
+                        'consumption_tax_category_id' => $shipmentLine->confirmed_consumption_tax_category_id,
+                        'consumption_tax_category_code' => $shipmentLine->confirmed_consumption_tax_category_code,
+                        'consumption_tax_category_name' => $shipmentLine->confirmed_consumption_tax_category_name,
+                        'consumption_taxability' => $shipmentLine->confirmed_consumption_taxability,
+                        'consumption_tax_rate_id' => $shipmentLine->confirmed_consumption_tax_rate_id,
+                        'tax_rate' => $shipmentLine->confirmed_consumption_tax_rate,
+                        'consumption_tax_rate_effective_from' => $shipmentLine->confirmed_consumption_tax_rate_effective_from,
+                        'tax_amount' => $taxAmount,
+                        'total_amount' => $lineTotal,
+                    ]);
+
+                    if ($customer->tax_calculation_unit === 'invoice' && $shipmentLine->confirmed_consumption_tax_rate !== null) {
+                        $taxableGroups[$groupKey]['line_ids'][] = $line->id;
+                    }
+                }
+            }
+
+            if ($customer->tax_calculation_unit === 'invoice') {
+                $this->applyInvoiceUnitTax($invoice, $taxableGroups, $customer->tax_rounding_method);
+            }
+
+            $invoice->load('lines');
+            $tax = '0.00';
+            $total = '0.00';
+
+            foreach ($invoice->lines as $line) {
+                $tax = bcadd($tax, $line->tax_amount, 2);
+                $total = bcadd($total, $line->total_amount, 2);
+            }
+
+            $previousBalance = $this->previousBalanceAmount($customer, $invoice->id);
+            $periodPayment = $this->periodPaymentAmount($customer, $data->billingPeriodStart, $data->billingPeriodEnd);
+            $carriedForward = $data->includeCarriedForward ? $previousBalance : '0.00';
+            $currentInvoiceAmount = bcadd($subtotal, $tax, 2);
+
+            $invoice->update([
+                'previous_balance_amount' => $previousBalance,
+                'period_payment_amount' => $periodPayment,
+                'carried_forward_amount' => $carriedForward,
+                'current_sales_amount' => $subtotal,
+                'current_tax_amount' => $tax,
+                'current_invoice_amount' => $currentInvoiceAmount,
+                'subtotal_amount' => $subtotal,
+                'tax_amount' => $tax,
+                'total_amount' => bcadd($carriedForward, $currentInvoiceAmount, 2),
+            ]);
+
+            $this->auditLogService->record(new AuditLogData(
+                event: 'invoice.draft_created',
+                auditable: $invoice->refresh(),
+                afterValues: [
+                    'invoice_number' => $invoice->invoice_number,
+                    'status' => $invoice->status,
+                    'customer_id' => $invoice->customer_id,
+                    'shipment_header_ids' => $shipments->pluck('id')->all(),
+                    'line_count' => $invoice->lines()->count(),
+                    'total_amount' => $invoice->total_amount,
+                ],
+                reason: $data->reason,
+            ));
+
+            return $invoice->refresh()->load(['customer', 'billingCycle', 'lines']);
+        });
+    }
+
+    private function previousBalanceAmount(Customer $customer, int $currentInvoiceId): string
+    {
+        $amount = PaymentSchedule::query()
+            ->where('customer_id', $customer->id)
+            ->whereIn('status', ['open', 'partial'])
+            ->where('outstanding_amount', '>', 0)
+            ->where('invoice_header_id', '!=', $currentInvoiceId)
+            ->sum('outstanding_amount');
+
+        return bcadd((string) $amount, '0', 2);
+    }
+
+    private function periodPaymentAmount(Customer $customer, ?string $periodStart, ?string $periodEnd): string
+    {
+        if ($periodStart === null || $periodEnd === null) {
+            return '0.00';
+        }
+
+        $amount = Payment::query()
+            ->where('customer_id', $customer->id)
+            ->whereNull('cancelled_at')
+            ->whereBetween('payment_date', [$periodStart, $periodEnd])
+            ->sum('amount');
+
+        return bcadd((string) $amount, '0', 2);
+    }
+
+    private function calculateTaxAmount(string $amount, mixed $rate, string $roundingMethod): string
+    {
+        if ($rate === null) {
+            return '0.00';
+        }
+
+        return $this->taxRoundingService->round(bcmul($amount, (string) $rate, 6), $roundingMethod);
+    }
+
+    /**
+     * @param array<string, array{amount: string, line_ids: array<int, int>}> $taxableGroups
+     */
+    private function applyInvoiceUnitTax(InvoiceHeader $invoice, array $taxableGroups, string $roundingMethod): void
+    {
+        $invoice->load('lines');
+
+        foreach ($taxableGroups as $group) {
+            $lineIds = $group['line_ids'];
+
+            if ($lineIds === []) {
+                continue;
+            }
+
+            $firstLine = $invoice->lines->firstWhere('id', $lineIds[0]);
+            $groupTax = $this->calculateTaxAmount($group['amount'], $firstLine?->tax_rate, $roundingMethod);
+            $remainingTax = $groupTax;
+            $lastLineId = end($lineIds);
+
+            foreach ($invoice->lines->whereIn('id', $lineIds) as $line) {
+                $lineTax = $line->id === $lastLineId
+                    ? $remainingTax
+                    : (bccomp($group['amount'], '0.00', 2) === 0
+                        ? '0.00'
+                        : bcadd(bcdiv(bcmul($groupTax, $line->amount, 4), $group['amount'], 4), '0', 2));
+
+                $line->update([
+                    'tax_amount' => $lineTax,
+                    'total_amount' => bcadd($line->amount, $lineTax, 2),
+                ]);
+
+                $remainingTax = bcsub($remainingTax, $lineTax, 2);
+            }
+        }
+    }
+
+    /**
+     * @return Collection<int, ShipmentHeader>
+     */
+    private function resolveShipments(CreateInvoiceDraftData $data): Collection
+    {
+        if ($data->shipmentHeaderIds !== null) {
+            return ShipmentHeader::query()
+                ->with('lines')
+                ->whereIn('id', $data->shipmentHeaderIds)
+                ->lockForUpdate()
+                ->get()
+                ->each(function (ShipmentHeader $shipment): void {
+                    $isBillable = $this->billableShipmentQuery
+                        ->query()
+                        ->where('shipment_headers.id', $shipment->id)
+                        ->exists();
+
+                    if (! $isBillable) {
+                        throw InvoiceDraftException::shipmentNotBillable($shipment->id);
+                    }
+                });
+        }
+
+        return $this->billableShipmentQuery
+            ->query(
+                customerId: $data->customerId,
+                billingTargetFrom: $data->billingPeriodStart,
+                billingTargetTo: $data->billingPeriodEnd,
+            )
+            ->lockForUpdate()
+            ->get();
+    }
+}
