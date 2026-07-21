@@ -126,19 +126,11 @@ class ImportAccessOpeningStock
             throw new RuntimeException('在庫単位のない商品があります: '.$invalidUnits->pluck('product_code')->implode(', '));
         }
 
-        $candidateExternalCodes = $rows->flatMap(fn (object $row): array => [
-            $this->canonicalExternalCode($row),
-            $this->legacyExternalCode($row),
-        ])->unique();
+        $candidateExternalCodes = $rows->map(fn (object $row): string => $this->canonicalExternalCode($row))->unique();
         $existingLots = ProductionLot::query()
             ->whereIn('external_system_code', $candidateExternalCodes)
             ->get()
             ->keyBy('external_system_code');
-        $ambiguousLegacyLots = $duplicateDetails
-            ->filter(fn (string $detailId): bool => $existingLots->has('ITARO-DETAIL-'.$detailId));
-        if ($ambiguousLegacyLots->isNotEmpty()) {
-            throw new RuntimeException('複数商品に使われる詳細IDが旧形式ロットに紐づいています: '.$ambiguousLegacyLots->take(10)->implode(', '));
-        }
         $duplicateLots = ProductionLot::query()
             ->whereIn('external_system_code', $candidateExternalCodes)
             ->selectRaw('external_system_code, COUNT(*) as aggregate')
@@ -225,17 +217,11 @@ class ImportAccessOpeningStock
 
     private function existingLotForRow(object $row, $existingLots): ?ProductionLot
     {
-        return $existingLots->get($this->canonicalExternalCode($row))
-            ?? $existingLots->get($this->legacyExternalCode($row));
+        return $existingLots->get($this->canonicalExternalCode($row));
     }
 
     private function canonicalExternalCode(object $row): string
     {
         return 'ITARO-PRODUCT-DETAIL-'.$row->access_product_id.'-'.$row->access_detail_id;
-    }
-
-    private function legacyExternalCode(object $row): string
-    {
-        return 'ITARO-DETAIL-'.$row->access_detail_id;
     }
 }
