@@ -20,6 +20,16 @@ class ProductMasterApiTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_product_master_is_available_as_a_direct_management_menu_item(): void
+    {
+        $this->signInAsAdmin();
+
+        $this->get('/masters/products')
+            ->assertOk()
+            ->assertSee('商品マスター')
+            ->assertSee('href="/masters/products" class="active">商品マスタ</a>', false);
+    }
+
     public function test_admin_can_register_one_product_family_with_multiple_capacities(): void
     {
         $this->signInAsAdmin();

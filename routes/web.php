@@ -4,6 +4,7 @@ use App\Http\Controllers\AppSettingController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BillingCycleMasterPageController;
 use App\Http\Controllers\CustomerMasterPageController;
+use App\Http\Controllers\FoundationMasterPageController;
 use App\Http\Controllers\InventoryPageController;
 use App\Http\Controllers\LogisticsPageController;
 use App\Http\Controllers\ProductMasterPageController;
@@ -70,6 +71,8 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/masters/products', [ProductMasterPageController::class, 'index'])
         ->middleware('web.permission:product_master.view')
         ->name('masters.products.index');
+    Route::get('/masters/foundation/{master}', [FoundationMasterPageController::class, 'show'])
+        ->name('masters.foundation.show');
     Route::put('/settings', [AppSettingController::class, 'update'])
         ->middleware('web.permission:role.manage')
         ->name('settings.update');

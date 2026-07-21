@@ -21,10 +21,10 @@
 @endphp
 <style>
   :root{--app-primary:{{ $theme['primary'] }};--app-primary-dark:{{ $theme['primaryDark'] }};--app-sidebar-bg:{{ $theme['sidebar'] }};--app-sidebar-hover:{{ $theme['hover'] }};--app-bg:{{ $theme['bg'] }};--app-card:{{ $theme['card'] }};--app-line:{{ $theme['line'] }}}
-  .app-sidebar{position:fixed;z-index:10;inset:0 auto 0 0;width:208px;padding:20px 10px;background:var(--app-sidebar-bg);color:#eaf1fb;box-shadow:2px 0 14px rgba(15,31,54,.12)}
+  .app-sidebar{position:fixed;z-index:10;inset:0 auto 0 0;width:208px;padding:20px 10px;background:var(--app-sidebar-bg);color:#eaf1fb;box-shadow:2px 0 14px rgba(15,31,54,.12);overflow-y:auto;overflow-x:hidden}
   .app-sidebar__brand{padding:0 12px 22px;border-bottom:1px solid rgba(255,255,255,.14);font-weight:800;font-size:14px;line-height:1.5}.app-sidebar__brand small{display:block;color:#9fb1c9;font-weight:500;font-size:10px}
   .app-sidebar__nav{display:grid;gap:3px;margin-top:16px}.app-sidebar__nav a{display:flex;align-items:center;min-height:34px;padding:0 12px;border-radius:4px;color:#d9e5f4;text-decoration:none;font-size:12px;transition:background .12s ease,box-shadow .12s ease}.app-sidebar__nav a:hover{background:var(--app-sidebar-hover);color:#fff}.app-sidebar__nav a.active{background:var(--app-primary);color:#fff;font-weight:800;box-shadow:inset 3px 0 0 rgba(255,255,255,.45),0 3px 8px rgba(0,0,0,.18)}.app-sidebar__group{display:grid;gap:2px}.app-sidebar__parent{justify-content:space-between}.app-sidebar__parent::after{content:'▸';font-size:10px;color:#9fb1c9}.app-sidebar__group.open .app-sidebar__parent::after{content:'▾'}.app-sidebar__subnav{display:none;gap:2px;margin:1px 0 4px 10px;padding-left:8px;border-left:1px solid rgba(255,255,255,.18)}.app-sidebar__group.open .app-sidebar__subnav{display:grid}.app-sidebar__subnav a{min-height:28px;padding:0 10px;font-size:11px;color:#c5d3e5}.app-sidebar__subnav a.active{box-shadow:inset 2px 0 0 rgba(255,255,255,.5),0 2px 5px rgba(0,0,0,.14)}.app-sidebar__section{margin:14px 12px 5px;color:#7f94ae;font-size:10px;font-weight:800}
-  body{padding-left:208px;background:var(--app-bg)!important}header,.card{border-color:var(--app-line)!important}.card{background:var(--app-card)!important}a{color:var(--app-primary-dark)}button.primary,.primary{background:var(--app-primary)!important;border-color:var(--app-primary)!important}.order-no,.task-number{color:var(--app-primary-dark)!important}tbody tr.selected,.task.selected{box-shadow:inset 3px 0 var(--app-primary)!important}.app-sidebar~* #available-lines tr.customer-unavailable,#available-lines tr.customer-unavailable{opacity:.45;background:#f8fafc}.app-sidebar__disabled{display:flex;align-items:center;min-height:34px;padding:0 12px;border-radius:4px;color:#7f94ae;font-size:12px;cursor:default}@media(max-width:960px){body{padding-left:0}.app-sidebar{display:none}}@media print{body{padding-left:0!important;background:#fff!important}.app-sidebar{display:none!important}}
+  body{padding-left:208px;background:var(--app-bg)!important}header,.card{border-color:var(--app-line)!important}.card{background:var(--app-card)!important}a{color:var(--app-primary-dark)}button.primary,.primary{background:var(--app-primary)!important;border-color:var(--app-primary)!important}.order-no,.task-number{color:var(--app-primary-dark)!important}tbody tr.selected,.task.selected{box-shadow:inset 3px 0 var(--app-primary)!important}.app-sidebar~* #available-lines tr.customer-unavailable,#available-lines tr.customer-unavailable{opacity:.45;background:#f8fafc}.app-sidebar__disabled{display:flex;align-items:center;min-height:34px;padding:0 12px;border-radius:4px;color:#7f94ae;font-size:12px;cursor:default}.app-sidebar__nav{padding-bottom:28px}.app-sidebar__nav>a[href="/masters/products"]:not(.basic-master-entry),.app-sidebar__group[data-sidebar-group="masters"],.app-sidebar__group[data-sidebar-group="foundation-masters"]{display:none!important}@media(max-width:960px){body{padding-left:0}.app-sidebar{display:none}}@media print{body{padding-left:0!important;background:#fff!important}.app-sidebar{display:none!important}}
   @if($themeName === 'neon')
     .app-sidebar{background:linear-gradient(180deg,#10081f 0%,#061b2a 100%);box-shadow:2px 0 18px rgba(0,200,255,.25)}
     .app-sidebar__nav a.active{background:#00c8ff;color:#03131a;text-shadow:0 0 10px rgba(255,255,255,.55);box-shadow:0 0 14px rgba(0,200,255,.75),inset 3px 0 0 #ffffff}
@@ -62,13 +62,7 @@
       <div class="app-sidebar__group {{ request()->routeIs('billing.*') ? 'open' : '' }}" data-sidebar-group="billing">
         <a href="/billing" class="app-sidebar__parent {{ request()->routeIs('billing.*') ? 'active' : '' }}" data-sidebar-toggle="billing" aria-expanded="{{ request()->routeIs('billing.*') ? 'true' : 'false' }}">請求・入金</a>
         <div class="app-sidebar__subnav" aria-label="請求・入金サブメニュー">
-          <a href="/billing/monthly-invoices" class="{{ request()->routeIs('billing.monthly-invoices') ? 'active' : '' }}">月次(締め)請求作成</a>
-          <a href="/billing/spot-invoices" class="{{ request()->routeIs('billing.spot-invoices') ? 'active' : '' }}">都度請求作成</a>
-          <a href="/billing/invoices" class="{{ request()->routeIs('billing.invoices') ? 'active' : '' }}">請求一覧</a>
-          <a href="/billing/invoice-print" class="{{ request()->routeIs('billing.invoice-print') ? 'active' : '' }}">再請求書印刷</a>
-          <a href="/billing/payment-confirmation" class="{{ request()->routeIs('billing.payment-confirmation') ? 'active' : '' }}">入金確認</a>
-          <a href="/billing/payment-reviews" class="{{ request()->routeIs('billing.payment-reviews') ? 'active' : '' }}">要確認入金</a>
-          <a href="/billing/receivables" class="{{ request()->routeIs('billing.receivables') ? 'active' : '' }}">売掛残高</a>
+          <a href="/billing" class="{{ request()->routeIs('billing.*') ? 'active' : '' }}">請求・入金業務</a>
         </div>
       </div>
     @endif
@@ -83,23 +77,82 @@
     @endif
     @if($navigationUser?->hasPermission('tax.view'))<a href="/tax" class="{{ request()->routeIs('tax.*') ? 'active' : '' }}">税務</a>@endif
     <div class="app-sidebar__section">管理</div>
-    @if($navigationUser?->hasPermission('customer_master.view') || $navigationUser?->hasPermission('billing_cycle_master.view') || $navigationUser?->hasPermission('product_master.view'))
-      <div class="app-sidebar__group {{ request()->routeIs('masters.*') ? 'open' : '' }}" data-sidebar-group="masters">
-        <a href="{{ $navigationUser?->hasPermission('customer_master.view') ? '/masters/customers' : ($navigationUser?->hasPermission('product_master.view') ? '/masters/products' : '/masters/billing-cycles') }}" class="app-sidebar__parent {{ request()->routeIs('masters.*') ? 'active' : '' }}" data-sidebar-toggle="masters" aria-expanded="{{ request()->routeIs('masters.*') ? 'true' : 'false' }}">マスタ</a>
+    @if($navigationUser?->hasPermission('product_master.view'))<a href="/masters/products" class="{{ request()->routeIs('masters.products.*') ? 'active' : '' }}">商品マスタ</a>@endif
+    @php($foundationMasters = [
+      ['key' => 'consumption-tax-categories', 'label' => '消費税区分', 'permission' => 'tax_master.view'],
+      ['key' => 'consumption-tax-rates', 'label' => '消費税率', 'permission' => 'tax_master.view'],
+      ['key' => 'units', 'label' => '単位', 'permission' => 'unit_master.view'],
+      ['key' => 'liquor-tax-categories', 'label' => '酒税区分', 'permission' => 'liquor_tax_master.view'],
+      ['key' => 'stock-locations', 'label' => '在庫場所', 'permission' => 'stock_location_master.view'],
+      ['key' => 'transaction-categories', 'label' => '取引区分', 'permission' => 'transaction_category_master.view'],
+      ['key' => 'settlement-receivable-categories', 'label' => '売掛精算区分', 'permission' => 'settlement_category_master.view'],
+      ['key' => 'number-sequences', 'label' => '採番', 'permission' => 'number_sequence_master.view'],
+      ['key' => 'roles', 'label' => '権限・ロール', 'permission' => 'role_master.view'],
+    ])
+    @php($firstFoundationMaster = collect($foundationMasters)->first(fn ($item) => $navigationUser?->hasPermission($item['permission']) || $navigationUser?->hasPermission('role.manage')))
+    @php($canViewFoundationMasters = (bool) $firstFoundationMaster)
+    @php($canViewBasicMasterGroup = $canViewFoundationMasters || $navigationUser?->hasPermission('product_master.view') || $navigationUser?->hasPermission('customer_master.view') || $navigationUser?->hasPermission('billing_cycle_master.view'))
+    @php($firstFoundationMaster = $firstFoundationMaster ?? ['key' => 'consumption-tax-categories'])
+    @php($basicMasterHref = $navigationUser?->hasPermission('product_master.view') ? '/masters/products' : ($navigationUser?->hasPermission('customer_master.view') ? '/masters/customers' : ($navigationUser?->hasPermission('billing_cycle_master.view') ? '/masters/billing-cycles' : '/masters/foundation/'.$firstFoundationMaster['key'])))
+    @php($firstFoundationMaster = $firstFoundationMaster ?? ['key' => 'consumption-tax-categories'])
+    @php($basicMasterHref = $navigationUser?->hasPermission('product_master.view') ? '/masters/products' : ($navigationUser?->hasPermission('customer_master.view') ? '/masters/customers' : ($navigationUser?->hasPermission('billing_cycle_master.view') ? '/masters/billing-cycles' : '/masters/foundation/'.$firstFoundationMaster['key'])))
+    @if($navigationUser?->hasPermission('customer_master.view') || $navigationUser?->hasPermission('billing_cycle_master.view'))
+      @php($masterGroupActive = request()->routeIs('masters.customers.*') || request()->routeIs('masters.billing-cycles.*'))
+      <div class="app-sidebar__group {{ $masterGroupActive ? 'open' : '' }}" data-sidebar-group="masters">
+        <a href="{{ $navigationUser?->hasPermission('customer_master.view') ? '/masters/customers' : '/masters/billing-cycles' }}" class="app-sidebar__parent {{ $masterGroupActive ? 'active' : '' }}" data-sidebar-toggle="masters" aria-expanded="{{ $masterGroupActive ? 'true' : 'false' }}">マスタ</a>
         <div class="app-sidebar__subnav" aria-label="マスター管理サブメニュー">
           @if($navigationUser?->hasPermission('customer_master.view'))<a href="/masters/customers" class="{{ request()->routeIs('masters.customers.*') ? 'active' : '' }}">取引先</a>@endif
-          @if($navigationUser?->hasPermission('product_master.view'))<a href="/masters/products" class="{{ request()->routeIs('masters.products.*') ? 'active' : '' }}">商品</a>@endif
           @if($navigationUser?->hasPermission('billing_cycle_master.view'))<a href="/masters/billing-cycles" class="{{ request()->routeIs('masters.billing-cycles.*') ? 'active' : '' }}">締日条件</a>@endif
         </div>
       </div>
-    @else
-      <span class="app-sidebar__disabled">マスタ</span>
     @endif
     @if($navigationUser?->hasPermission('role.manage'))<a href="/settings" class="{{ request()->routeIs('settings.*') ? 'active' : '' }}">設定</a>@endif
+    @if($canViewBasicMasterGroup)
+      <a href="{{ $basicMasterHref }}" class="{{ request()->routeIs('masters.foundation.*') || request()->routeIs('masters.products.*') || request()->routeIs('masters.customers.*') || request()->routeIs('masters.billing-cycles.*') ? 'active' : '' }}">基本マスタ</a>
+    @endif
+    @if($canViewBasicMasterGroup)
+      <div class="app-sidebar__group {{ request()->routeIs('masters.foundation.*') ? 'open' : '' }}" data-sidebar-group="foundation-masters">
+        <a href="/masters/foundation/{{ $firstFoundationMaster['key'] }}" class="app-sidebar__parent {{ request()->routeIs('masters.foundation.*') ? 'active' : '' }}" data-sidebar-toggle="foundation-masters" aria-expanded="{{ request()->routeIs('masters.foundation.*') ? 'true' : 'false' }}">基本マスタ</a>
+        <div class="app-sidebar__subnav" aria-label="基本マスタサブメニュー">
+          @if($navigationUser?->hasPermission('product_master.view'))<a href="/masters/products" class="{{ request()->routeIs('masters.products.*') ? 'active' : '' }}">商品</a>@endif
+          @if($navigationUser?->hasPermission('customer_master.view'))<a href="/masters/customers" class="{{ request()->routeIs('masters.customers.*') ? 'active' : '' }}">取引先</a>@endif
+          @if($navigationUser?->hasPermission('billing_cycle_master.view'))<a href="/masters/billing-cycles" class="{{ request()->routeIs('masters.billing-cycles.*') ? 'active' : '' }}">締日条件</a>@endif
+          @foreach($foundationMasters as $foundationMaster)
+            @if($navigationUser?->hasPermission($foundationMaster['permission']) || $navigationUser?->hasPermission('role.manage'))<a href="/masters/foundation/{{ $foundationMaster['key'] }}" class="{{ request()->routeIs('masters.foundation.*') && request()->route('master') === $foundationMaster['key'] ? 'active' : '' }}">{{ $foundationMaster['label'] }}</a>@endif
+          @endforeach
+        </div>
+      </div>
+    @endif
   </nav>
 </aside>
 <script>
   (() => {
+    const hiddenFoundationGroup = document.querySelector('[data-sidebar-group="foundation-masters"]');
+    const basicMasterEntry = hiddenFoundationGroup?.previousElementSibling;
+    if (basicMasterEntry?.matches('a[href]')) {
+      basicMasterEntry.classList.add('basic-master-entry');
+    }
+
+    const sidebar = document.querySelector('.app-sidebar');
+    const sidebarScrollKey = 'sidebar:scrollTop';
+    if (sidebar) {
+      const savedScrollTop = Number(localStorage.getItem(sidebarScrollKey) || 0);
+      if (savedScrollTop > 0) {
+        requestAnimationFrame(() => {
+          sidebar.scrollTop = savedScrollTop;
+        });
+      }
+      sidebar.addEventListener('scroll', () => {
+        localStorage.setItem(sidebarScrollKey, String(sidebar.scrollTop));
+      }, { passive: true });
+      sidebar.addEventListener('click', (event) => {
+        const link = event.target.closest('a[href]');
+        if (link) {
+          localStorage.setItem(sidebarScrollKey, String(sidebar.scrollTop));
+        }
+      });
+    }
+
     document.querySelectorAll('[data-sidebar-toggle]').forEach((toggle) => {
       const key = `sidebar:${toggle.dataset.sidebarToggle}:open`;
       const group = document.querySelector(`[data-sidebar-group="${toggle.dataset.sidebarToggle}"]`);
@@ -120,6 +173,14 @@
     });
 
     const unitNames = { bottle: '本', case: 'ケース', box: '箱', piece: '個', bag: '袋', liter: 'L', milliliter: 'mL', kilogram: 'kg', gram: 'g' };
+    const foundationGroup = document.querySelector('[data-sidebar-group="foundation-masters"]');
+    const foundationToggle = document.querySelector('[data-sidebar-toggle="foundation-masters"]');
+    if (foundationGroup && foundationToggle && location.pathname.startsWith('/masters/')) {
+      foundationGroup.classList.add('open');
+      foundationToggle.classList.add('active');
+      foundationToggle.setAttribute('aria-expanded', 'true');
+    }
+
     const normalize = (root = document) => root.querySelectorAll('input[type="number"][data-quantity], input.qty, #lines input[type="number"]').forEach((input) => {
       input.min = '1'; input.step = '1';
       if (input.value !== '' && Number.isFinite(Number(input.value))) input.value = String(Math.max(1, Math.round(Number(input.value))));

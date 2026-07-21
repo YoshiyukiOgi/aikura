@@ -9,7 +9,9 @@
     header{height:52px;padding:0 20px;display:flex;align-items:center;justify-content:space-between;background:#fff;border-bottom:1px solid #dce4ee}
     header h1{font-size:15px;font-weight:800;padding-left:10px}
     main{padding:12px 18px}
-    .grid{display:grid;grid-template-columns:minmax(720px,1fr) 380px;gap:12px}
+    .grid{display:grid;grid-template-columns:minmax(720px,1fr) 380px;gap:12px;align-items:start}
+    .grid>.card:first-child{max-height:calc(100vh - 76px);overflow:auto}
+    .grid>.card:last-child{position:sticky;top:64px;max-height:calc(100vh - 76px);overflow:auto;align-self:start}
     .card{background:#fff;border:1px solid #dce4ee;border-radius:6px;overflow:hidden}
     .head{padding:11px 14px;border-bottom:1px solid #e7edf4;display:flex;justify-content:space-between;align-items:center;gap:12px}
     h1,h2,p{margin:0} h2{font-size:15px}.muted{color:#64748b;font-size:11px}.error{color:#b42318}
@@ -23,6 +25,11 @@
     th,td{padding:9px 10px;border-bottom:1px solid #edf1f6;text-align:left;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     th{background:#f8faff;color:#64748b;font-size:10px}
     th.num,td.num{text-align:right}
+    td.customer-cell{font-weight:800;color:#172033}
+    table th:nth-child(2),table td:nth-child(2){width:62px!important}
+    table th:nth-child(4),table td:nth-child(4){width:64px!important}
+    table th:nth-child(5),table td:nth-child(5){width:56px!important}
+    table th:nth-child(6),table td:nth-child(6){width:80px!important}
     tbody tr{cursor:pointer}tbody tr:hover,tbody tr.selected{background:#e7f0ff}tbody tr.selected{box-shadow:inset 3px 0 #0b6ff6}
     .badge{display:inline-block;max-width:100%;padding:2px 6px;border-radius:999px;font-size:10px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:middle}
     .draft{background:#fff4dd;color:#9a6700}.confirmed{background:#ecfdf3;color:#027a48}.cancelled{background:#fee4e2;color:#b42318}.invoice{background:#eaf3ff;color:#075ecf}.none{background:#f1f5f9;color:#64748b}
@@ -30,7 +37,7 @@
     .panel{display:grid;gap:10px;padding:14px}.detail-list{display:grid;grid-template-columns:118px 1fr;gap:7px 10px}.detail-list dt{color:#64748b;font-size:11px}.detail-list dd{margin:0;font-weight:700;min-width:0;overflow-wrap:anywhere}
     .left-actions{justify-content:flex-start}
     .mini-table th:first-child,.mini-table td:first-child{white-space:normal;line-height:1.35}.mini-table th:nth-child(2),.mini-table td:nth-child(2),.mini-table th:nth-child(3),.mini-table td:nth-child(3){width:76px;text-align:right}
-    @media(max-width:1100px){.grid{grid-template-columns:1fr}.filters{grid-template-columns:repeat(2,minmax(0,1fr))}.wide{grid-column:span 2}}
+    @media(max-width:1100px){.grid{grid-template-columns:1fr}.grid>.card:first-child,.grid>.card:last-child{position:static;max-height:none}.filters{grid-template-columns:repeat(2,minmax(0,1fr))}.wide{grid-column:span 2}}
   </style>
 </head>
 <body>
@@ -118,7 +125,7 @@
         tr.classList.toggle('selected', state.selected?.id === shipment.id);
         const statusCell=document.createElement('td'); statusCell.append(badge(labels[shipment.status] || shipment.status, shipment.status));
         const invoiceCell=document.createElement('td'); invoiceCell.append(invoiceBadge(shipment));
-        tr.append(cell(shipment.document_number), cell(shipment.document_date), cell(shipment.customer_name), cell(shipment.sales_order_number), statusCell, invoiceCell);
+        tr.append(cell(shipment.document_number), cell(shipment.document_date), cell(shipment.customer_name, 'customer-cell'), cell(shipment.sales_order_number), statusCell, invoiceCell);
         tr.addEventListener('click',()=>{ state.selected=shipment; renderList(); renderDetail(shipment); });
         return tr;
       }));

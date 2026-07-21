@@ -1,6 +1,5 @@
 @php
   $titles = [
-    'dashboard' => '請求・入金',
     'monthly-invoices' => '月次(締め)請求作成',
     'spot-invoices' => '都度請求作成',
     'invoices' => '請求一覧',
@@ -9,7 +8,7 @@
     'payment-reviews' => '要確認入金',
     'receivables' => '売掛残高',
   ];
-  $pageTitle = $titles[$section] ?? $titles['dashboard'];
+  $pageTitle = $titles[$section] ?? $titles['monthly-invoices'];
 @endphp
 <!doctype html>
 <html lang="ja">
@@ -26,8 +25,18 @@
     h1,h2,h3,p{margin:0}
     h2{font-size:15px}
     h3{font-size:13px}
+    .tabs{display:flex;gap:2px;margin-bottom:12px;border-bottom:1px solid #cfd9e7;overflow-x:auto;scrollbar-width:thin}
+    .tab{display:inline-flex;align-items:center;gap:7px;min-height:38px;padding:0 13px;border-bottom:3px solid transparent;color:#526176;font-size:11px;font-weight:800;text-decoration:none;white-space:nowrap;box-sizing:border-box}
+    .tab:hover{color:#075ecf;background:#eef5ff}
+    .tab:focus-visible{outline:2px solid #0b6ff6;outline-offset:-2px}
+    .tab.active{border-bottom-color:#0b6ff6;color:#075ecf;background:#fff}
+    .tab-step{display:inline-grid;place-items:center;width:19px;height:19px;border-radius:50%;background:#e7edf5;color:#526176;font-size:10px}
+    .tab.active .tab-step{background:#0b6ff6;color:#fff}
     .stack{display:grid;gap:12px}
     .grid{display:grid;grid-template-columns:minmax(700px,1fr) 380px;gap:12px;align-items:start}
+    .grid>aside{position:sticky;top:64px;max-height:calc(100vh - 76px);overflow:auto;align-self:start}
+    .grid>.stack{min-height:0}
+    .grid>.stack>.card{max-height:calc(100vh - 116px);overflow:auto}
     .summary-grid{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:10px}
     .card{background:#fff;border:1px solid #dce4ee;border-radius:6px;overflow:hidden}
     .head{padding:11px 14px;border-bottom:1px solid #e7edf4;display:flex;justify-content:space-between;align-items:center;gap:10px}
@@ -93,38 +102,25 @@
     .payment-review-table .unapplied-col{width:122px}
     .pager{padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;border-top:1px solid #edf1f6}
     .empty{padding:18px 14px;color:#64748b;font-size:12px}
-    .screen-links{display:grid;grid-template-columns:repeat(6,minmax(130px,1fr));gap:10px}
-    .screen-links a{display:grid;gap:6px;padding:13px;border:1px solid #dce4ee;border-radius:6px;background:#fff;text-decoration:none;color:#172033}
-    .screen-links strong{font-size:13px}
-    @media(max-width:1180px){.grid{grid-template-columns:1fr}.summary-grid,.screen-links{grid-template-columns:repeat(2,1fr)}.filters{grid-template-columns:repeat(2,1fr)}.filters .wide{grid-column:auto}}
-    @media(max-width:720px){.summary-grid,.screen-links,.filters,.form-grid{grid-template-columns:1fr}.full{grid-column:auto}}
+    @media(max-width:1180px){.grid{grid-template-columns:1fr}.grid>aside{position:static;max-height:none}.grid>.stack>.card{max-height:none}.summary-grid{grid-template-columns:repeat(2,1fr)}.filters{grid-template-columns:repeat(2,1fr)}.filters .wide{grid-column:auto}}
+    @media(max-width:720px){.summary-grid,.filters,.form-grid{grid-template-columns:1fr}.full{grid-column:auto}}
   </style>
 </head>
 <body>
   <header>
-    <h1>{{ $pageTitle }}</h1>
+    <h1>請求・入金業務</h1>
     <div class="actions"><span class="muted">{{ $user->name }}</span><form method="post" action="{{ route('logout') }}">@csrf<button type="submit">ログアウト</button></form></div>
   </header>
   <main>
-    @if ($section === 'dashboard')
-      <div class="stack">
-        <section class="screen-links">
-          <a href="/billing/monthly-invoices"><strong>月次(締め)請求作成</strong><span class="muted">締日を指定し、取引先ごとの請求書を作成します。</span></a>
-          <a href="/billing/spot-invoices"><strong>都度請求作成</strong><span class="muted">都度請求の出荷から、出荷ごとの請求書を作成します。</span></a>
-          <a href="/billing/invoices"><strong>請求一覧</strong><span class="muted">請求書の検索、発行、取消、入金予定作成を行います。</span></a>
-          <a href="/billing/invoice-print"><strong>再請求書印刷</strong><span class="muted">発行済み請求書を検索し、再印刷プレビューを開きます。</span></a>
-          <a href="/billing/payment-confirmation"><strong>入金確認</strong><span class="muted">入金予定月を見ながら入金を登録・消込します。</span></a>
-          <a href="/billing/payment-reviews"><strong>要確認入金</strong><span class="muted">過入金、取消済み、未消込を確認します。</span></a>
-          <a href="/billing/receivables"><strong>売掛残高</strong><span class="muted">得意先別の未回収額と滞留を確認します。</span></a>
-        </section>
-        <section class="card">
-          <div class="head"><h2>運用の流れ</h2></div>
-          <div class="panel">
-            <p class="muted">月末に月次請求を作成し、請求書を送付します。翌月は入金確認で入金を登録し、差額や過入金は要確認入金で処理方針を決め、売掛残高で未回収を追います。</p>
-          </div>
-        </section>
-      </div>
-    @endif
+    <nav class="tabs" aria-label="請求・入金の作業順">
+      <a href="{{ route('billing.monthly-invoices') }}" class="tab {{ $section === 'monthly-invoices' ? 'active' : '' }}" @if($section === 'monthly-invoices') aria-current="page" @endif><span class="tab-step">1</span>月次請求</a>
+      <a href="{{ route('billing.spot-invoices') }}" class="tab {{ $section === 'spot-invoices' ? 'active' : '' }}" @if($section === 'spot-invoices') aria-current="page" @endif><span class="tab-step">2</span>都度請求</a>
+      <a href="{{ route('billing.invoices') }}" class="tab {{ $section === 'invoices' ? 'active' : '' }}" @if($section === 'invoices') aria-current="page" @endif><span class="tab-step">3</span>請求一覧・確定</a>
+      <a href="{{ route('billing.invoice-print') }}" class="tab {{ $section === 'invoice-print' ? 'active' : '' }}" @if($section === 'invoice-print') aria-current="page" @endif><span class="tab-step">4</span>請求書印刷</a>
+      <a href="{{ route('billing.payment-confirmation') }}" class="tab {{ $section === 'payment-confirmation' ? 'active' : '' }}" @if($section === 'payment-confirmation') aria-current="page" @endif><span class="tab-step">5</span>入金確認</a>
+      <a href="{{ route('billing.payment-reviews') }}" class="tab {{ $section === 'payment-reviews' ? 'active' : '' }}" @if($section === 'payment-reviews') aria-current="page" @endif><span class="tab-step">6</span>要確認入金</a>
+      <a href="{{ route('billing.receivables') }}" class="tab {{ $section === 'receivables' ? 'active' : '' }}" @if($section === 'receivables') aria-current="page" @endif><span class="tab-step">7</span>売掛残高</a>
+    </nav>
 
     @if ($section === 'monthly-invoices')
       <div class="grid" data-screen="monthly-invoices">

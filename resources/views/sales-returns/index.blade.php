@@ -18,6 +18,7 @@
     h2{font-size:15px}
     h3{font-size:13px}
     .grid{display:grid;grid-template-columns:minmax(650px,1fr) 430px;gap:12px;align-items:start}
+    .return-side{position:sticky;top:64px;max-height:calc(100vh - 76px);overflow:auto;align-self:start}
     body.mode-history .grid{grid-template-columns:1fr}
     body.mode-history .return-side{display:none}
     .stack{display:grid;gap:12px}
@@ -62,7 +63,7 @@
     .lot-row{display:grid;grid-template-columns:1.6fr .8fr .8fr;gap:8px;align-items:end;border-bottom:1px solid #edf1f6;padding:9px 0}
     .lot-add-row{display:grid;grid-template-columns:1fr 120px auto;gap:8px;align-items:end;border:1px solid #e7edf4;border-radius:5px;padding:10px;background:#fbfdff}
     .lot-allocation-row{display:grid;grid-template-columns:1fr 90px auto;gap:8px;align-items:center;border-bottom:1px solid #edf1f6;padding:8px 0}
-    @media(max-width:1050px){.grid{grid-template-columns:1fr}.form-grid,.summary,.search-grid,.return-search-grid{grid-template-columns:1fr}.full{grid-column:auto}}
+    @media(max-width:1050px){.grid{grid-template-columns:1fr}.return-side{position:static;max-height:none}.form-grid,.summary,.search-grid,.return-search-grid{grid-template-columns:1fr}.full{grid-column:auto}}
   </style>
 </head>
 <body class="mode-{{ $section }}">

@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\V1\AuditLogController;
 use App\Http\Controllers\Api\V1\BillingController;
 use App\Http\Controllers\Api\V1\BillingCycleMasterController;
 use App\Http\Controllers\Api\V1\CustomerMasterController;
+use App\Http\Controllers\Api\V1\FoundationMasterController;
 use App\Http\Controllers\Api\V1\InventoryController;
 use App\Http\Controllers\Api\V1\InventoryCountController;
 use App\Http\Controllers\Api\V1\MonthlyClosingController;
@@ -67,6 +68,17 @@ Route::prefix('v1')->name('api.v1.')->group(function (): void {
             ->middleware('permission:product_master.edit')->name('masters.product-families.products.store');
         Route::put('/masters/product-families/{productFamily}/products/{product}', [ProductMasterController::class, 'updateVariant'])
             ->middleware('permission:product_master.edit')->name('masters.product-families.products.update');
+
+        Route::get('/masters/foundation/{master}', [FoundationMasterController::class, 'index'])
+            ->name('masters.foundation.index');
+        Route::get('/masters/foundation/{master}/{id}', [FoundationMasterController::class, 'show'])
+            ->whereNumber('id')
+            ->name('masters.foundation.show');
+        Route::post('/masters/foundation/{master}', [FoundationMasterController::class, 'store'])
+            ->name('masters.foundation.store');
+        Route::put('/masters/foundation/{master}/{id}', [FoundationMasterController::class, 'update'])
+            ->whereNumber('id')
+            ->name('masters.foundation.update');
 
         Route::middleware('permission:sales_order.view')->group(function (): void {
             Route::get('/sales-orders', [SalesOrderController::class, 'index'])->name('sales-orders.index');
