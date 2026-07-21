@@ -89,11 +89,19 @@
     return payload.data;
   };
   const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[char]));
+  const productTypeLabel = (type) => ({sake:'酒',kasu:'酒粕',food:'食品',goods:'グッズ・その他'}[type] || '-');
   const qty = (value) => {
     const n = Number(value ?? 0);
     return Number.isFinite(n) ? Math.round(n).toLocaleString('ja-JP') : '0';
   };
   const fmtDate = (value) => value ? String(value).replaceAll('-', '/') : '-';
+  const typeField = document.createElement('label');
+  typeField.innerHTML = '区分<select id="product-type"><option value="">すべて</option><option value="sake">酒</option><option value="kasu">酒粕</option><option value="food">食品</option><option value="goods">グッズ・その他</option></select>';
+  els.keyword?.closest('label')?.after(typeField);
+  const productType = document.querySelector('#product-type');
+  productType.value = @json($productType ?? '');
+  els.productType = productType;
+  document.querySelector('#rows')?.closest('table')?.querySelector('thead tr th:first-child')?.insertAdjacentHTML('afterend', '<th style="width:90px">区分</th>');
 
   async function load() {
     const params = new URLSearchParams({ as_of_date: els.date.value });
@@ -142,6 +150,56 @@
     if (els.showZero?.checked) params.set('include_zero_stock', '1');
     window.open(`/inventory/lot-stock-as-of/print?${params}`, '_blank');
   });
+  load = async function() {
+    const params = new URLSearchParams({ as_of_date: els.date.value });
+    const keyword = els.keyword.value.trim();
+    if (keyword) params.set('q', keyword);
+    if (els.productType?.value) params.set('product_type', els.productType.value);
+    if (els.showZero?.checked) params.set('include_zero_stock', '1');
+    els.rows.innerHTML = '<tr><td colspan="9" class="empty">読み込み中です。</td></tr>';
+    try {
+      const data = await api(`/api/v1/inventory/lot-stock-as-of?${params}`);
+      const rows = data.lot_stock_balances || [];
+      const condition = `基準日 ${fmtDate(data.as_of_date)}${keyword ? ` / 検索 ${keyword}` : ''}${els.productType?.value ? ` / 区分 ${productTypeLabel(els.productType.value)}` : ''}`;
+      els.condition.textContent = condition;
+      els.printCondition.textContent = condition;
+      els.count.textContent = `${rows.length}件`;
+      if (!rows.length) {
+        els.rows.innerHTML = '<tr><td colspan="9" class="empty">該当するロット在庫はありません。</td></tr>';
+        return;
+      }
+      els.rows.innerHTML = rows.map((row) => `
+        <tr class="${Number(row.physical_quantity) < 0 ? 'negative-stock' : ''}">
+          <td>${esc(row.product_code)}</td>
+          <td>${esc(row.product_type_label || productTypeLabel(row.product_type))}</td>
+          <td>${esc(row.product_name)}</td>
+          <td><span class="lot-name">${esc(row.lot_name || row.lot_code)}</span>${row.lot_name && row.lot_name !== row.lot_code ? `<span class="sub">コード ${esc(row.lot_code)}</span>` : ''}</td>
+          <td>${esc(row.stock_location_name)}<span class="sub">${esc(row.stock_location_code)}</span></td>
+          <td class="num">${esc(qty(row.physical_quantity))} ${esc(row.unit_name)}</td>
+          <td>${fmtDate(row.production_date)}</td>
+          <td>${fmtDate(row.bottling_date)}</td>
+          <td>${fmtDate(row.latest_movement_date)}</td>
+        </tr>
+      `).join('');
+    } catch (error) {
+      els.rows.innerHTML = `<tr><td colspan="9" class="empty">${esc(error.message)}</td></tr>`;
+      els.count.textContent = '';
+    }
+  };
+  if (els.search) els.search.addEventListener('click', (event) => { event.stopImmediatePropagation(); load(); }, true);
+  if (els.date) els.date.addEventListener('change', (event) => { event.stopImmediatePropagation(); load(); }, true);
+  if (els.showZero) els.showZero.addEventListener('change', (event) => { event.stopImmediatePropagation(); load(); }, true);
+  if (els.clear) els.clear.addEventListener('click', (event) => { event.stopImmediatePropagation(); els.date.value = '{{ $today }}'; els.keyword.value = ''; if (els.productType) els.productType.value = ''; load(); }, true);
+  if (els.productType) els.productType.addEventListener('change', load);
+  if (els.print) els.print.addEventListener('click', (event) => {
+    event.stopImmediatePropagation();
+    const params = new URLSearchParams({ as_of_date: els.date.value });
+    const keyword = els.keyword.value.trim();
+    if (keyword) params.set('q', keyword);
+    if (els.productType?.value) params.set('product_type', els.productType.value);
+    if (els.showZero?.checked) params.set('include_zero_stock', '1');
+    window.open(`/inventory/lot-stock-as-of/print?${params}`, '_blank');
+  }, true);
   load();
 })();
 </script>

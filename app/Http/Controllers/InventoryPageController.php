@@ -48,6 +48,7 @@ class InventoryPageController extends Controller
             'today' => now()->toDateString(),
             'asOfDate' => now()->toDateString(),
             'keyword' => '',
+            'productType' => '',
             'printMode' => false,
             'showZeroStockLots' => $inventorySettings['hide_zero_stock_lots'] !== '1',
         ]);
@@ -59,6 +60,7 @@ class InventoryPageController extends Controller
             'as_of_date' => ['nullable', 'date'],
             'q' => ['nullable', 'string', 'max:160'],
             'include_zero_stock' => ['nullable', 'boolean'],
+            'product_type' => ['nullable', 'in:sake,kasu,food,goods'],
         ]);
 
         return view('inventory.lot-stock-as-of', [
@@ -66,6 +68,7 @@ class InventoryPageController extends Controller
             'today' => now()->toDateString(),
             'asOfDate' => $validated['as_of_date'] ?? now()->toDateString(),
             'keyword' => $validated['q'] ?? '',
+            'productType' => $validated['product_type'] ?? '',
             'printMode' => true,
             'showZeroStockLots' => (bool) ($validated['include_zero_stock'] ?? false),
         ]);

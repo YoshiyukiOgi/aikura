@@ -19,12 +19,16 @@ use Illuminate\Support\Facades\DB;
 
 class InventoryController extends ApiController
 {
+    /** @var array<int, Product|null> */
+    private array $lotProductCache = [];
+
     public function stock(Request $request, LotStockBalanceService $service, LotVisibilityPolicy $visibility): JsonResponse
     {
         $validated = $request->validate([
             'stock_location_id' => ['nullable', 'integer', 'exists:stock_locations,id'],
             'as_of_date' => ['nullable', 'date'],
             'include_zero_stock' => ['nullable', 'boolean'],
+            'product_type' => ['nullable', 'in:sake,kasu,food,goods'],
         ]);
         $asOfDate = $validated['as_of_date'] ?? now()->toDateString();
         $includeZeroStock = $visibility->includeZeroStock((bool) ($validated['include_zero_stock'] ?? false));
@@ -32,6 +36,9 @@ class InventoryController extends ApiController
             ->filter(fn (LotStockBalance $balance): bool => $visibility->shouldDisplayBalance($balance, $includeZeroStock));
         if (isset($validated['stock_location_id'])) {
             $balances = $balances->where('stockLocationId', (int) $validated['stock_location_id']);
+        }
+        if (isset($validated['product_type'])) {
+            $balances = $balances->filter(fn (LotStockBalance $balance): bool => $this->lotStockBalanceMatchesProductType($balance, $validated['product_type']));
         }
 
         return $this->ok([
@@ -120,6 +127,7 @@ class InventoryController extends ApiController
             'stock_location_id' => ['nullable', 'integer', 'exists:stock_locations,id'],
             'unit_id' => ['nullable', 'integer', 'exists:units,id'],
             'include_zero_stock' => ['nullable', 'boolean'],
+            'product_type' => ['nullable', 'in:sake,kasu,food,goods'],
         ]);
 
         if (isset($validated['production_lot_id'], $validated['stock_location_id'], $validated['unit_id'])) {
@@ -138,6 +146,9 @@ class InventoryController extends ApiController
             'zero_stock_hidden' => ! $includeZeroStock,
             'lot_stock_balances' => $service->all()
                 ->filter(fn (LotStockBalance $balance): bool => $visibility->shouldDisplayBalance($balance, $includeZeroStock))
+                ->when(isset($validated['product_type']), fn ($balances) => $balances->filter(
+                    fn (LotStockBalance $balance): bool => $this->lotStockBalanceMatchesProductType($balance, $validated['product_type'])
+                ))
                 ->map(fn (LotStockBalance $balance): array => $this->serializeLotStockBalance($balance))
                 ->values()
                 ->all(),
@@ -150,6 +161,7 @@ class InventoryController extends ApiController
             'as_of_date' => ['nullable', 'date'],
             'q' => ['nullable', 'string', 'max:160'],
             'include_zero_stock' => ['nullable', 'boolean'],
+            'product_type' => ['nullable', 'in:sake,kasu,food,goods'],
         ]);
 
         $asOfDate = $validated['as_of_date'] ?? now()->toDateString();
@@ -181,6 +193,8 @@ class InventoryController extends ApiController
                 sm.unit_id,
                 pl.lot_code,
                 pl.display_name as lot_name,
+                pl.external_system_code,
+                pl.note as lot_note,
                 pl.production_date,
                 pl.bottling_date,
                 sl.code as stock_location_code,
@@ -195,6 +209,8 @@ class InventoryController extends ApiController
                 'sm.unit_id',
                 'pl.lot_code',
                 'pl.display_name',
+                'pl.external_system_code',
+                'pl.note',
                 'pl.production_date',
                 'pl.bottling_date',
                 'sl.code',
@@ -212,20 +228,29 @@ class InventoryController extends ApiController
             ->orderBy('pl.lot_code')
             ->orderBy('sl.code')
             ->get()
-            ->map(fn (object $row): array => [
-                'production_lot_id' => (int) $row->production_lot_id,
-                'stock_location_id' => (int) $row->stock_location_id,
-                'unit_id' => (int) $row->unit_id,
-                'lot_code' => $row->lot_code,
-                'lot_name' => $row->lot_name,
-                'production_date' => $row->production_date,
-                'bottling_date' => $row->bottling_date,
-                'stock_location_code' => $row->stock_location_code,
-                'stock_location_name' => $row->stock_location_name,
-                'unit_name' => $row->unit_name,
-                'physical_quantity' => bcadd((string) $row->physical_quantity, '0', 4),
-                'latest_movement_date' => $row->latest_movement_date,
-            ])
+            ->map(function (object $row): array {
+                $product = $this->productForLotAttributes($row->external_system_code, $row->lot_note);
+
+                return [
+                    'production_lot_id' => (int) $row->production_lot_id,
+                    'stock_location_id' => (int) $row->stock_location_id,
+                    'unit_id' => (int) $row->unit_id,
+                    'product_code' => $product?->product_code,
+                    'product_name' => $product?->display_name,
+                    'product_type' => $product?->product_type,
+                    'product_type_label' => $this->productTypeLabel($product?->product_type),
+                    'lot_code' => $row->lot_code,
+                    'lot_name' => $row->lot_name,
+                    'production_date' => $row->production_date,
+                    'bottling_date' => $row->bottling_date,
+                    'stock_location_code' => $row->stock_location_code,
+                    'stock_location_name' => $row->stock_location_name,
+                    'unit_name' => $row->unit_name,
+                    'physical_quantity' => bcadd((string) $row->physical_quantity, '0', 4),
+                    'latest_movement_date' => $row->latest_movement_date,
+                ];
+            })
+            ->filter(fn (array $row): bool => ! isset($validated['product_type']) || $row['product_type'] === $validated['product_type'])
             ->values()
             ->all();
 
@@ -261,11 +286,16 @@ class InventoryController extends ApiController
     private function serializeLotStockBalance(LotStockBalance $balance): array
     {
         $lot = ProductionLot::query()->with(['unit', 'capacityUnit'])->find($balance->productionLotId);
+        $product = $this->productForLot($lot);
 
         return [
             'production_lot_id' => $balance->productionLotId,
             'stock_location_id' => $balance->stockLocationId,
             'unit_id' => $balance->unitId,
+            'product_code' => $product?->product_code,
+            'product_name' => $product?->display_name,
+            'product_type' => $product?->product_type,
+            'product_type_label' => $this->productTypeLabel($product?->product_type),
             'physical_quantity' => $balance->physicalQuantity,
             'reserved_quantity' => $balance->reservedQuantity,
             'allocated_quantity' => $balance->allocatedQuantity,
@@ -281,6 +311,51 @@ class InventoryController extends ApiController
             'analysis_status' => $lot?->analysis_status,
             'unit_name' => $lot?->unit?->symbol ?: $lot?->unit?->name,
         ];
+    }
+
+    private function lotStockBalanceMatchesProductType(LotStockBalance $balance, string $productType): bool
+    {
+        $lot = ProductionLot::query()->find($balance->productionLotId);
+
+        return $this->productForLot($lot)?->product_type === $productType;
+    }
+
+    private function productForLot(?ProductionLot $lot): ?Product
+    {
+        if ($lot === null) {
+            return null;
+        }
+
+        if (array_key_exists($lot->id, $this->lotProductCache)) {
+            return $this->lotProductCache[$lot->id];
+        }
+
+        return $this->lotProductCache[$lot->id] = $this->productForLotAttributes($lot->external_system_code, $lot->note);
+    }
+
+    private function productForLotAttributes(?string $externalSystemCode, ?string $note): ?Product
+    {
+        $legacyProductId = null;
+        if (is_string($externalSystemCode) && preg_match('/^ITARO-PRODUCT-DETAIL-(\d+)-\d+$/', $externalSystemCode, $matches)) {
+            $legacyProductId = $matches[1];
+        } elseif (is_string($note) && preg_match('/商品ID=(\d+)/u', $note, $matches)) {
+            $legacyProductId = $matches[1];
+        }
+
+        return $legacyProductId === null
+            ? null
+            : Product::query()->where('legacy_code', $legacyProductId)->first();
+    }
+
+    private function productTypeLabel(?string $productType): ?string
+    {
+        return match ($productType) {
+            'sake' => '酒',
+            'kasu' => '酒粕',
+            'food' => '食品',
+            'goods' => 'グッズ・その他',
+            default => null,
+        };
     }
 
     /**
