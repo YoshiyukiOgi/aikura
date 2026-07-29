@@ -4,12 +4,15 @@ namespace Tests\Feature;
 
 use App\Exceptions\Tax\ClosedLiquorTaxFilingPeriodException;
 use App\Exceptions\Tax\LiquorTaxMonthlyFilingConfirmationException;
+use App\Exceptions\Tax\LiquorTaxMonthlyFilingReopenException;
+use App\Models\AuditLog;
 use App\Models\BillingCycle;
 use App\Models\Customer;
 use App\Models\PriceList;
 use App\Models\PriceRule;
 use App\Models\Product;
 use App\Models\SettlementReceivableCategory;
+use App\Models\ShipmentHeader;
 use App\Models\TransactionCategory;
 use App\Models\Unit;
 use App\Services\Shipment\ApplyDraftShipmentPricingService;
@@ -20,6 +23,7 @@ use App\Services\Shipment\CreateDraftShipmentLineData;
 use App\Services\Shipment\CreateDraftShipmentService;
 use App\Services\Tax\ConfirmLiquorTaxMonthlyFilingService;
 use App\Services\Tax\CreateLiquorTaxMonthlyFilingDraftService;
+use App\Services\Tax\ReopenLiquorTaxMonthlyFilingService;
 use Database\Seeders\CustomerMasterSeeder;
 use Database\Seeders\PriceMasterSeeder;
 use Database\Seeders\ProductUnitMasterSeeder;
@@ -93,6 +97,59 @@ class ConfirmLiquorTaxMonthlyFilingTest extends TestCase
         $this->expectException(LiquorTaxMonthlyFilingConfirmationException::class);
 
         app(ConfirmLiquorTaxMonthlyFilingService::class)->confirm(2026, 6, 'second confirmation');
+    }
+
+    public function test_it_reopens_latest_confirmed_filing_and_preserves_snapshot_in_audit_log(): void
+    {
+        [$customer, $product, $unit] = $this->prepareBaseData();
+
+        $this->confirmShipment($customer, $product, $unit, '2026-06-01', '2026-06-01', '3.0000');
+        $draft = app(CreateLiquorTaxMonthlyFilingDraftService::class)->create(2026, 6);
+        $confirmed = app(ConfirmLiquorTaxMonthlyFilingService::class)->confirm(2026, 6, 'first confirmation');
+
+        $reopened = app(ReopenLiquorTaxMonthlyFilingService::class)
+            ->reopen($confirmed, 'shipment correction required');
+
+        $this->assertSame($draft->id, $reopened->id);
+        $this->assertSame('draft', $reopened->status);
+        $this->assertNull($reopened->confirmed_at);
+        $this->assertNull($reopened->total_confirmed_amount);
+        $this->assertSame('shipment correction required', $reopened->reason);
+        $this->assertNull($reopened->lines->first()->confirmed_amount);
+
+        $audit = $this->assertDatabaseHas('audit_logs', [
+            'event' => 'liquor_tax_monthly_filing.reopened',
+            'target_table' => 'liquor_tax_monthly_filings',
+            'target_id' => (string) $reopened->id,
+            'reason' => 'shipment correction required',
+        ]);
+        $this->assertNotNull($audit);
+
+        $snapshot = AuditLog::query()
+            ->where('event', 'liquor_tax_monthly_filing.reopened')
+            ->where('target_id', (string) $reopened->id)
+            ->firstOrFail()
+            ->before_values;
+        $this->assertSame('confirmed', $snapshot['status']);
+        $this->assertSame('100.00', $snapshot['total_confirmed_amount']);
+        $this->assertSame('173.00', $snapshot['lines'][0]['confirmed_amount']);
+    }
+
+    public function test_it_rejects_reopening_when_a_newer_filing_is_confirmed(): void
+    {
+        [$customer, $product, $unit] = $this->prepareBaseData();
+
+        $this->confirmShipment($customer, $product, $unit, '2026-05-01', '2026-05-01', '1.0000');
+        $may = app(CreateLiquorTaxMonthlyFilingDraftService::class)->create(2026, 5);
+        $may = app(ConfirmLiquorTaxMonthlyFilingService::class)->confirm(2026, 5, 'May confirmation');
+
+        $this->confirmShipment($customer, $product, $unit, '2026-06-01', '2026-06-01', '1.0000');
+        app(CreateLiquorTaxMonthlyFilingDraftService::class)->create(2026, 6);
+        app(ConfirmLiquorTaxMonthlyFilingService::class)->confirm(2026, 6, 'June confirmation');
+
+        $this->expectException(LiquorTaxMonthlyFilingReopenException::class);
+
+        app(ReopenLiquorTaxMonthlyFilingService::class)->reopen($may, 'May correction');
     }
 
     public function test_it_rejects_shipment_confirmation_in_confirmed_liquor_tax_period(): void
@@ -185,7 +242,7 @@ class ConfirmLiquorTaxMonthlyFilingTest extends TestCase
         string $documentDate,
         ?string $liquorTaxTransferDate,
         string $quantity,
-    ): \App\Models\ShipmentHeader {
+    ): ShipmentHeader {
         $shipment = $this->createPricedDraft($customer, $product, $unit, $documentDate, $liquorTaxTransferDate, $quantity);
 
         return app(ConfirmShipmentService::class)->confirm($shipment);
@@ -198,7 +255,7 @@ class ConfirmLiquorTaxMonthlyFilingTest extends TestCase
         string $documentDate,
         ?string $liquorTaxTransferDate,
         string $quantity,
-    ): \App\Models\ShipmentHeader {
+    ): ShipmentHeader {
         $shipment = app(CreateDraftShipmentService::class)->create(new CreateDraftShipmentData(
             customerId: $customer->id,
             documentDate: $documentDate,

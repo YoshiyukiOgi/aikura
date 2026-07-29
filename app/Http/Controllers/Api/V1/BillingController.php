@@ -23,9 +23,12 @@ use App\Services\Billing\CreateClosingInvoiceService;
 use App\Services\Billing\CreateInvoiceDraftData;
 use App\Services\Billing\CreateInvoiceDraftService;
 use App\Services\Billing\CreatePaymentScheduleService;
+use App\Services\Billing\CustomerMonthlyStatementRow;
+use App\Services\Billing\CustomerMonthlyStatementService;
 use App\Services\Billing\ReceivableBalance;
 use App\Services\Billing\ReceivableBalanceService;
 use App\Services\Billing\RegisterPaymentService;
+use App\Services\Operations\OperationalPeriod;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -60,7 +63,7 @@ class BillingController extends ApiController
         })->values()->all()]);
     }
 
-    public function invoices(Request $request): JsonResponse
+    public function invoices(Request $request, OperationalPeriod $operationalPeriod): JsonResponse
     {
         $validated = $request->validate([
             'customer' => ['nullable', 'string', 'max:120'],
@@ -68,16 +71,19 @@ class BillingController extends ApiController
             'product' => ['nullable', 'string', 'max:120'],
             'invoice_date_from' => ['nullable', 'date'],
             'invoice_date_to' => ['nullable', 'date', 'after_or_equal:invoice_date_from'],
+            'closing_day' => ['nullable', 'string', 'max:10'],
+            'due_date' => ['nullable', 'date'],
             'status' => ['nullable', 'string', 'max:40'],
             'document_type' => ['nullable', 'string', 'max:40'],
             'returnable_only' => ['nullable', 'boolean'],
-            'limit' => ['nullable', 'integer', 'min:1', 'max:200'],
-            'per_page' => ['nullable', 'integer', 'min:1', 'max:200'],
+            'limit' => ['nullable', 'integer', 'min:1', 'max:1000'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:1000'],
             'page' => ['nullable', 'integer', 'min:1'],
         ]);
 
         $query = InvoiceHeader::query()
             ->with(['customer', 'billingCycle', 'lines.shipmentHeader', 'paymentSchedule'])
+            ->whereDate('invoice_date', '>=', $operationalPeriod->startDate())
             ->when($validated['customer'] ?? null, function ($query, string $customer): void {
                 $query->whereHas('customer', fn ($customerQuery) => $customerQuery->where('name', 'like', "%{$customer}%"));
             })
@@ -93,6 +99,14 @@ class BillingController extends ApiController
             })
             ->when($validated['invoice_date_from'] ?? null, fn ($query, string $date) => $query->whereDate('invoice_date', '>=', $date))
             ->when($validated['invoice_date_to'] ?? null, fn ($query, string $date) => $query->whereDate('invoice_date', '<=', $date))
+            ->when($validated['closing_day'] ?? null, function ($query, string $closingDay): void {
+                $query->whereHas('billingCycle', function ($cycleQuery) use ($closingDay): void {
+                    $closingDay === 'end'
+                        ? $cycleQuery->where('closing_day', '>=', 31)
+                        : $cycleQuery->where('closing_day', (int) $closingDay);
+                });
+            })
+            ->when($validated['due_date'] ?? null, fn ($query, string $date) => $query->whereDate('due_date', $date))
             ->when($validated['status'] ?? null, fn ($query, string $status) => $query->where('status', $status))
             ->when($validated['document_type'] ?? null, fn ($query, string $documentType) => $query->where('document_type', $documentType));
 
@@ -126,16 +140,22 @@ class BillingController extends ApiController
         ]);
     }
 
-    public function invoice(InvoiceHeader $invoice): JsonResponse
+    public function invoice(InvoiceHeader $invoice, OperationalPeriod $operationalPeriod): JsonResponse
     {
+        abort_if($operationalPeriod->isLocked($invoice->invoice_date?->toDateString()), 404);
+
         return $this->ok([
             'invoice' => $this->serializeInvoice($invoice->load(['customer', 'billingCycle', 'lines.shipmentHeader', 'paymentSchedule'])),
         ]);
     }
 
-    public function createInvoice(StoreInvoiceRequest $request, CreateInvoiceDraftService $service): JsonResponse
+    public function createInvoice(StoreInvoiceRequest $request, CreateInvoiceDraftService $service, OperationalPeriod $operationalPeriod): JsonResponse
     {
         $validated = $request->validated();
+        $operationalPeriod->ensureOpen($validated['invoice_date'], '請求日');
+        if (isset($validated['billing_period_start'])) {
+            $operationalPeriod->ensureOpen($validated['billing_period_start'], '請求期間開始日');
+        }
 
         $invoice = $service->create(new CreateInvoiceDraftData(
             customerId: (int) $validated['customer_id'],
@@ -154,7 +174,7 @@ class BillingController extends ApiController
         return $this->created(['invoice' => $this->serializeInvoice($invoice)]);
     }
 
-    public function createClosingInvoice(Request $request, CreateClosingInvoiceService $service): JsonResponse
+    public function createClosingInvoice(Request $request, CreateClosingInvoiceService $service, OperationalPeriod $operationalPeriod): JsonResponse
     {
         $validated = $request->validate([
             'customer_id' => ['required', 'integer', 'exists:customers,id'],
@@ -163,6 +183,7 @@ class BillingController extends ApiController
             'note' => ['nullable', 'string', 'max:1000'],
             'reason' => ['nullable', 'string', 'max:1000'],
         ]);
+        $operationalPeriod->ensureOpen($validated['closing_date'], '締日');
 
         $invoice = $service->create(
             customerId: (int) $validated['customer_id'],
@@ -179,7 +200,9 @@ class BillingController extends ApiController
         ShipmentActionReasonRequest $request,
         InvoiceHeader $invoice,
         ConfirmInvoiceService $service,
+        OperationalPeriod $operationalPeriod,
     ): JsonResponse {
+        $operationalPeriod->ensureOpen($invoice->invoice_date?->toDateString(), '請求日');
         $confirmed = $service->confirm($invoice, $request->validated('reason'));
 
         return $this->ok(['invoice' => $this->serializeInvoice($confirmed)]);
@@ -189,13 +212,15 @@ class BillingController extends ApiController
         CancelBillingRequest $request,
         InvoiceHeader $invoice,
         CancelInvoiceService $service,
+        OperationalPeriod $operationalPeriod,
     ): JsonResponse {
+        $operationalPeriod->ensureOpen($invoice->invoice_date?->toDateString(), '請求日');
         $cancelled = $service->cancel($invoice, $request->validated('reason'));
 
         return $this->ok(['invoice' => $this->serializeInvoice($cancelled)]);
     }
 
-    public function paymentSchedules(Request $request): JsonResponse
+    public function paymentSchedules(Request $request, OperationalPeriod $operationalPeriod): JsonResponse
     {
         $validated = $request->validate([
             'customer' => ['nullable', 'string', 'max:120'],
@@ -204,15 +229,20 @@ class BillingController extends ApiController
             'expected_payment_to' => ['nullable', 'date', 'after_or_equal:expected_payment_from'],
             'invoice_date_from' => ['nullable', 'date'],
             'invoice_date_to' => ['nullable', 'date', 'after_or_equal:invoice_date_from'],
+            'closing_day' => ['nullable', 'string', 'max:10'],
             'status' => ['nullable', 'string', 'max:40'],
             'only_outstanding' => ['nullable', 'boolean'],
-            'per_page' => ['nullable', 'integer', 'min:1', 'max:200'],
-            'limit' => ['nullable', 'integer', 'min:1', 'max:200'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:1000'],
+            'limit' => ['nullable', 'integer', 'min:1', 'max:1000'],
             'page' => ['nullable', 'integer', 'min:1'],
         ]);
 
         $query = PaymentSchedule::query()
             ->with(['invoiceHeader', 'customer'])
+            ->whereHas('invoiceHeader', fn ($invoiceQuery) => $invoiceQuery
+                ->whereDate('invoice_date', '>=', $operationalPeriod->startDate())
+                ->whereNotIn('status', ['draft', 'cancelled'])
+                ->whereNull('cancelled_at'))
             ->when($validated['customer'] ?? null, function ($query, string $customer): void {
                 $query->whereHas('customer', fn ($customerQuery) => $customerQuery->where('name', 'like', "%{$customer}%"));
             })
@@ -226,6 +256,13 @@ class BillingController extends ApiController
             })
             ->when($validated['invoice_date_to'] ?? null, function ($query, string $date): void {
                 $query->whereHas('invoiceHeader', fn ($invoiceQuery) => $invoiceQuery->whereDate('invoice_date', '<=', $date));
+            })
+            ->when($validated['closing_day'] ?? null, function ($query, string $closingDay): void {
+                $query->whereHas('invoiceHeader.billingCycle', function ($cycleQuery) use ($closingDay): void {
+                    $closingDay === 'end'
+                        ? $cycleQuery->where('closing_day', '>=', 31)
+                        : $cycleQuery->where('closing_day', (int) $closingDay);
+                });
             })
             ->when($validated['status'] ?? null, fn ($query, string $status) => $query->where('status', $status))
             ->when((bool) ($validated['only_outstanding'] ?? false), fn ($query) => $query->where('outstanding_amount', '>', 0));
@@ -254,15 +291,18 @@ class BillingController extends ApiController
     ): JsonResponse {
         $validated = $request->validated();
 
+        $invoice = InvoiceHeader::findOrFail((int) $validated['invoice_header_id']);
+        app(OperationalPeriod::class)->ensureOpen($invoice->invoice_date?->toDateString(), '請求日');
+
         $schedule = $service->create(
-            InvoiceHeader::findOrFail((int) $validated['invoice_header_id']),
+            $invoice,
             $validated['reason'] ?? null,
         );
 
         return $this->created(['payment_schedule' => $this->serializePaymentSchedule($schedule)]);
     }
 
-    public function payments(Request $request): JsonResponse
+    public function payments(Request $request, OperationalPeriod $operationalPeriod): JsonResponse
     {
         $validated = $request->validate([
             'customer' => ['nullable', 'string', 'max:120'],
@@ -270,13 +310,14 @@ class BillingController extends ApiController
             'payment_date_from' => ['nullable', 'date'],
             'payment_date_to' => ['nullable', 'date', 'after_or_equal:payment_date_from'],
             'has_unapplied' => ['nullable', 'boolean'],
-            'per_page' => ['nullable', 'integer', 'min:1', 'max:200'],
-            'limit' => ['nullable', 'integer', 'min:1', 'max:200'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:1000'],
+            'limit' => ['nullable', 'integer', 'min:1', 'max:1000'],
             'page' => ['nullable', 'integer', 'min:1'],
         ]);
 
         $query = Payment::query()
             ->with(['customer', 'allocations.invoiceHeader'])
+            ->whereDate('payment_date', '>=', $operationalPeriod->startDate())
             ->when($validated['customer'] ?? null, function ($query, string $customer): void {
                 $query->whereHas('customer', fn ($customerQuery) => $customerQuery->where('name', 'like', "%{$customer}%"));
             })
@@ -306,6 +347,7 @@ class BillingController extends ApiController
     public function registerPayment(RegisterPaymentRequest $request, RegisterPaymentService $service): JsonResponse
     {
         $validated = $request->validated();
+        app(OperationalPeriod::class)->ensureOpen($validated['payment_date'], '入金日');
 
         $payment = isset($validated['customer_id'])
             ? $service->registerForCustomer(
@@ -332,6 +374,7 @@ class BillingController extends ApiController
 
     public function cancelPayment(CancelBillingRequest $request, Payment $payment, CancelPaymentService $service): JsonResponse
     {
+        app(OperationalPeriod::class)->ensureOpen($payment->payment_date?->toDateString(), '入金日');
         $cancelled = $service->cancel($payment, $request->validated('reason'));
 
         return $this->ok(['payment' => $this->serializePayment($cancelled)]);
@@ -354,6 +397,37 @@ class BillingController extends ApiController
                 ->map(fn (ReceivableBalance $balance): array => $this->serializeReceivableBalance($balance))
                 ->values()
                 ->all(),
+        ]);
+    }
+
+    public function customerMonthlyStatements(Request $request, CustomerMonthlyStatementService $service): JsonResponse
+    {
+        $validated = $request->validate([
+            'year' => ['required', 'integer', 'min:2000', 'max:2100'],
+            'month' => ['required', 'integer', 'min:1', 'max:12'],
+            'include_zero_rows' => ['nullable', 'boolean'],
+        ]);
+
+        $isLegacyPeriod = (int) $validated['year'] < 2026 || ((int) $validated['year'] === 2026 && (int) $validated['month'] <= 6);
+        if ($isLegacyPeriod) {
+            return $this->ok([
+                'year' => (int) $validated['year'],
+                'month' => (int) $validated['month'],
+                'warning' => '2026年6月以前は移行前データのため、この帳票では正しい売掛残高を表示できません。2026年7月以降を指定してください。',
+                'rows' => [],
+                'totals' => [],
+                'totals_by_settlement_receivable_category' => [],
+            ]);
+        }
+
+        $rows = $service->forMonth((int) $validated['year'], (int) $validated['month'], (bool) ($validated['include_zero_rows'] ?? false));
+
+        return $this->ok([
+            'year' => (int) $validated['year'],
+            'month' => (int) $validated['month'],
+            'rows' => $rows->map(fn (CustomerMonthlyStatementRow $row): array => $row->toArray())->values()->all(),
+            'totals' => $service->totals($rows),
+            'totals_by_settlement_receivable_category' => $service->totalsBySettlementReceivableCategory($rows),
         ]);
     }
 
@@ -460,6 +534,11 @@ class BillingController extends ApiController
     {
         $amount = PaymentSchedule::query()
             ->where('customer_id', $customerId)
+            ->whereHas('invoiceHeader', function ($query): void {
+                $query
+                    ->whereNotIn('status', ['draft', 'cancelled'])
+                    ->whereNull('cancelled_at');
+            })
             ->whereIn('status', ['open', 'partial'])
             ->where('outstanding_amount', '>', 0)
             ->sum('outstanding_amount');

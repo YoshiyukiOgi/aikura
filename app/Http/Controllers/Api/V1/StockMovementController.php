@@ -4,12 +4,13 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Models\StockMovement;
 use App\Services\Inventory\ReverseStockMovementService;
+use App\Services\Operations\OperationalPeriod;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class StockMovementController extends ApiController
 {
-    public function index(Request $request): JsonResponse
+    public function index(Request $request, OperationalPeriod $operationalPeriod): JsonResponse
     {
         $v = $request->validate([
             'year' => ['nullable', 'integer', 'between:2000,2100'],
@@ -20,6 +21,7 @@ class StockMovementController extends ApiController
             'movement_type' => ['nullable', 'string', 'max:80'],
         ]);
         $q = StockMovement::query()->with(['stockLocation', 'unit', 'productionLot'])->orderByDesc('movement_date')->orderByDesc('id');
+        $operationalPeriod->applyVisiblePeriod($q, 'movement_date');
         if (isset($v['year'])) $q->whereYear('movement_date', $v['year']);
         if (isset($v['month'])) $q->whereMonth('movement_date', $v['month']);
         if (isset($v['from'])) $q->whereDate('movement_date', '>=', $v['from']);
@@ -29,9 +31,11 @@ class StockMovementController extends ApiController
         return $this->ok(['stock_movements' => $q->limit(300)->get()->map(fn (StockMovement $m) => $this->serialize($m))->values()->all()]);
     }
 
-    public function correct(Request $request, StockMovement $stockMovement, ReverseStockMovementService $service): JsonResponse
+    public function correct(Request $request, StockMovement $stockMovement, ReverseStockMovementService $service, OperationalPeriod $operationalPeriod): JsonResponse
     {
         $v = $request->validate(['movement_date' => ['required', 'date'], 'reason' => ['required', 'string', 'max:1000']]);
+        $operationalPeriod->ensureOpen($stockMovement->movement_date?->toDateString(), '在庫移動日');
+        $operationalPeriod->ensureOpen($v['movement_date'], '訂正日');
         return $this->created(['stock_movement' => $this->serialize($service->reverse($stockMovement, $v['movement_date'], $v['reason'])->load(['stockLocation', 'unit', 'productionLot']))]);
     }
 

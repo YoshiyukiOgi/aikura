@@ -3,10 +3,13 @@
 namespace App\Services\Billing;
 
 use App\Models\ShipmentHeader;
+use App\Services\Operations\OperationalPeriod;
 use Illuminate\Database\Eloquent\Builder;
 
 class BillableShipmentQuery
 {
+    public function __construct(private readonly OperationalPeriod $operationalPeriod) {}
+
     /**
      * @return Builder<ShipmentHeader>
      */
@@ -15,6 +18,7 @@ class BillableShipmentQuery
         return ShipmentHeader::query()
             ->with(['customer.billingCycle', 'lines'])
             ->where('status', 'confirmed')
+            ->whereDate('billing_target_date', '>=', $this->operationalPeriod->startDate())
             ->whereDoesntHave('invoiceLines', function (Builder $query): void {
                 $query->whereHas('invoiceHeader', function (Builder $query): void {
                     $query

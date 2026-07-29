@@ -17,18 +17,23 @@ use App\Services\Shipment\CreateDraftShipmentFromPickData;
 use App\Services\Shipment\CreateDraftShipmentFromPickService;
 use App\Services\Shipment\CreateDraftShipmentLineData;
 use App\Services\Shipment\CreateDraftShipmentService;
+use App\Services\Operations\OperationalPeriod;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class ShipmentController extends ApiController
 {
-    public function index(): JsonResponse
+    public function index(OperationalPeriod $operationalPeriod): JsonResponse
     {
-        $shipments = ShipmentHeader::query()
-            ->with(['customer', 'sourceShipmentPick.shipmentInstruction.lines.salesOrder', 'sourceShipmentInstruction.lines.salesOrder', 'lines.product.capacityUnit', 'lines.unit', 'lines.confirmedCapacityUnit'])
+        $query = ShipmentHeader::query()
+            ->with(['customer', 'sourceShipmentPick.shipmentInstruction.lines.salesOrder', 'sourceShipmentInstruction.lines.salesOrder', 'lines.product.capacityUnit', 'lines.unit', 'lines.confirmedCapacityUnit']);
+        $shipments = $operationalPeriod->applyVisiblePeriod($query, 'document_date')
             ->withCount('invoiceLines')
+            ->where('status', 'draft')
+            ->whereDoesntHave('invoiceLines.invoiceHeader', fn ($builder) => $builder
+                ->where('document_type', '!=', 'credit_memo')
+                ->where('status', '!=', 'cancelled'))
             ->orderByDesc('id')
-            ->limit(50)
             ->get()
             ->map(fn (ShipmentHeader $shipment): array => $this->serializeShipment($shipment))
             ->values()
@@ -39,7 +44,7 @@ class ShipmentController extends ApiController
         ]);
     }
 
-    public function history(Request $request): JsonResponse
+    public function history(Request $request, OperationalPeriod $operationalPeriod): JsonResponse
     {
         $validated = $request->validate([
             'customer' => ['nullable', 'string', 'max:160'],
@@ -67,6 +72,7 @@ class ShipmentController extends ApiController
                 'invoiceLines.invoiceHeader',
             ])
             ->withCount('invoiceLines');
+        $operationalPeriod->applyVisiblePeriod($query, 'document_date');
 
         if ($customer = trim((string) ($validated['customer'] ?? ''))) {
             $query->whereHas('customer', fn ($builder) => $builder->where('name', 'like', "%{$customer}%"));
@@ -145,8 +151,10 @@ class ShipmentController extends ApiController
         ]);
     }
 
-    public function show(ShipmentHeader $shipment): JsonResponse
+    public function show(ShipmentHeader $shipment, OperationalPeriod $operationalPeriod): JsonResponse
     {
+        abort_if($operationalPeriod->isLocked($shipment->document_date?->toDateString()), 404);
+
         return $this->ok([
             'shipment' => $this->serializeShipment(
                 $shipment->load(['customer', 'sourceShipmentPick.shipmentInstruction.lines.salesOrder', 'sourceShipmentInstruction.lines.salesOrder', 'lines.product.capacityUnit', 'lines.unit', 'lines.confirmedCapacityUnit']),
@@ -169,8 +177,9 @@ class ShipmentController extends ApiController
         return $this->created(['shipment' => $this->serializeShipment($shipment->refresh()->load(['customer', 'sourceShipmentPick.shipmentInstruction.lines.salesOrder', 'sourceShipmentInstruction.lines.salesOrder', 'lines.product.capacityUnit', 'lines.unit', 'lines.confirmedCapacityUnit']))]);
     }
 
-    public function issueDocument(ShipmentHeader $shipment, ApplyDraftShipmentPricingService $pricingService): JsonResponse
+    public function issueDocument(ShipmentHeader $shipment, ApplyDraftShipmentPricingService $pricingService, OperationalPeriod $operationalPeriod): JsonResponse
     {
+        $operationalPeriod->ensureOpen($shipment->document_date?->toDateString(), '出荷日');
         abort_if($shipment->status !== 'draft', 422, '出荷ドラフトだけ発伝できます。');
         $shipment = $pricingService->apply($shipment, '出荷伝票作成時の価格適用');
 
@@ -189,6 +198,9 @@ class ShipmentController extends ApiController
         CreateDraftShipmentFromPickService $createDraftShipmentFromPickService,
     ): JsonResponse {
         $validated = $request->validated();
+        if (isset($validated['document_date'])) {
+            app(OperationalPeriod::class)->ensureOpen($validated['document_date'], '出荷日');
+        }
 
         if (isset($validated['source_shipment_pick_id'])) {
             $shipment = $createDraftShipmentFromPickService->create(new CreateDraftShipmentFromPickData(
@@ -230,7 +242,9 @@ class ShipmentController extends ApiController
         ShipmentActionReasonRequest $request,
         ShipmentHeader $shipment,
         ApplyDraftShipmentPricingService $service,
+        OperationalPeriod $operationalPeriod,
     ): JsonResponse {
+        $operationalPeriod->ensureOpen($shipment->document_date?->toDateString(), '出荷日');
         $priced = $service->apply($shipment, $request->validated('reason'));
 
         return $this->ok([
@@ -242,7 +256,9 @@ class ShipmentController extends ApiController
         ShipmentActionReasonRequest $request,
         ShipmentHeader $shipment,
         ConfirmShipmentService $service,
+        OperationalPeriod $operationalPeriod,
     ): JsonResponse {
+        $operationalPeriod->ensureOpen($shipment->document_date?->toDateString(), '出荷日');
         $confirmed = $service->confirm($shipment, $request->validated('reason'));
 
         return $this->ok([
@@ -255,8 +271,10 @@ class ShipmentController extends ApiController
         ShipmentHeader $shipment,
         ApplyDraftShipmentPricingService $pricingService,
         ConfirmShipmentService $confirmService,
+        OperationalPeriod $operationalPeriod,
     ): JsonResponse {
         $reason = $request->validated('reason') ?: '出荷伝票の印刷による出荷確定';
+        $operationalPeriod->ensureOpen($shipment->document_date?->toDateString(), '出荷日');
         $priced = $pricingService->apply($shipment, $reason);
         $confirmed = $confirmService->confirm($priced, $reason);
 
@@ -267,7 +285,9 @@ class ShipmentController extends ApiController
         CancelShipmentRequest $request,
         ShipmentHeader $shipment,
         CancelShipmentService $service,
+        OperationalPeriod $operationalPeriod,
     ): JsonResponse {
+        $operationalPeriod->ensureOpen($shipment->document_date?->toDateString(), '出荷日');
         $cancelled = $service->cancel($shipment, $request->validated('reason'));
 
         return $this->ok([

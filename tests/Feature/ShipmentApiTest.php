@@ -10,6 +10,7 @@ use App\Models\PriceRule;
 use App\Models\Product;
 use App\Models\Role;
 use App\Models\SettlementReceivableCategory;
+use App\Models\ShipmentHeader;
 use App\Models\ShipmentLine;
 use App\Models\TransactionCategory;
 use App\Models\Unit;
@@ -150,6 +151,43 @@ class ShipmentApiTest extends TestCase
             ->assertJsonPath('data.shipment.lines.0.product_name', 'API Shipment Sake 720ml')
             ->assertJsonPath('data.shipment.lines.0.capacity_value', '720.0000')
             ->assertJsonPath('data.shipment.lines.0.capacity_unit_name', 'ml');
+    }
+
+    public function test_legacy_period_shipments_are_hidden_and_not_operable(): void
+    {
+        [$user, $customer, $product, $unit] = $this->prepareData();
+
+        $this->actingAs($user)
+            ->postJson('/api/v1/shipments', [
+                'customer_id' => $customer->id,
+                'document_date' => '2026-05-31',
+                'lines' => [[
+                    'product_id' => $product->id,
+                    'quantity' => '1.0000',
+                    'unit_id' => $unit->id,
+                ]],
+            ])
+            ->assertUnprocessable();
+
+        $legacyShipment = ShipmentHeader::query()->create([
+            'document_number' => 'LEGACY-SH-202605',
+            'status' => 'confirmed',
+            'customer_id' => $customer->id,
+            'transaction_category_id' => $customer->transaction_category_id,
+            'settlement_receivable_category_id' => $customer->settlement_receivable_category_id,
+            'billing_cycle_id' => $customer->billing_cycle_id,
+            'document_date' => '2026-05-31',
+            'billing_target_date' => '2026-05-31',
+        ]);
+
+        $this->actingAs($user)
+            ->getJson('/api/v1/shipments')
+            ->assertOk()
+            ->assertJsonMissing(['id' => $legacyShipment->id]);
+
+        $this->actingAs($user)
+            ->getJson("/api/v1/shipments/{$legacyShipment->id}")
+            ->assertNotFound();
     }
 
     /**

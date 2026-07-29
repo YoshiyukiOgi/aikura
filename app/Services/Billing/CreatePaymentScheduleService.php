@@ -30,8 +30,12 @@ class CreatePaymentScheduleService
                 throw PaymentScheduleException::invoiceNotConfirmed($invoice->id, $invoice->status);
             }
 
-            if (PaymentSchedule::query()->where('invoice_header_id', $invoice->id)->exists()) {
-                throw PaymentScheduleException::alreadyExists($invoice->id);
+            $existingSchedule = PaymentSchedule::query()
+                ->where('invoice_header_id', $invoice->id)
+                ->first();
+
+            if ($existingSchedule !== null) {
+                return $existingSchedule->load(['invoiceHeader', 'customer']);
             }
 
             $this->ensureReceivableMonthlyBalancePeriodIsOpenService
@@ -78,6 +82,11 @@ class CreatePaymentScheduleService
         $schedules = PaymentSchedule::query()
             ->where('customer_id', $invoice->customer_id)
             ->where('invoice_header_id', '!=', $invoice->id)
+            ->whereHas('invoiceHeader', function ($query): void {
+                $query
+                    ->whereNotIn('status', ['draft', 'cancelled'])
+                    ->whereNull('cancelled_at');
+            })
             ->whereIn('status', ['open', 'partial'])
             ->where('outstanding_amount', '>', 0)
             ->lockForUpdate()

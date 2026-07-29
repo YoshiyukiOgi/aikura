@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\BillingCycle;
 use App\Models\Customer;
 use App\Models\Employee;
+use App\Models\InvoiceHeader;
 use App\Models\PriceList;
 use App\Models\PriceRule;
 use App\Models\Product;
@@ -126,6 +127,53 @@ class BillingApiTest extends TestCase
             ])
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['invoice_date']);
+    }
+
+    public function test_legacy_period_invoices_are_hidden_and_not_operable(): void
+    {
+        $this->seed(DatabaseSeeder::class);
+
+        $user = $this->createUser('billing-legacy-admin@example.com');
+        $user->roles()->attach(Role::where('code', 'admin')->firstOrFail());
+
+        $customer = Customer::create([
+            'customer_code' => 'API-BILL-LEGACY-CUST',
+            'name' => 'API Billing Legacy Customer',
+            'transaction_category_id' => TransactionCategory::where('code', 'wholesale')->firstOrFail()->id,
+            'settlement_receivable_category_id' => SettlementReceivableCategory::where('code', 'accounts_receivable_1')->firstOrFail()->id,
+            'billing_cycle_id' => BillingCycle::where('code', 'monthly_end_next_month_end')->firstOrFail()->id,
+        ]);
+
+        $this->actingAs($user)
+            ->postJson('/api/v1/billing/invoices', [
+                'customer_id' => $customer->id,
+                'invoice_date' => '2026-05-31',
+                'reason' => 'legacy period invoice',
+            ])
+            ->assertUnprocessable();
+
+        $legacyInvoice = InvoiceHeader::query()->create([
+            'invoice_number' => 'LEGACY-INV-202605',
+            'status' => 'confirmed',
+            'document_type' => 'invoice',
+            'customer_id' => $customer->id,
+            'billing_cycle_id' => $customer->billing_cycle_id,
+            'invoice_date' => '2026-05-31',
+            'billing_period_start' => '2026-05-01',
+            'billing_period_end' => '2026-05-31',
+            'subtotal_amount' => '1000.00',
+            'tax_amount' => '100.00',
+            'total_amount' => '1100.00',
+        ]);
+
+        $this->actingAs($user)
+            ->getJson('/api/v1/billing/invoices')
+            ->assertOk()
+            ->assertJsonMissing(['id' => $legacyInvoice->id]);
+
+        $this->actingAs($user)
+            ->getJson("/api/v1/billing/invoices/{$legacyInvoice->id}")
+            ->assertNotFound();
     }
 
     /**

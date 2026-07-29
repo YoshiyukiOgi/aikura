@@ -215,6 +215,7 @@ class CalculateMonthlyLiquorTaxAmountsService
                 reductionRate: $summary->reductionRate,
                 taxTreatment: $source->taxTreatment,
                 sourceType: $source->sourceType,
+                reportingAlcoholPercentage: $source->reportingAlcoholPercentage,
                 taxableKl: $source->taxableKl,
                 estimatedAmount: $source->taxTreatment === 'return' ? bcmul($source->grossTaxAmount, '-1', 2) : $source->grossTaxAmount,
                 grossTaxAmount: $source->grossTaxAmount,

@@ -7,6 +7,7 @@ use App\Models\ProductionLot;
 use App\Models\StockLocation;
 use App\Models\StockMovement;
 use App\Services\Authorization\AuthorizationService;
+use App\Services\Operations\OperationalPeriod;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
@@ -48,7 +49,7 @@ class InventoryPageController extends Controller
             'today' => now()->toDateString(),
             'asOfDate' => now()->toDateString(),
             'keyword' => '',
-            'productType' => '',
+            'productType' => 'sake',
             'printMode' => false,
             'showZeroStockLots' => $inventorySettings['hide_zero_stock_lots'] !== '1',
         ]);
@@ -74,7 +75,7 @@ class InventoryPageController extends Controller
         ]);
     }
 
-    public function printMovements(Request $request): View
+    public function printMovements(Request $request, OperationalPeriod $operationalPeriod): View
     {
         $validated = $request->validate([
             'year' => ['nullable', 'integer', 'between:2000,2100'],
@@ -87,6 +88,7 @@ class InventoryPageController extends Controller
 
         $query = StockMovement::query()
             ->with(['stockLocation', 'unit', 'productionLot'])
+            ->whereDate('movement_date', '>=', $operationalPeriod->startDate())
             ->whereYear('movement_date', $year)
             ->whereMonth('movement_date', $month)
             ->orderBy('movement_date')

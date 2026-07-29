@@ -5,10 +5,13 @@ namespace App\Services\Billing;
 use App\Models\Customer;
 use App\Models\OpeningReceivableBalance;
 use App\Models\PaymentSchedule;
+use App\Services\Operations\OperationalPeriod;
 use Illuminate\Support\Collection;
 
 class ReceivableBalanceService
 {
+    public function __construct(private readonly OperationalPeriod $operationalPeriod) {}
+
     public function forCustomer(Customer|int $customer): ReceivableBalance
     {
         $customer = $customer instanceof Customer
@@ -17,6 +20,12 @@ class ReceivableBalanceService
 
         $row = PaymentSchedule::query()
             ->where('customer_id', $customer->id)
+            ->whereHas('invoiceHeader', function ($query): void {
+                $query
+                    ->whereNotIn('status', ['draft', 'cancelled'])
+                    ->whereNull('cancelled_at')
+                    ->whereDate('invoice_date', '>=', $this->operationalPeriod->startDate());
+            })
             ->selectRaw('COALESCE(SUM(scheduled_amount), 0) as scheduled_amount')
             ->selectRaw('COALESCE(SUM(received_amount), 0) as received_amount')
             ->selectRaw('COALESCE(SUM(outstanding_amount), 0) as outstanding_amount')
@@ -25,12 +34,17 @@ class ReceivableBalanceService
             ->selectRaw("SUM(CASE WHEN status = 'closed' THEN 1 ELSE 0 END) as closed_schedule_count")
             ->first();
 
-        $openingAmount = OpeningReceivableBalance::query()
+        $opening = OpeningReceivableBalance::query()
             ->where('customer_id', $customer->id)
             ->whereIn('status', ['calculated', 'reconciled'])
+            ->whereDate('as_of_date', '>=', $this->operationalPeriod->startDate())
             ->orderByDesc('as_of_date')
             ->orderByDesc('id')
-            ->value('opening_balance_amount') ?? '0.00';
+            ->first();
+
+        $openingAmount = $opening !== null && ! $this->isCarriedByInvoice((int) $customer->id, $opening->as_of_date->toDateString())
+            ? (string) $opening->opening_balance_amount
+            : '0.00';
 
         return $this->balanceFromRow($customer, $row, (string) $openingAmount);
     }
@@ -40,10 +54,18 @@ class ReceivableBalanceService
      */
     public function allCustomers(): Collection
     {
-        $customerIds = PaymentSchedule::query()->pluck('customer_id')
+        $customerIds = PaymentSchedule::query()
+            ->whereHas('invoiceHeader', function ($query): void {
+                $query
+                    ->whereNotIn('status', ['draft', 'cancelled'])
+                    ->whereNull('cancelled_at')
+                    ->whereDate('invoice_date', '>=', $this->operationalPeriod->startDate());
+            })
+            ->pluck('customer_id')
             ->merge(OpeningReceivableBalance::query()
                 ->whereIn('status', ['calculated', 'reconciled'])
                 ->where('opening_balance_amount', '!=', 0)
+                ->whereDate('as_of_date', '>=', $this->operationalPeriod->startDate())
                 ->pluck('customer_id'))
             ->unique();
 
@@ -73,5 +95,18 @@ class ReceivableBalanceService
             partialScheduleCount: (int) $row->partial_schedule_count,
             closedScheduleCount: (int) $row->closed_schedule_count,
         );
+    }
+
+    private function isCarriedByInvoice(int $customerId, string $openingDate): bool
+    {
+        return PaymentSchedule::query()
+            ->where('customer_id', $customerId)
+            ->whereHas('invoiceHeader', function ($query) use ($openingDate): void {
+                $query
+                    ->whereNotIn('status', ['draft', 'cancelled'])
+                    ->whereNull('cancelled_at')
+                    ->whereDate('invoice_date', '>=', $openingDate);
+            })
+            ->exists();
     }
 }

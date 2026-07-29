@@ -16,6 +16,7 @@ use App\Models\StockLocation;
 use App\Models\StockMovement;
 use App\Services\Inventory\EvaluateLotProductCompatibilityService;
 use App\Services\Inventory\LotVisibilityPolicy;
+use App\Services\Operations\OperationalPeriod;
 use App\Services\Shipment\CreateDraftShipmentFromInstructionService;
 use App\Services\ShipmentPicking\CancelShipmentPickService;
 use App\Services\ShipmentPicking\PickShipmentInstructionData;
@@ -34,7 +35,6 @@ class ShipmentPickController extends ApiController
         $picks = ShipmentPick::query()
             ->with(['shipmentInstruction.customer', 'shipmentInstruction.lines.salesOrder', 'stockLocation', 'shipmentHeader', 'lines.shipmentInstructionLine', 'lines.product', 'lines.unit', 'lines.lotAllocations.productionLot', 'lines.lotAllocations.approvalRequest'])
             ->orderByDesc('id')
-            ->limit(50)
             ->get()
             ->map(fn (ShipmentPick $pick): array => $this->serializePick($pick))
             ->values()
@@ -99,6 +99,7 @@ class ShipmentPickController extends ApiController
         CreateDraftShipmentFromInstructionService $draftService,
         EvaluateLotProductCompatibilityService $compatibilityService,
         LotVisibilityPolicy $visibility,
+        OperationalPeriod $operationalPeriod,
     ): JsonResponse {
         $this->abortIfLineDoesNotBelongToInstruction($shipmentInstruction, $shipmentInstructionLine);
 
@@ -121,6 +122,7 @@ class ShipmentPickController extends ApiController
             ->where('unit_id', $shipmentInstructionLine->unit_id)
             ->whereIn('status', ['confirmed', 'closed'])
             ->whereNull('cancelled_at')
+            ->whereDate('movement_date', '>=', $operationalPeriod->startDate())
             ->groupBy('production_lot_id', 'stock_location_id', 'unit_id')
             ->get()
             ->map(function (object $row): object {

@@ -21,6 +21,7 @@ class LiquorTaxMonthlyFilingLine extends Model
         'liquor_tax_rule_id',
         'tax_treatment',
         'source_type',
+        'reporting_alcohol_percentage',
         'calculation_method',
         'tax_per_kl',
         'reduction_rate',
@@ -44,6 +45,7 @@ class LiquorTaxMonthlyFilingLine extends Model
     {
         return [
             'line_no' => 'integer',
+            'reporting_alcohol_percentage' => 'integer',
             'tax_per_kl' => 'decimal:4',
             'reduction_rate' => 'decimal:4',
             'taxable_kl' => 'decimal:6',

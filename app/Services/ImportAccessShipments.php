@@ -17,17 +17,17 @@ class ImportAccessShipments
 
     private const LINE_TABLE = '出荷伝票・商品';
 
-    public function import(AccessMigrationBatch $batch): array
+    public function import(AccessMigrationBatch $batch, bool $deltaOnly = false): array
     {
         if (! in_array($batch->status, ['masters_imported', 'shipments_imported'], true)) {
             throw new RuntimeException("出荷履歴を移行できないバッチ状態です: {$batch->status}");
         }
 
-        return DB::transaction(function () use ($batch): array {
+        return DB::transaction(function () use ($batch, $deltaOnly): array {
             $context = $this->context($batch);
-            $headerResult = $this->importHeaders($batch, $context);
-            $lineCount = $this->importLines($batch, $context);
-            $this->recordMappings($batch);
+            $headerResult = $this->importHeaders($batch, $context, $deltaOnly);
+            $lineCount = $this->importLines($batch, $context, $deltaOnly);
+            $this->recordMappings($batch, $deltaOnly);
 
             $summary = [
                 'shipment_headers' => $headerResult['count'],
@@ -71,13 +71,13 @@ class ImportAccessShipments
         ];
     }
 
-    private function importHeaders(AccessMigrationBatch $batch, array $context): array
+    private function importHeaders(AccessMigrationBatch $batch, array $context, bool $deltaOnly): array
     {
         $count = 0;
         $taxReviewCount = 0;
         $now = now();
 
-        $this->sourceQuery($batch, self::HEADER_TABLE)->chunkById(500, function ($rows) use ($batch, $context, &$count, &$taxReviewCount, $now): void {
+        $this->sourceQuery($batch, self::HEADER_TABLE, $deltaOnly)->chunkById(500, function ($rows) use ($batch, $context, &$count, &$taxReviewCount, $now): void {
             $records = [];
             foreach ($rows as $row) {
                 $source = $this->payload($row);
@@ -150,16 +150,26 @@ class ImportAccessShipments
         return ['count' => $count, 'tax_review_count' => $taxReviewCount];
     }
 
-    private function importLines(AccessMigrationBatch $batch, array $context): int
+    private function importLines(AccessMigrationBatch $batch, array $context, bool $deltaOnly): int
     {
         $headers = DB::table('shipment_headers')->whereNotNull('legacy_access_document_number')->pluck('id', 'legacy_access_document_number');
         $liquorTreatments = DB::table('shipment_headers')->whereNotNull('legacy_access_document_number')->pluck('confirmed_liquor_tax_treatment', 'legacy_access_document_number');
         $consumptionTreatments = DB::table('shipment_headers')->whereNotNull('legacy_access_document_number')->pluck('confirmed_consumption_tax_treatment', 'legacy_access_document_number');
-        $lineNumbers = [];
+        $lineNumbers = $deltaOnly
+            ? DB::table('shipment_headers')
+                ->join('shipment_lines', 'shipment_lines.shipment_header_id', '=', 'shipment_headers.id')
+                ->whereNotNull('shipment_headers.legacy_access_document_number')
+                ->groupBy('shipment_headers.legacy_access_document_number')
+                ->pluck(DB::raw('MAX(shipment_lines.line_no)'), 'shipment_headers.legacy_access_document_number')
+                ->map(fn ($value): int => (int) $value)
+                ->all()
+            : [];
+        $sourceLineNumbersByDocument = [];
+        $sourceLineKeysByDocument = [];
         $count = 0;
         $now = now();
 
-        $this->sourceQuery($batch, self::LINE_TABLE)->chunkById(500, function ($rows) use ($context, $headers, $liquorTreatments, $consumptionTreatments, &$lineNumbers, &$count, $now): void {
+        $this->sourceQuery($batch, self::LINE_TABLE, $deltaOnly)->chunkById(500, function ($rows) use ($context, $headers, $liquorTreatments, $consumptionTreatments, &$lineNumbers, &$sourceLineNumbersByDocument, &$sourceLineKeysByDocument, &$count, $now, $deltaOnly): void {
             $records = [];
             foreach ($rows as $row) {
                 $source = $this->payload($row);
@@ -173,6 +183,8 @@ class ImportAccessShipments
                 }
 
                 $lineNumbers[$sourceDocument] = ($lineNumbers[$sourceDocument] ?? 0) + 1;
+                $sourceLineNumbersByDocument[$sourceDocument][] = $lineNumbers[$sourceDocument];
+                $sourceLineKeysByDocument[$sourceDocument][] = (string) $row->source_key;
                 $unit = $product->salesUnit ?? $product->baseUnit;
                 $taxCategory = $product->consumptionTaxCategory;
                 $quantity = (float) ($source['個数'] ?? 0);
@@ -247,16 +259,61 @@ class ImportAccessShipments
                 $count++;
             }
 
-            DB::table('shipment_lines')->upsert($records, ['legacy_access_line_id'], array_diff(array_keys($records[0]), ['created_at', 'legacy_access_line_id']));
+            $uniqueBy = $deltaOnly ? ['legacy_access_line_id'] : ['shipment_header_id', 'line_no'];
+            DB::table('shipment_lines')->upsert($records, $uniqueBy, array_diff(array_keys($records[0]), ['created_at', ...$uniqueBy]));
         });
+
+        if (! $deltaOnly) {
+            $this->cleanupObsoleteLines($headers, $sourceLineNumbersByDocument, $sourceLineKeysByDocument);
+        }
 
         return $count;
     }
 
-    private function recordMappings(AccessMigrationBatch $batch): void
+    private function cleanupObsoleteLines($headers, array $sourceLineNumbersByDocument, array $sourceLineKeysByDocument): void
+    {
+        $referenceColumns = [
+            'invoice_lines' => 'shipment_line_id',
+            'stock_movements' => 'source_shipment_line_id',
+            'sales_return_lines' => 'source_shipment_line_id',
+            'shipment_lot_allocations' => 'shipment_line_id',
+        ];
+
+        foreach ($headers as $sourceDocument => $headerId) {
+            $lineNumbers = array_values(array_unique($sourceLineNumbersByDocument[$sourceDocument] ?? []));
+            if ($lineNumbers === []) {
+                continue;
+            }
+            $lineKeys = array_values(array_unique($sourceLineKeysByDocument[$sourceDocument] ?? []));
+
+            $candidates = DB::table('shipment_lines')
+                ->where('shipment_header_id', $headerId)
+                ->whereNotIn('line_no', $lineNumbers)
+                ->whereNotIn('legacy_access_line_id', $lineKeys)
+                ->pluck('id');
+
+            if ($candidates->isEmpty()) {
+                continue;
+            }
+
+            $referencedIds = collect();
+            foreach ($referenceColumns as $table => $column) {
+                $referencedIds = $referencedIds->merge(
+                    DB::table($table)->whereIn($column, $candidates)->pluck($column)
+                );
+            }
+
+            $deletableIds = $candidates->diff($referencedIds)->values();
+            if ($deletableIds->isNotEmpty()) {
+                DB::table('shipment_lines')->whereIn('id', $deletableIds)->delete();
+            }
+        }
+    }
+
+    private function recordMappings(AccessMigrationBatch $batch, bool $deltaOnly): void
     {
         foreach ([self::HEADER_TABLE => ['shipment_headers', 'legacy_access_document_number'], self::LINE_TABLE => ['shipment_lines', 'legacy_access_line_id']] as $sourceTable => [$targetTable, $legacyColumn]) {
-            $this->sourceQuery($batch, $sourceTable)->chunkById(500, function ($rows) use ($batch, $sourceTable, $targetTable, $legacyColumn): void {
+            $this->sourceQuery($batch, $sourceTable, $deltaOnly)->chunkById(500, function ($rows) use ($batch, $sourceTable, $targetTable, $legacyColumn): void {
                 $now = now();
                 $records = [];
                 $sourceKeys = $rows->map(fn ($row) => (string) $row->source_key);
@@ -280,7 +337,7 @@ class ImportAccessShipments
                 }
                 DB::table('access_migration_mappings')->upsert($records, ['batch_id', 'source_table', 'source_key'], ['target_table', 'target_id', 'action', 'source_payload_sha256', 'updated_at']);
             });
-            DB::table('access_migration_staging_rows')->where('batch_id', $batch->id)->where('source_table', $sourceTable)->update(['status' => 'imported', 'target_table' => $targetTable, 'updated_at' => now()]);
+            $this->sourceQuery($batch, $sourceTable, $deltaOnly)->update(['status' => 'imported', 'target_table' => $targetTable, 'updated_at' => now()]);
         }
     }
 
@@ -291,9 +348,19 @@ class ImportAccessShipments
             ->pluck('target_id', 'source_key');
     }
 
-    private function sourceQuery(AccessMigrationBatch $batch, string $table)
+    private function sourceQuery(AccessMigrationBatch $batch, string $table, bool $deltaOnly = false)
     {
-        return DB::table('access_migration_staging_rows')->where('batch_id', $batch->id)->where('source_table', $table)->orderBy('id');
+        return DB::table('access_migration_staging_rows')
+            ->where('batch_id', $batch->id)
+            ->where('source_table', $table)
+            ->when($deltaOnly, fn ($query) => $query->whereExists(function ($delta) use ($batch): void {
+                $delta->selectRaw('1')
+                    ->from('access_migration_deltas')
+                    ->whereColumn('access_migration_deltas.current_staging_row_id', 'access_migration_staging_rows.id')
+                    ->where('access_migration_deltas.batch_id', $batch->id)
+                    ->where('access_migration_deltas.change_type', 'new');
+            }))
+            ->orderBy('id');
     }
 
     private function payload(object $row): array

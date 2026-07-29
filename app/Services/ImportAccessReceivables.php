@@ -11,23 +11,25 @@ class ImportAccessReceivables
 {
     private const SOURCE_TABLE = '入金';
 
-    public function import(AccessMigrationBatch $batch): array
+    public function import(AccessMigrationBatch $batch, bool $deltaOnly = false): array
     {
         if (! in_array($batch->status, ['inventory_history_imported', 'receivables_imported'], true)) {
             throw new RuntimeException("入金・開始売掛を移行できないバッチ状態です: {$batch->status}");
         }
 
-        return DB::transaction(function () use ($batch): array {
+        return DB::transaction(function () use ($batch, $deltaOnly): array {
             $customerIds = DB::table('access_migration_mappings')
                 ->where('batch_id', $batch->id)
                 ->where('source_table', '取引先マスター')
                 ->where('target_table', 'customers')
                 ->pluck('target_id', 'source_key');
-            $ledgerCount = $this->importLedgerEntries($batch, $customerIds);
+            $ledgerCount = $this->importLedgerEntries($batch, $customerIds, $deltaOnly);
             $paymentCount = $this->importPayments($batch);
-            $asOfDate = $this->asOfDate($batch);
-            $openingResult = $this->calculateOpeningBalances($batch, $asOfDate);
-            $this->recordMappings($batch);
+            $asOfDate = $deltaOnly ? null : $this->asOfDate($batch);
+            $openingResult = $deltaOnly
+                ? ['count' => 0, 'non_zero_count' => 0, 'total' => '0.00']
+                : $this->calculateOpeningBalances($batch, $asOfDate);
+            $this->recordMappings($batch, $deltaOnly);
 
             $summary = [
                 'ledger_entries' => $ledgerCount,
@@ -50,11 +52,11 @@ class ImportAccessReceivables
         });
     }
 
-    private function importLedgerEntries(AccessMigrationBatch $batch, $customerIds): int
+    private function importLedgerEntries(AccessMigrationBatch $batch, $customerIds, bool $deltaOnly): int
     {
         $count = 0;
 
-        $this->sourceQuery($batch)->chunkById(500, function ($rows) use ($batch, $customerIds, &$count): void {
+        $this->sourceQuery($batch, $deltaOnly)->chunkById(500, function ($rows) use ($batch, $customerIds, &$count): void {
             $records = [];
             $now = now();
             foreach ($rows as $row) {
@@ -114,6 +116,7 @@ class ImportAccessReceivables
                     $description = $this->blankToNull($row->description);
                     $records[] = [
                         'access_receivable_ledger_entry_id' => $row->id,
+                        'legacy_access_payment_id' => $row->legacy_access_payment_id,
                         'is_legacy_history' => true,
                         'customer_id' => $row->customer_id,
                         'status' => 'legacy_imported',
@@ -138,8 +141,8 @@ class ImportAccessReceivables
 
                 DB::table('payments')->upsert(
                     $records,
-                    ['access_receivable_ledger_entry_id'],
-                    array_diff(array_keys($records[0]), ['created_at', 'access_receivable_ledger_entry_id']),
+                    ['legacy_access_payment_id'],
+                    array_diff(array_keys($records[0]), ['created_at', 'legacy_access_payment_id']),
                 );
             });
 
@@ -218,9 +221,9 @@ class ImportAccessReceivables
         return ['count' => count($records), 'non_zero_count' => $nonZeroCount, 'total' => $total];
     }
 
-    private function recordMappings(AccessMigrationBatch $batch): void
+    private function recordMappings(AccessMigrationBatch $batch, bool $deltaOnly): void
     {
-        $this->sourceQuery($batch)->chunkById(500, function ($rows) use ($batch): void {
+        $this->sourceQuery($batch, $deltaOnly)->chunkById(500, function ($rows) use ($batch): void {
             $sourceKeys = $rows->pluck('source_key')->map(fn ($value) => (string) $value);
             $targets = DB::table('access_receivable_ledger_entries')
                 ->where('access_migration_batch_id', $batch->id)
@@ -251,17 +254,22 @@ class ImportAccessReceivables
                 ['target_table', 'target_id', 'action', 'source_payload_sha256', 'updated_at'],
             );
         });
-        DB::table('access_migration_staging_rows')
-            ->where('batch_id', $batch->id)
-            ->where('source_table', self::SOURCE_TABLE)
+        $this->sourceQuery($batch, $deltaOnly)
             ->update(['status' => 'imported', 'target_table' => 'access_receivable_ledger_entries', 'updated_at' => now()]);
     }
 
-    private function sourceQuery(AccessMigrationBatch $batch)
+    private function sourceQuery(AccessMigrationBatch $batch, bool $deltaOnly = false)
     {
         return DB::table('access_migration_staging_rows')
             ->where('batch_id', $batch->id)
             ->where('source_table', self::SOURCE_TABLE)
+            ->when($deltaOnly, fn ($query) => $query->whereExists(function ($delta) use ($batch): void {
+                $delta->selectRaw('1')
+                    ->from('access_migration_deltas')
+                    ->whereColumn('access_migration_deltas.current_staging_row_id', 'access_migration_staging_rows.id')
+                    ->where('access_migration_deltas.batch_id', $batch->id)
+                    ->where('access_migration_deltas.change_type', 'new');
+            }))
             ->orderBy('id');
     }
 

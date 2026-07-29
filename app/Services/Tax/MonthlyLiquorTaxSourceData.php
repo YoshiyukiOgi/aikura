@@ -11,6 +11,7 @@ class MonthlyLiquorTaxSourceData
         public readonly ?string $sourceDocumentNumber,
         public readonly string $sourceDate,
         public readonly string $taxTreatment,
+        public readonly ?int $reportingAlcoholPercentage,
         public readonly string $quantity,
         public readonly string $taxableKl,
         public readonly string $grossTaxAmount,

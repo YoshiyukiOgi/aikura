@@ -5,16 +5,20 @@ namespace Tests\Feature;
 use App\Exceptions\Pricing\PriceResolutionException;
 use App\Models\BillingCycle;
 use App\Models\Customer;
+use App\Models\Employee;
 use App\Models\PriceList;
 use App\Models\PriceReviewTask;
 use App\Models\PriceRule;
 use App\Models\Product;
+use App\Models\Role;
 use App\Models\SettlementReceivableCategory;
 use App\Models\TransactionCategory;
 use App\Models\Unit;
+use App\Models\User;
 use App\Services\Pricing\ResolvePriceService;
 use App\Services\Pricing\CreatePriceReviewTasksService;
 use Database\Seeders\CustomerMasterSeeder;
+use Database\Seeders\FoundationPermissionSeeder;
 use Database\Seeders\PriceMasterSeeder;
 use Database\Seeders\ProductUnitMasterSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -157,6 +161,93 @@ class PriceMasterTest extends TestCase
         ]);
     }
 
+    public function test_price_review_task_notification_is_returned_once_per_customer_product(): void
+    {
+        [$customer, $product, $unit] = $this->prepareCustomerProduct();
+        $this->seed(FoundationPermissionSeeder::class);
+        $user = $this->createAdminUser();
+
+        $group = PriceList::where('code', 'wholesale_price')->firstOrFail();
+        $customerList = PriceList::where('code', 'customer_price')->firstOrFail();
+
+        $categoryRule = $this->createRule($group, $product, $unit, '1300.0000', 200, [
+            'transaction_category_id' => $customer->transaction_category_id,
+        ]);
+        $customerRule = $this->createRule($customerList, $product, $unit, '1200.0000', 100, [
+            'customer_id' => $customer->id,
+        ]);
+
+        $categoryRule->unit_price = '1400.0000';
+        $categoryRule->save();
+
+        app(CreatePriceReviewTasksService::class)->createForChangedRule(
+            changedRule: $categoryRule,
+            oldUnitPrice: '1300.0000',
+            newUnitPrice: '1400.0000',
+            reason: 'wholesale price revision',
+        );
+
+        $task = PriceReviewTask::query()
+            ->where('customer_id', $customer->id)
+            ->where('product_id', $product->id)
+            ->firstOrFail();
+
+        $this->actingAs($user)
+            ->postJson('/api/v1/price-review-tasks/notify-selection', [
+                'customer_id' => $customer->id,
+                'product_id' => $product->id,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.price_review_task.id', $task->id)
+            ->assertJsonPath('data.price_review_task.status', PriceReviewTask::STATUS_PENDING);
+
+        $this->assertDatabaseHas('price_review_tasks', [
+            'id' => $task->id,
+            'status' => PriceReviewTask::STATUS_PENDING,
+            'notified_by_user_id' => $user->id,
+        ]);
+        $this->assertNotNull($task->fresh()->notified_at);
+
+        $this->actingAs($user)
+            ->postJson('/api/v1/price-review-tasks/notify-selection', [
+                'customer_id' => $customer->id,
+                'product_id' => $product->id,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.price_review_task', null);
+
+        $anotherCustomer = Customer::create([
+            'customer_code' => 'PRICE-CUST-002',
+            'name' => '価格確認顧客2',
+            'transaction_category_id' => $customer->transaction_category_id,
+            'settlement_receivable_category_id' => $customer->settlement_receivable_category_id,
+            'billing_cycle_id' => $customer->billing_cycle_id,
+        ]);
+        $anotherCustomerRule = $this->createRule($customerList, $product, $unit, '1250.0000', 100, [
+            'customer_id' => $anotherCustomer->id,
+        ]);
+        $anotherTask = PriceReviewTask::create([
+            'product_id' => $product->id,
+            'changed_price_rule_id' => $categoryRule->id,
+            'affected_price_rule_id' => $anotherCustomerRule->id,
+            'customer_id' => $anotherCustomer->id,
+            'transaction_category_id' => $anotherCustomer->transaction_category_id,
+            'old_reference_price' => '1300.0000',
+            'new_reference_price' => '1400.0000',
+            'current_individual_price' => '1250.0000',
+            'status' => PriceReviewTask::STATUS_PENDING,
+            'message' => '別取引先の価格確認',
+        ]);
+
+        $this->actingAs($user)
+            ->postJson('/api/v1/price-review-tasks/notify-selection', [
+                'customer_id' => $anotherCustomer->id,
+                'product_id' => $product->id,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.price_review_task.id', $anotherTask->id);
+    }
+
     /**
      * @return array{0: Customer, 1: Product, 2: Unit}
      */
@@ -209,6 +300,27 @@ class PriceMasterTest extends TestCase
             'effective_from' => '2026-01-01',
             'rounding_method' => 'round',
         ], $overrides));
+    }
+
+    private function createAdminUser(): User
+    {
+        $employee = Employee::create([
+            'employee_code' => 'PRICEEMP'.str_pad((string) (Employee::count() + 1), 3, '0', STR_PAD_LEFT),
+            'name' => 'Price Review Employee',
+            'email' => 'price-review-employee'.(Employee::count() + 1).'@example.com',
+        ]);
+
+        $user = User::create([
+            'employee_id' => $employee->id,
+            'name' => 'Price Review User',
+            'email' => 'price-review-user'.(User::count() + 1).'@example.com',
+            'password' => 'password',
+            'is_active' => true,
+        ]);
+
+        $user->roles()->attach(Role::where('code', 'admin')->firstOrFail());
+
+        return $user;
     }
 }
 

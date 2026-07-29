@@ -30,6 +30,8 @@ class PriceReviewTask extends Model
         'created_by_user_id',
         'reviewed_by_user_id',
         'reviewed_at',
+        'notified_by_user_id',
+        'notified_at',
     ];
 
     protected function casts(): array
@@ -39,6 +41,7 @@ class PriceReviewTask extends Model
             'new_reference_price' => 'decimal:4',
             'current_individual_price' => 'decimal:4',
             'reviewed_at' => 'datetime',
+            'notified_at' => 'datetime',
         ];
     }
 

@@ -16,7 +16,7 @@
     .filter-actions,.actions{display:flex;justify-content:flex-end;gap:7px;align-items:center}.order-actions{justify-content:flex-end}.order-actions .danger{margin-right:auto}.orders{width:100%;border-collapse:collapse;table-layout:fixed}.orders th,.orders td{padding:9px 9px;border-bottom:1px solid #edf1f6;text-align:left;font-size:11px;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.orders th{background:#f8faff;color:#64748b;font-size:10px}.orders th:nth-child(1),.orders td:nth-child(1){width:132px}.orders th:nth-child(3),.orders td:nth-child(3){width:58px}.orders th:nth-child(4),.orders td:nth-child(4){width:60px}.orders tbody tr{cursor:pointer;transition:background .12s ease,box-shadow .12s ease}.orders tbody tr:hover{background:#e7f0ff}.orders tbody tr.selected{background:#d9e9ff;box-shadow:inset 3px 0 0 #0b6ff6}.orders td.order-no{overflow:visible;text-overflow:clip}.order-no{color:#075ecf;font-weight:800;font-family:"Roboto Mono","SFMono-Regular",Consolas,monospace;font-size:10.5px;letter-spacing:-.02em}.status{display:inline-block;max-width:100%;padding:2px 5px;border-radius:3px;color:#075ecf;background:#eaf3ff;font-size:10px;font-weight:800;overflow:hidden;text-overflow:ellipsis;vertical-align:middle}.status.warn{color:#9a6700;background:#fff4dd}.status.success{color:#137333;background:#e7f7ed}.status.danger{color:#b42318;background:#fee4e2}.status.shipment-cancelled{color:#6b2e00;background:#ffe8cc;border:1px solid #ffb36b}
     .pager{display:flex;justify-content:space-between;align-items:center;padding:9px 12px}.empty{padding:22px;color:#64748b;text-align:center}
     .form{display:grid;gap:10px;padding:12px 14px}.form-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.form-grid.compact{grid-template-columns:minmax(180px,1.4fr) minmax(112px,.7fr) minmax(112px,.7fr) minmax(160px,1.2fr)}.form-grid .two{grid-column:span 2}.form-grid .full{grid-column:1/-1}.form-grid.compact .note-field{grid-column:span 2}
-    .lines-wrap{overflow:auto;border-top:1px solid #e7edf4;border-bottom:1px solid #e7edf4}.lines{min-width:680px;width:100%;border-collapse:collapse}.lines th,.lines td{padding:7px 8px;border-bottom:1px solid #edf1f6;text-align:left;vertical-align:middle;font-size:11px}.lines th{background:#f8faff;color:#64748b;font-size:10px;white-space:nowrap}.lines th:nth-child(2),.lines td:nth-child(2){width:104px}.lines input,.lines select{min-height:29px;padding:4px 6px}.quantity-with-unit{display:grid;grid-template-columns:minmax(52px,1fr) auto;align-items:center;gap:5px}.unit-inline{color:#64748b;font-size:10px;white-space:nowrap}.product-picker,.customer-picker{width:100%;min-height:30px;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.lines .number{text-align:right}.price-review{margin-top:5px;padding:6px;border:1px solid #f6d365;border-radius:4px;background:#fff8e1;color:#7a4b00;text-align:left}.price-review .actions{justify-content:flex-start;margin-top:5px;gap:4px}.price-review button{padding:4px 6px;font-size:10px}.line-actions{display:flex;gap:4px}
+    .lines-wrap{overflow:auto;border-top:1px solid #e7edf4;border-bottom:1px solid #e7edf4}.lines{min-width:680px;width:100%;border-collapse:collapse;table-layout:fixed}.lines th,.lines td{padding:7px 8px;border-bottom:1px solid #edf1f6;text-align:left;vertical-align:top;font-size:11px}.lines th{background:#f8faff;color:#64748b;font-size:10px;white-space:nowrap}.lines th:nth-child(1),.lines td:nth-child(1){width:46%}.lines th:nth-child(2),.lines td:nth-child(2){width:180px}.lines th:nth-child(3),.lines td:nth-child(3){width:168px}.lines input,.lines select{min-height:34px;padding:5px 8px}.line-entry,.line-head-grid{display:grid;grid-template-columns:86px 86px minmax(96px,1fr);gap:6px;align-items:start}.line-head-grid span{display:block}.product-picker,.customer-picker{width:100%;min-height:36px;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.line-product{grid-column:1/-1}.line-field{display:grid}.quantity-with-unit{display:grid;grid-template-columns:minmax(0,1fr);align-items:center}.unit-inline{display:none}.line-readonly{display:block;min-height:34px;padding:7px 8px;border:1px solid #ced8e5;border-radius:4px;background:#fff;color:#172033;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.line-note{width:100%;min-width:0;min-height:76px;resize:vertical}.lines .number{text-align:left;white-space:nowrap}.price-review{margin-top:6px;padding:6px;border:1px solid #f6d365;border-radius:4px;background:#fff8e1;color:#7a4b00;text-align:left}.price-review .actions{justify-content:flex-start;margin-top:5px;gap:4px}.price-review button{padding:4px 6px;font-size:10px}.line-actions{display:flex;justify-content:flex-start;align-items:flex-start;gap:8px;flex-wrap:nowrap;padding-top:26px}.line-actions button{min-width:72px;min-height:36px}
     .notice{min-height:17px;color:#64748b;font-size:11px}.error{color:#b42318}
     .summary{position:fixed;right:0;bottom:0;left:0;display:flex;align-items:center;justify-content:flex-end;gap:28px;min-height:64px;padding:9px 20px;border-top:1px solid #dce4ee;background:rgba(255,255,255,.97);box-shadow:0 -5px 18px rgba(30,48,74,.06)}.summary:not(.is-visible){display:none}.summary .amount{font-size:20px;font-weight:800;color:#075ecf}.summary-label{color:#64748b;font-size:10px}
     .price-panel{position:fixed;z-index:2;right:18px;bottom:76px;width:310px;display:none;gap:9px;padding:14px;border:1px solid #d6e0ed;border-radius:6px;background:#fff;box-shadow:0 16px 40px rgba(20,42,70,.18)}.price-panel.open{display:grid}.price-panel .check-row{display:flex;align-items:center;gap:7px;font-size:12px;color:#1e293b}.price-panel .check-row input{width:auto}
@@ -59,7 +59,7 @@
             <label class="note-field">作業連絡<textarea id="work-note" maxlength="5000"></textarea></label>
           </div>
           <div class="actions"><span class="muted" style="margin-right:auto">明細</span><button id="add-line" type="button">商品を追加</button></div>
-          <div class="lines-wrap"><table class="lines"><thead><tr><th>商品</th><th>数量</th><th>単価</th><th>金額</th><th></th></tr></thead><tbody id="line-list"></tbody></table></div>
+          <div class="lines-wrap"><table class="lines"><thead><tr><th><div class="line-head-grid"><span>商品／数量</span><span>単価</span><span>金額</span></div></th><th>備考</th><th></th></tr></thead><tbody id="line-list"></tbody></table></div>
           <p id="form-message" class="notice"></p>
           <div class="actions order-actions"><button id="cancel-order" class="danger" type="button" hidden>受注を取り消す</button><button id="save-changes" class="primary" type="button">変更を保存</button><button id="release-to-shipping" class="secondary" type="submit">出荷指示</button></div>
         </form>
@@ -138,7 +138,10 @@
       customerSelect.value = customer?.id || '';
       customerPicker.textContent = customer?.label || '取引先を検索・選択';
       customerPicker.title = customer?.label || '';
-      if (dirty) markDirty();
+      if (dirty) {
+        markDirty();
+        [...lineList.children].forEach(row => void notifyPriceReviewForSelection(row));
+      }
     };
     const openCustomerModal = () => {
       if (customerPicker.disabled) return;
@@ -181,25 +184,50 @@
     const productFor = id => products.find(item => String(item.id) === String(id));
     const productLabel = id => productFor(id)?.label || '商品を検索・選択';
     const productSearchText = product => [product.label, product.unit_name, product.unit_code].filter(Boolean).join(' ').toLowerCase();
-    const loadLineAvailability = async row => {
-      const hint=row.querySelector('[data-stock-availability]'),productId=row.dataset.productId;
-      if(!hint)return;
-      if(!productId){hint.textContent='';return}
-      hint.textContent='ロット在庫を確認中...';
-      try{const data=await api(`/api/v1/picking/products/${productId}/lot-candidate-summary`),value=data.candidate_availability;hint.textContent=`通常候補 ${Number(value.normal).toLocaleString('ja-JP')} / 承認付き候補 ${Number(value.approval_required).toLocaleString('ja-JP')}`}
-      catch{hint.textContent='ロット在庫を取得できません'}
+    const notifiedPriceReviewSelections = new Set();
+    const priceReviewWarningText = task => {
+      const parts = [
+        task.message || 'この取引先別価格は、基準価格の改定後まだ見直しされていません。',
+        `旧基準価格：${yen(task.old_reference_price)}`,
+        `新基準価格：${yen(task.new_reference_price)}`,
+        `現在の取引先別価格：${yen(task.current_individual_price)}`,
+      ];
+      return parts.join('\n');
+    };
+    const notifyPriceReviewForSelection = async row => {
+      const customerId = customerSelect.value;
+      const productId = row.dataset.productId;
+      if (!customerId || !productId) return;
+      const key = `${customerId}:${productId}`;
+      if (notifiedPriceReviewSelections.has(key)) return;
+      notifiedPriceReviewSelections.add(key);
+      try {
+        const data = await api('/api/v1/price-review-tasks/notify-selection', {
+          method:'POST',
+          body:JSON.stringify({ customer_id:Number(customerId), product_id:Number(productId) }),
+        });
+        const task = data.price_review_task;
+        if (!task) return;
+        row.dataset.reviewTaskId = task.id;
+        window.alert(priceReviewWarningText(task));
+      } catch(error) {
+        notifiedPriceReviewSelections.delete(key);
+        setMessage(document.querySelector('#form-message'), error.message, true);
+      }
     };
     const setLineProduct = (row, productId, dirty=true) => {
       const current = productFor(productId);
       row.dataset.productId = current?.id || '';
       row.querySelector('[data-product-label]').textContent = current?.label || '商品を検索・選択';
       row.querySelector('[data-product-label]').title = current?.label || '';
-      loadLineAvailability(row);
       row.dataset.price='';
       row.dataset.source='';
       row.dataset.reason='';
       row._sync?.();
-      if(dirty) markDirty();
+      if(dirty) {
+        markDirty();
+        void notifyPriceReviewForSelection(row);
+      }
     };
     const openProductModal = row => {
       productTargetRow = row;
@@ -248,17 +276,19 @@
       const instructedQuantity = Math.max(0, Math.round(Number(line.quantity||0) - Number(line.remaining_quantity ?? line.quantity ?? 0)));
       const hasInstruction = instructedQuantity > 0;
       row.dataset.productId = line.product_id || '';
-      const productCell = document.createElement('td');
+      const detailCell = document.createElement('td');
+      const detailLine = document.createElement('div');
+      detailLine.className = 'line-entry';
       const product = document.createElement('button');
       product.type = 'button';
-      product.className = 'product-picker';
+      product.className = 'product-picker line-product';
       product.dataset.productLabel = '';
       product.textContent = productLabel(row.dataset.productId);
       product.title = product.textContent;
       product.disabled = hasInstruction;
       product.addEventListener('click',()=>openProductModal(row));
-      const stockAvailability=document.createElement('span');stockAvailability.className='muted';stockAvailability.dataset.stockAvailability='';stockAvailability.style.display='block';stockAvailability.style.marginTop='3px';productCell.append(product,stockAvailability);
-      const quantityCell = document.createElement('td');
+      const quantityField = document.createElement('label');
+      quantityField.className = 'line-field';
       const quantityWrap = document.createElement('div');
       quantityWrap.className = 'quantity-with-unit';
       const quantity = document.createElement('input');
@@ -266,10 +296,29 @@
       const unitLabel = document.createElement('span');
       unitLabel.className = 'unit-inline';
       const unit = document.createElement('input'); unit.readOnly = true; unit.hidden = true;
-      quantityWrap.append(quantity, unitLabel, unit);
-      quantityCell.appendChild(quantityWrap);
-      const priceCell = document.createElement('td'); priceCell.className = 'number'; const price = document.createElement('span'); priceCell.appendChild(price);
-      const amountCell = document.createElement('td'); amountCell.className = 'number'; const amount = document.createElement('span'); amountCell.appendChild(amount);
+      quantityWrap.append(quantity, unit);
+      quantityField.appendChild(quantityWrap);
+      const priceField = document.createElement('label');
+      priceField.className = 'line-field';
+      const price = document.createElement('span');
+      price.className = 'line-readonly';
+      priceField.appendChild(price);
+      const amountField = document.createElement('label');
+      amountField.className = 'line-field';
+      const amount = document.createElement('span');
+      amount.className = 'line-readonly';
+      amountField.appendChild(amount);
+      detailLine.append(product, quantityField, priceField, amountField);
+      detailCell.appendChild(detailLine);
+      const noteCell = document.createElement('td');
+      const note = document.createElement('textarea');
+      note.className = 'line-note';
+      note.maxLength = 1000;
+      note.placeholder = '備考';
+      note.value = line.note || '';
+      note.dataset.lineNote = '';
+      note.addEventListener('input', markDirty);
+      noteCell.appendChild(note);
       if (line.price_review_task && permissions.price && state.editing && line.id) {
         const review = document.createElement('div');
         review.className = 'price-review';
@@ -302,7 +351,7 @@
         newPrice.addEventListener('click', () => openPriceEditor(row));
         reviewActions.append(keep, defaultPrice, newPrice);
         review.append(reviewText, reviewActions);
-        priceCell.appendChild(review);
+        detailCell.appendChild(review);
       }
       const actionCell = document.createElement('td'); actionCell.className = 'line-actions';
       const remove = document.createElement('button'); remove.type='button'; remove.className='danger'; remove.textContent='削除'; remove.addEventListener('click',()=>{row.remove();updateSummary();markDirty();}); actionCell.appendChild(remove);
@@ -322,9 +371,8 @@
       row._sync = sync;
       quantity.addEventListener('input',()=>{sync();markDirty();});
       sync();
-      row.append(productCell,quantityCell,priceCell,amountCell,actionCell);
+      row.append(detailCell,noteCell,actionCell);
       lineList.appendChild(row);
-      loadLineAvailability(row);
     };
     const setFormMode = (order=null) => {
       showOrderDetail();
@@ -441,7 +489,7 @@
         work_note:document.querySelector('#work-note').value||null,
         auto_release_to_shipping:autoRelease?1:0,
         awaiting_shipment_instruction:autoRelease?0:(deferAfterSave?1:0),
-        lines:[...lineList.children].map(row=>({...(row.dataset.lineId?{id:Number(row.dataset.lineId)}:{}),product_id:Number(row.dataset.productId),quantity:row.querySelector('[data-quantity]').value,unit_id:Number(row.querySelector('input[readonly]').dataset.unitId)}))
+        lines:[...lineList.children].map(row=>({...(row.dataset.lineId?{id:Number(row.dataset.lineId)}:{}),product_id:Number(row.dataset.productId),quantity:row.querySelector('[data-quantity]').value,unit_id:Number(row.querySelector('input[readonly]').dataset.unitId),note:row.querySelector('[data-line-note]').value||null}))
       };
     };
     const saveOrder = async (autoRelease=false, deferAfterSave=true) => {

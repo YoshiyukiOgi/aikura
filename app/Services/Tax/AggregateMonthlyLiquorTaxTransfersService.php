@@ -41,6 +41,7 @@ class AggregateMonthlyLiquorTaxTransfersService
                 'lines.confirmed_liquor_tax_calculation_method as calculation_method',
                 'lines.confirmed_liquor_tax_per_kl as tax_per_kl',
                 'lines.confirmed_liquor_tax_reduction_rate as reduction_rate',
+                'lines.confirmed_alcohol_percentage as alcohol_percentage',
                 'lines.confirmed_liquor_taxable_kl as taxable_kl',
             ])
             ->selectRaw('COALESCE(headers.liquor_tax_transfer_date, headers.document_date) as source_date')
@@ -73,6 +74,8 @@ class AggregateMonthlyLiquorTaxTransfersService
                 'categories.id as category_id', 'categories.code as category_code', 'categories.name as category_name',
                 'categories.taxability', 'rules.id as rule_id', 'rules.calculation_method',
                 'allocations.liquor_tax_per_kl as tax_per_kl', 'rules.reduction_rate',
+                'allocations.actual_alcohol_percentage as alcohol_percentage',
+                'allocations.standard_alcohol_percentage as standard_alcohol_percentage',
                 'allocations.liquor_taxable_kl as taxable_kl',
             ])
             ->selectRaw('COALESCE(headers.liquor_tax_transfer_date, headers.document_date) as source_date')
@@ -106,6 +109,7 @@ class AggregateMonthlyLiquorTaxTransfersService
                 'source.confirmed_liquor_taxability as taxability', 'source.confirmed_liquor_tax_rule_id as rule_id',
                 'source.confirmed_liquor_tax_calculation_method as calculation_method',
                 'source.confirmed_liquor_tax_per_kl as tax_per_kl', 'source.confirmed_liquor_tax_reduction_rate as reduction_rate',
+                'source.confirmed_alcohol_percentage as alcohol_percentage',
                 'source.confirmed_liquor_taxable_kl as source_taxable_kl',
             ])->get();
 
@@ -133,6 +137,8 @@ class AggregateMonthlyLiquorTaxTransfersService
 
         $nonSalesLines = DB::table('non_sales_stock_operation_lines as lines')
             ->join('non_sales_stock_operation_headers as headers', 'headers.id', '=', 'lines.non_sales_stock_operation_header_id')
+            ->leftJoin('products as products', 'products.id', '=', 'lines.product_id')
+            ->leftJoin('production_lots as lots', 'lots.id', '=', 'lines.production_lot_id')
             ->leftJoin('liquor_tax_categories as categories', 'categories.id', '=', 'lines.liquor_tax_category_id')
             ->leftJoin('liquor_tax_rules as rules', 'rules.id', '=', 'lines.liquor_tax_rule_id')
             ->where('headers.status', 'confirmed')->whereNull('headers.cancelled_at')
@@ -144,6 +150,7 @@ class AggregateMonthlyLiquorTaxTransfersService
                 'categories.id as category_id', 'categories.code as category_code', 'categories.name as category_name',
                 'categories.taxability', 'rules.id as rule_id', 'rules.calculation_method',
                 'lines.liquor_tax_per_kl as tax_per_kl', 'lines.liquor_tax_reduction_rate as reduction_rate',
+                DB::raw('COALESCE(lots.alcohol_percentage, products.alcohol_percentage) as alcohol_percentage'),
                 'lines.liquor_taxable_kl as taxable_kl',
             ])->get();
 
@@ -158,7 +165,7 @@ class AggregateMonthlyLiquorTaxTransfersService
 
         return $records
             ->groupBy(fn (array $r): string => implode('|', [
-                $r['category_id'], $r['rule_id'] ?? 0, $r['tax_per_kl'] ?? '', $r['tax_treatment'], $r['source_type'],
+                $r['category_id'], $r['rule_id'] ?? 0, $r['tax_per_kl'] ?? '', $r['tax_treatment'], $r['source_type'], $r['reporting_alcohol_percentage'] ?? '',
             ]))
             ->map(function (Collection $group) use ($year, $month, $periodStart, $periodEnd): MonthlyLiquorTaxTransferSummary {
                 $first = $group->first();
@@ -176,13 +183,14 @@ class AggregateMonthlyLiquorTaxTransfersService
                     liquorTaxCategoryName: $first['category_name'], liquorTaxability: $first['taxability'],
                     liquorTaxRuleId: $first['rule_id'], calculationMethod: $first['calculation_method'],
                     taxPerKl: $first['tax_per_kl'], reductionRate: $first['reduction_rate'],
-                    taxTreatment: $first['tax_treatment'], sourceType: $first['source_type'], taxableKl: $taxableKl,
+                    taxTreatment: $first['tax_treatment'], sourceType: $first['source_type'],
+                    reportingAlcoholPercentage: $first['reporting_alcohol_percentage'], taxableKl: $taxableKl,
                     estimatedAmount: $estimated, grossTaxAmount: $gross,
                     requiresReview: $group->contains(fn (array $r): bool => $r['source']->requiresReview),
                     shipmentCount: $group->pluck('source.sourceHeaderId')->unique()->count(), lineCount: $group->count(),
                     sources: $group->pluck('source')->all(),
                 );
-            })->sortBy(fn (MonthlyLiquorTaxTransferSummary $s): string => implode('|', [$s->liquorTaxCategoryCode, $s->taxTreatment, $s->sourceType]))->values();
+            })->sortBy(fn (MonthlyLiquorTaxTransferSummary $s): string => implode('|', [$s->liquorTaxCategoryCode, $s->taxTreatment, $s->sourceType, $s->reportingAlcoholPercentage ?? '']))->values();
     }
 
     /** @return array<string, mixed> */
@@ -197,10 +205,12 @@ class AggregateMonthlyLiquorTaxTransfersService
         }
         $taxPerKl = $row->tax_per_kl === null ? null : bcadd((string) $row->tax_per_kl, '0', 4);
         $sourceGross = $taxPerKl === null ? '0.00' : $this->roundingService->round(bcmul(ltrim($taxableKl, '-'), $taxPerKl, 8), 'floor', 0).'.00';
+        $reportingAlcoholPercentage = $this->reportingAlcoholPercentage($row);
         $source = new MonthlyLiquorTaxSourceData(
             sourceType: $sourceType, sourceHeaderId: $headerId, sourceLineId: $lineId,
             sourceDocumentNumber: $row->document_number, sourceDate: CarbonImmutable::parse($row->source_date)->toDateString(),
-            taxTreatment: $treatment, quantity: bcadd($quantity, '0', 4), taxableKl: bcadd($taxableKl, '0', 6),
+            taxTreatment: $treatment, reportingAlcoholPercentage: $reportingAlcoholPercentage,
+            quantity: bcadd($quantity, '0', 4), taxableKl: bcadd($taxableKl, '0', 6),
             grossTaxAmount: $sourceGross, requiresReview: $review, reviewReason: $reviewReason,
             evidenceStatus: $row->evidence_status ?? null,
             evidenceReference: $row->evidence_reference ?? null,
@@ -212,9 +222,21 @@ class AggregateMonthlyLiquorTaxTransfersService
             'rule_id' => $row->rule_id === null ? null : (int) $row->rule_id,
             'calculation_method' => $row->calculation_method, 'tax_per_kl' => $taxPerKl,
             'reduction_rate' => $row->reduction_rate === null ? null : bcadd((string) $row->reduction_rate, '0', 4),
-            'tax_treatment' => $treatment, 'source_type' => $sourceType, 'taxable_kl' => bcadd($taxableKl, '0', 6),
+            'tax_treatment' => $treatment, 'source_type' => $sourceType,
+            'reporting_alcohol_percentage' => $reportingAlcoholPercentage,
+            'taxable_kl' => bcadd($taxableKl, '0', 6),
             'source' => $source,
         ];
+    }
+
+    private function reportingAlcoholPercentage(object $row): ?int
+    {
+        $alcohol = $row->alcohol_percentage ?? $row->standard_alcohol_percentage ?? null;
+        if ($alcohol === null || $alcohol === '') {
+            return null;
+        }
+
+        return (int) floor((float) $alcohol);
     }
 
     private function treatment(string $snapshot, string $taxability): string

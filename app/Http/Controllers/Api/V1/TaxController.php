@@ -27,23 +27,26 @@ use App\Services\Tax\CreateLiquorTaxMonthlyFilingDraftService;
 use App\Services\Tax\CreateLiquorTaxReliefSettingService;
 use App\Services\Tax\GenerateLiquorTaxFilingReportService;
 use App\Services\Tax\RecordShipmentLiquorTaxEvidenceService;
+use App\Services\Tax\ReopenLiquorTaxMonthlyFilingService;
 use App\Services\Tax\ReviewSalesReturnLiquorTaxService;
 use App\Services\Tax\UpdateLiquorTaxAdjustmentSettingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\ResponseHeaderBag;
 
 class TaxController extends ApiController
 {
     public function liquorFilings(): JsonResponse
     {
+        $latestFinalizedId = $this->latestFinalizedLiquorFilingId();
         $filings = LiquorTaxMonthlyFiling::query()
             ->with('lines')
             ->orderByDesc('year')
             ->orderByDesc('month')
             ->limit(50)
             ->get()
-            ->map(fn (LiquorTaxMonthlyFiling $filing): array => $this->serializeLiquorFiling($filing))
+            ->map(fn (LiquorTaxMonthlyFiling $filing): array => $this->serializeLiquorFiling($filing, $latestFinalizedId))
             ->values()
             ->all();
 
@@ -53,7 +56,10 @@ class TaxController extends ApiController
     public function liquorFiling(LiquorTaxMonthlyFiling $filing): JsonResponse
     {
         return $this->ok([
-            'liquor_tax_monthly_filing' => $this->serializeLiquorFiling($filing->load(['lines.sources', 'sources', 'reliefSetting', 'adjustments.category', 'adjustments.approvalRequest', 'adjustments.creator', 'reportExports'])),
+            'liquor_tax_monthly_filing' => $this->serializeLiquorFiling(
+                $filing->load(['lines.sources', 'sources', 'reliefSetting', 'adjustments.category', 'adjustments.approvalRequest', 'adjustments.creator', 'reportExports']),
+                $this->latestFinalizedLiquorFilingId(),
+            ),
         ]);
     }
 
@@ -108,7 +114,17 @@ class TaxController extends ApiController
     ): JsonResponse {
         $confirmed = $service->confirm($filing->year, $filing->month, $request->validated('reason'));
 
-        return $this->ok(['liquor_tax_monthly_filing' => $this->serializeLiquorFiling($confirmed)]);
+        return $this->ok(['liquor_tax_monthly_filing' => $this->serializeLiquorFiling($confirmed, $this->latestFinalizedLiquorFilingId())]);
+    }
+
+    public function reopenLiquorFiling(
+        ShipmentActionReasonRequest $request,
+        LiquorTaxMonthlyFiling $filing,
+        ReopenLiquorTaxMonthlyFilingService $service,
+    ): JsonResponse {
+        $reopened = $service->reopen($filing, (string) $request->validated('reason'));
+
+        return $this->ok(['liquor_tax_monthly_filing' => $this->serializeLiquorFiling($reopened, $this->latestFinalizedLiquorFilingId())]);
     }
 
     public function createLiquorAdjustment(
@@ -180,11 +196,14 @@ class TaxController extends ApiController
 
     public function downloadLiquorFilingExport(ReportExport $reportExport): BinaryFileResponse
     {
-        if ($reportExport->report_type !== 'liquor_tax_filing' || ! is_file(storage_path('app/'.$reportExport->file_path))) {
+        $path = storage_path('app/'.$reportExport->file_path);
+        if ($reportExport->report_type !== 'liquor_tax_filing' || ! is_file($path)) {
             abort(404);
         }
 
-        return response()->download(storage_path('app/'.$reportExport->file_path), $reportExport->file_name, ['Content-Type' => $reportExport->mime_type]);
+        return response()->download($path, $reportExport->file_name, [
+            'Content-Type' => $reportExport->mime_type ?: 'application/octet-stream',
+        ], ResponseHeaderBag::DISPOSITION_ATTACHMENT);
     }
 
     public function consumptionFilings(): JsonResponse
@@ -237,11 +256,12 @@ class TaxController extends ApiController
     /**
      * @return array<string, mixed>
      */
-    private function serializeLiquorFiling(LiquorTaxMonthlyFiling $filing): array
+    private function serializeLiquorFiling(LiquorTaxMonthlyFiling $filing, ?int $latestFinalizedId = null): array
     {
         return [
             'id' => $filing->id,
             'status' => $filing->status,
+            'can_reopen' => $filing->status === 'confirmed' && $filing->id === $latestFinalizedId,
             'year' => $filing->year,
             'month' => $filing->month,
             'period_start' => $filing->period_start?->toDateString(),
@@ -278,6 +298,7 @@ class TaxController extends ApiController
                     'liquor_tax_rule_id' => $line->liquor_tax_rule_id,
                     'tax_treatment' => $line->tax_treatment,
                     'source_type' => $line->source_type,
+                    'reporting_alcohol_percentage' => $line->reporting_alcohol_percentage,
                     'calculation_method' => $line->calculation_method,
                     'tax_per_kl' => $line->tax_per_kl,
                     'reduction_rate' => $line->reduction_rate,
@@ -303,6 +324,7 @@ class TaxController extends ApiController
                         'source_document_number' => $source->source_document_number,
                         'source_date' => $source->source_date?->toDateString(),
                         'tax_treatment' => $source->tax_treatment,
+                        'reporting_alcohol_percentage' => $source->reporting_alcohol_percentage,
                         'quantity' => $source->quantity,
                         'taxable_kl' => $source->taxable_kl,
                         'gross_tax_amount' => $source->gross_tax_amount,
@@ -317,6 +339,15 @@ class TaxController extends ApiController
             'adjustments' => $filing->relationLoaded('adjustments') ? $filing->adjustments->map(fn (LiquorTaxMonthlyFilingAdjustment $adjustment): array => $this->serializeAdjustment($adjustment))->values()->all() : [],
             'report_exports' => $filing->relationLoaded('reportExports') ? $filing->reportExports->sortByDesc('id')->map(fn (ReportExport $export): array => $this->serializeReportExport($export))->values()->all() : [],
         ];
+    }
+
+    private function latestFinalizedLiquorFilingId(): ?int
+    {
+        return LiquorTaxMonthlyFiling::query()
+            ->whereIn('status', ['confirmed', 'closed'])
+            ->orderByDesc('year')
+            ->orderByDesc('month')
+            ->value('id');
     }
 
     private function serializeAdjustment(LiquorTaxMonthlyFilingAdjustment $adjustment): array
@@ -336,7 +367,7 @@ class TaxController extends ApiController
     {
         return [
             'id' => $export->id, 'format' => $export->format, 'status' => $export->status,
-            'file_name' => $export->file_name, 'file_size' => $export->file_size,
+            'file_name' => $export->file_name, 'file_size' => $export->file_size, 'mime_type' => $export->mime_type,
             'checksum_sha256' => $export->checksum_sha256, 'generated_at' => $export->generated_at?->toISOString(),
             'reason' => $export->reason, 'download_url' => "/api/v1/tax/report-exports/{$export->id}/download",
         ];

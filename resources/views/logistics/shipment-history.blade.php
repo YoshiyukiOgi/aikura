@@ -21,6 +21,8 @@
     .wide{grid-column:span 2}.actions{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap}
     button{font:inherit;font-size:11px;cursor:pointer;border:1px solid #cad6e6;border-radius:4px;background:#fff;color:#25344a;padding:7px 9px}
     button.primary{background:#0b6ff6;color:#fff;border-color:#0b6ff6;font-weight:800}
+    @keyframes searchPulse{0%,100%{background:#fff7d6;border-color:#f0b429;box-shadow:0 0 0 0 rgba(240,180,41,.28)}50%{background:#ffe08a;border-color:#d89b00;box-shadow:0 0 0 5px rgba(240,180,41,.12)}}
+    button.search-attention,button.primary.search-attention{animation:searchPulse 1.8s ease-in-out infinite;color:#172033!important;font-weight:800}
     table{width:100%;border-collapse:collapse;table-layout:fixed}
     th,td{padding:9px 10px;border-bottom:1px solid #edf1f6;text-align:left;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     th{background:#f8faff;color:#64748b;font-size:10px}
@@ -50,7 +52,7 @@
       <section class="card">
         <div class="head">
           <h2>過去出荷検索</h2>
-          <div class="actions"><button id="clear" type="button">クリア</button><button id="search" class="primary" type="button">検索</button><button id="export-csv" type="button">表示中CSV</button><span id="count" class="muted"></span></div>
+          <div class="actions"><button id="clear" type="button">クリア</button><button id="search" type="button">検索</button><button id="export-csv" type="button">表示中CSV</button><span id="count" class="muted"></span></div>
         </div>
         <div class="filters">
           <label class="wide">取引先<input id="customer" placeholder="取引先名"></label>
@@ -60,8 +62,8 @@
           <label>請求<select id="invoice-status"><option value="all">すべて</option><option value="invoiced">請求書作成済み</option><option value="uninvoiced">未請求</option></select></label>
           <label>出荷日From<input id="document-date-from" type="date"></label>
           <label>出荷日To<input id="document-date-to" type="date"></label>
-          <label>請求対象From<input id="billing-target-from" type="date"></label>
-          <label>請求対象To<input id="billing-target-to" type="date"></label>
+          <label>請求対象From<input id="billing-target-from" type="month"></label>
+          <label>請求対象To<input id="billing-target-to" type="month"></label>
           <label>並び順<select id="sort"><option value="document_date">出荷日</option><option value="document_number">出荷番号</option><option value="customer">取引先</option><option value="billing_target_date">請求対象日</option><option value="status">状態</option></select></label>
           <label>方向<select id="direction"><option value="desc">降順</option><option value="asc">昇順</option></select></label>
         </div>
@@ -80,6 +82,25 @@
   <script>
     const state = { shipments: [], selected: null, page: 1, lastPage: 1 };
     const labels = { draft:'下書き', confirmed:'出荷済み', cancelled:'取消済み' };
+    const isoDate = date => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+    const addMonths = (date, months) => {
+      const copy = new Date(date);
+      const day = copy.getDate();
+      copy.setMonth(copy.getMonth() + months);
+      if (copy.getDate() !== day) copy.setDate(0);
+      return copy;
+    };
+    const monthStart = value => value ? `${value}-01` : '';
+    const monthEnd = value => {
+      if(!value) return '';
+      const [year, month] = value.split('-').map(Number);
+      return isoDate(new Date(year, month, 0));
+    };
+    const setDefaultDateFilters = () => {
+      const today = new Date();
+      document.querySelector('#document-date-from').value = isoDate(addMonths(today, -1));
+      document.querySelector('#document-date-to').value = isoDate(today);
+    };
     const api = async (url) => {
       const response = await fetch(url, { credentials:'same-origin', headers:{ Accept:'application/json' } });
       const body = await response.json();
@@ -88,11 +109,15 @@
     };
     const qs = (page = 1) => {
       const params = new URLSearchParams();
-      const ids = ['customer','document-number','sales-order-number','status','invoice-status','document-date-from','document-date-to','billing-target-from','billing-target-to','sort','direction'];
+      const ids = ['customer','document-number','sales-order-number','status','invoice-status','document-date-from','document-date-to','sort','direction'];
       ids.forEach(id => {
         const value = document.querySelector(`#${id}`).value.trim();
         if(value) params.set(id.replaceAll('-', '_'), value);
       });
+      const billingTargetFrom = monthStart(document.querySelector('#billing-target-from').value.trim());
+      const billingTargetTo = monthEnd(document.querySelector('#billing-target-to').value.trim());
+      if(billingTargetFrom) params.set('billing_target_from', billingTargetFrom);
+      if(billingTargetTo) params.set('billing_target_to', billingTargetTo);
       params.set('page', page);
       params.set('per_page', 50);
       return params.toString();
@@ -101,8 +126,14 @@
     const badge = (text, className) => { const span=document.createElement('span'); span.className=`badge ${className}`; span.textContent=text; return span; };
     const invoiceText = shipment => shipment.invoice_created ? shipment.invoice_numbers.join(', ') : '未請求';
     const invoiceBadge = shipment => badge(invoiceText(shipment), shipment.invoice_created ? 'invoice' : 'none');
+    const setSearchDirty = dirty => {
+      const button = document.querySelector('#search');
+      button.classList.toggle('search-attention', dirty);
+      button.title = dirty ? '検索条件が変更されています。検索ボタンを押して更新してください。' : '';
+    };
     async function load(page = 1){
       try{
+        setSearchDirty(false);
         const data = await api(`/api/v1/shipments-history?${qs(page)}`);
         state.shipments = data.shipments || [];
         state.page = data.pagination?.current_page || 1;
@@ -176,11 +207,15 @@
       const a=document.createElement('a'); a.href=url; a.download='shipment-history.csv'; a.click(); URL.revokeObjectURL(url);
     }
     document.querySelector('#search').addEventListener('click',()=>load(1));
-    document.querySelector('#clear').addEventListener('click',()=>{ document.querySelectorAll('.filters input').forEach(input=>input.value=''); document.querySelector('#status').value=''; document.querySelector('#invoice-status').value='all'; document.querySelector('#sort').value='document_date'; document.querySelector('#direction').value='desc'; load(1); });
+    document.querySelector('#clear').addEventListener('click',()=>{ document.querySelectorAll('.filters input').forEach(input=>input.value=''); setDefaultDateFilters(); document.querySelector('#status').value=''; document.querySelector('#invoice-status').value='all'; document.querySelector('#sort').value='document_date'; document.querySelector('#direction').value='desc'; load(1); });
     document.querySelector('#prev').addEventListener('click',()=>{ if(state.page>1) load(state.page-1); });
     document.querySelector('#next').addEventListener('click',()=>{ if(state.page<state.lastPage) load(state.page+1); });
     document.querySelector('#export-csv').addEventListener('click', exportCsv);
-    document.querySelectorAll('.filters input').forEach(input => input.addEventListener('keydown', event => { if(event.key === 'Enter') load(1); }));
+    document.querySelectorAll('.filters input,.filters select').forEach(input => {
+      input.addEventListener('input',()=>setSearchDirty(true));
+      input.addEventListener('change',()=>setSearchDirty(true));
+    });
+    setDefaultDateFilters();
     load(1);
   </script>
 </body>

@@ -1,11 +1,13 @@
 @php
   $titles = [
-    'monthly-invoices' => '月次(締め)請求作成',
-    'spot-invoices' => '都度請求作成',
-    'invoices' => '請求一覧',
-    'invoice-print' => '再請求書印刷',
-    'payment-confirmation' => '入金確認',
-    'payment-reviews' => '要確認入金',
+    'invoice-workflow' => '月次請求計算',
+    'monthly-invoices' => '月次請求計算',
+    'spot-invoices' => '都度請求計算',
+    'invoices' => '請求書確定',
+    'invoice-print' => '請求書印刷',
+    'payment-entry' => '入金登録・消込',
+    'payment-confirmation' => '入金登録・消込',
+    'payment-reviews' => '入金確認',
     'receivables' => '売掛残高',
   ];
   $pageTitle = $titles[$section] ?? $titles['monthly-invoices'];
@@ -21,7 +23,7 @@
     [hidden]{display:none!important}
     header{height:52px;padding:0 20px;display:flex;align-items:center;justify-content:space-between;background:#fff;border-bottom:1px solid #dce4ee}
     header h1{font-size:15px;font-weight:800;padding-left:10px;letter-spacing:0}
-    main{padding:12px 18px}
+    main{padding:12px 18px 72px}
     h1,h2,h3,p{margin:0}
     h2{font-size:15px}
     h3{font-size:13px}
@@ -34,6 +36,8 @@
     .tab.active .tab-step{background:#0b6ff6;color:#fff}
     .stack{display:grid;gap:12px}
     .grid{display:grid;grid-template-columns:minmax(700px,1fr) 380px;gap:12px;align-items:start}
+    .grid[data-screen="payment-entry"]{grid-template-columns:380px minmax(700px,1fr)}
+    .grid[data-screen="payment-entry"]>aside{order:-1}
     .grid>aside{position:sticky;top:64px;max-height:calc(100vh - 76px);overflow:auto;align-self:start}
     .grid>.stack{min-height:0}
     .grid>.stack>.card{max-height:calc(100vh - 116px);overflow:auto}
@@ -43,6 +47,14 @@
     .panel{padding:12px 14px;display:grid;gap:10px}
     .filters{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:9px;padding:12px 14px;border-bottom:1px solid #e7edf4;background:#fbfdff}
     .filters .wide{grid-column:span 2}
+    .common-search{margin-bottom:12px}
+    .common-search .filters{border-bottom:0;grid-template-columns:minmax(220px,2fr) repeat(3,minmax(130px,1fr)) auto}
+    .common-search .actions{align-self:end;justify-content:flex-start}
+    .workflow-tabs{display:flex;gap:8px;margin-bottom:12px}
+    .workflow-tabs a{display:inline-flex;align-items:center;min-height:30px;padding:0 12px;border:1px solid #cad6e6;border-radius:999px;background:#fff;color:#25344a;text-decoration:none;font-size:11px;font-weight:800}
+    .workflow-tabs a.active{background:#0b6ff6;border-color:#0b6ff6;color:#fff}
+    .customer-results{display:grid;gap:4px;max-height:168px;overflow:auto}
+    .customer-results button{width:100%;text-align:left}
     .review-filters{grid-template-columns:minmax(180px,1.5fr) minmax(116px,1fr) minmax(116px,1fr) minmax(116px,1fr) minmax(118px,.9fr)}
     .review-filters .wide{grid-column:auto}
     .muted{color:#64748b;font-size:11px}
@@ -58,6 +70,7 @@
     tbody tr.selected{box-shadow:inset 3px 0 #0b6ff6}
     .num{text-align:right}
     .center{text-align:center}
+    .select-all-head{display:flex;align-items:center;justify-content:center;gap:4px}
     .badge{display:inline-block;max-width:100%;padding:2px 6px;border-radius:999px;background:#eaf3ff;color:#075ecf;font-size:10px;font-weight:800;overflow:hidden;text-overflow:ellipsis;vertical-align:middle}
     .badge.warn{background:#fff4dd;color:#9a6700}
     .badge.success{background:#e7f7ed;color:#137333}
@@ -79,6 +92,8 @@
     button{cursor:pointer;border:1px solid #cad6e6;border-radius:4px;background:#fff;color:#25344a;padding:7px 9px}
     button:disabled{opacity:.45;cursor:not-allowed}
     .primary{background:#0b6ff6;color:#fff;border-color:#0b6ff6;font-weight:800}
+    @keyframes searchPulse{0%,100%{background:#fff7d6;border-color:#f0b429;box-shadow:0 0 0 0 rgba(240,180,41,.28)}50%{background:#ffe08a;border-color:#d89b00;box-shadow:0 0 0 5px rgba(240,180,41,.12)}}
+    button.search-attention{animation:searchPulse 1.8s ease-in-out infinite;color:#172033;font-weight:800}
     .danger{color:#b42318;border-color:#f0b7b1}
     .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
     .full{grid-column:1/-1}
@@ -89,6 +104,7 @@
     .detail-row{display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid #edf1f6;padding-bottom:6px;font-size:11px}
     .detail-row strong{font-size:11px}
     .bulk-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-top:1px solid #edf1f6;background:#fbfdff}
+    .bulk-bar.sticky-footer{position:fixed;left:18px;right:18px;bottom:0;z-index:30;border:1px solid #dce4ee;border-radius:6px 6px 0 0;box-shadow:0 -4px 16px rgba(15,23,42,.12)}
     .invoice-group td{background:#eef4fb;color:#172033;font-weight:800}
     .invoice-row td{background:#fff}
     .shipment-row td{background:#fbfdff;color:#475569}
@@ -107,37 +123,52 @@
   </style>
 </head>
 <body>
+  @include('components.sidebar')
   <header>
     <h1>請求・入金業務</h1>
     <div class="actions"><span class="muted">{{ $user->name }}</span><form method="post" action="{{ route('logout') }}">@csrf<button type="submit">ログアウト</button></form></div>
   </header>
   <main>
-    <nav class="tabs" aria-label="請求・入金の作業順">
-      <a href="{{ route('billing.monthly-invoices') }}" class="tab {{ $section === 'monthly-invoices' ? 'active' : '' }}" @if($section === 'monthly-invoices') aria-current="page" @endif><span class="tab-step">1</span>月次請求</a>
-      <a href="{{ route('billing.spot-invoices') }}" class="tab {{ $section === 'spot-invoices' ? 'active' : '' }}" @if($section === 'spot-invoices') aria-current="page" @endif><span class="tab-step">2</span>都度請求</a>
-      <a href="{{ route('billing.invoices') }}" class="tab {{ $section === 'invoices' ? 'active' : '' }}" @if($section === 'invoices') aria-current="page" @endif><span class="tab-step">3</span>請求一覧・確定</a>
-      <a href="{{ route('billing.invoice-print') }}" class="tab {{ $section === 'invoice-print' ? 'active' : '' }}" @if($section === 'invoice-print') aria-current="page" @endif><span class="tab-step">4</span>請求書印刷</a>
-      <a href="{{ route('billing.payment-confirmation') }}" class="tab {{ $section === 'payment-confirmation' ? 'active' : '' }}" @if($section === 'payment-confirmation') aria-current="page" @endif><span class="tab-step">5</span>入金確認</a>
-      <a href="{{ route('billing.payment-reviews') }}" class="tab {{ $section === 'payment-reviews' ? 'active' : '' }}" @if($section === 'payment-reviews') aria-current="page" @endif><span class="tab-step">6</span>要確認入金</a>
-      <a href="{{ route('billing.receivables') }}" class="tab {{ $section === 'receivables' ? 'active' : '' }}" @if($section === 'receivables') aria-current="page" @endif><span class="tab-step">7</span>売掛残高</a>
-    </nav>
+    @if(in_array($section, ['monthly-invoices', 'spot-invoices', 'invoices', 'invoice-print', 'invoice-workflow'], true))
+      <nav class="workflow-tabs" aria-label="請求業務">
+        <a href="{{ route('billing.monthly-invoices') }}" class="{{ in_array($section, ['monthly-invoices', 'invoice-workflow'], true) ? 'active' : '' }}">月次請求計算</a>
+        <a href="{{ route('billing.spot-invoices') }}" class="{{ $section === 'spot-invoices' ? 'active' : '' }}">都度請求計算</a>
+        <a href="{{ route('billing.invoices') }}" class="{{ $section === 'invoices' ? 'active' : '' }}">請求書確定</a>
+        <a href="{{ route('billing.invoice-print') }}" class="{{ $section === 'invoice-print' ? 'active' : '' }}">請求書印刷</a>
+      </nav>
+    @elseif(in_array($section, ['payment-entry', 'payment-reviews'], true))
+      <nav class="workflow-tabs" aria-label="入金業務">
+        <a href="{{ route('billing.payment-entry') }}" class="{{ $section === 'payment-entry' ? 'active' : '' }}">入金登録・消込</a>
+        <a href="{{ route('billing.payment-reviews') }}" class="{{ $section === 'payment-reviews' ? 'active' : '' }}">入金確認</a>
+      </nav>
+    @endif
 
-    @if ($section === 'monthly-invoices')
+    <section class="card common-search" aria-label="請求・入金共通検索">
+      <div class="filters">
+        <label>取引先検索<input id="common-customer" placeholder="取引先名"></label>
+        <label>請求月<input id="common-billing-month" type="month"></label>
+        <label>締日<select id="common-closing-day"><option value="">すべて</option><option value="15">15日</option><option value="20">20日</option><option value="end">月末</option></select></label>
+        <label>支払期限<span class="muted">未設定を含める場合は空欄</span><input id="common-due-date" type="date"></label>
+        <div class="actions"><button id="common-search" type="button">検索</button></div>
+      </div>
+    </section>
+
+    @if ($section === 'monthly-invoices' || $section === 'invoice-workflow')
       <div class="grid" data-screen="monthly-invoices">
         <div class="stack">
           <section class="card">
             <div class="head"><h2>請求対象</h2><div class="actions"><button id="monthly-refresh" type="button">更新</button><span id="monthly-count" class="muted"></span></div></div>
-            <div class="filters">
-              <label class="wide">取引先検索<input id="monthly-customer" placeholder="取引先名"></label>
-              <label>請求月<input id="monthly-billing-month" type="month"></label>
-              <label>締日<select id="monthly-closing-day"><option value="">すべて</option><option value="15">15日</option><option value="20">20日</option><option value="end">月末</option></select></label>
-              <label>支払期限<input id="monthly-due-date" type="date"></label>
-            </div>
             <table>
-              <thead><tr><th style="width:42px" class="center">選択</th><th>締日</th><th>取引先</th><th>請求対象</th><th class="num">前回未入金</th><th>請求書作成</th></tr></thead>
+              <thead><tr><th style="width:64px" class="center"><span class="select-all-head"><span>選択</span><input id="monthly-select-all" type="checkbox" aria-label="表示中の請求対象をすべて選択"></span></th><th>締日</th><th>取引先</th><th>請求対象</th><th class="num">前回請求額</th><th>計算</th></tr></thead>
               <tbody id="monthly-list"></tbody>
             </table>
-            <div class="pager"><span id="monthly-msg" class="notice"></span><div class="actions">@if($canInvoiceCreate)<button id="monthly-create-selected" class="primary" type="button">選択分の請求書作成</button>@endif</div></div>
+            <div class="bulk-bar {{ $section === 'invoice-workflow' ? '' : 'sticky-footer' }}">
+              <span id="monthly-selection-summary" class="muted">選択中: 0件</span>
+              <div class="actions">
+                @if($canInvoiceCreate)<button id="monthly-create-selected-footer" class="primary" type="button">選択分を計算</button>@endif
+              </div>
+            </div>
+            <div class="pager"><span id="monthly-msg" class="notice"></span><div class="actions">@if($canInvoiceCreate)<button id="monthly-create-selected" class="primary" type="button">選択分を計算</button>@endif</div></div>
           </section>
         </div>
         <aside class="stack">
@@ -145,7 +176,7 @@
             <div class="head"><h2>作成条件</h2></div>
             <div class="panel">
               <label>備考<textarea id="monthly-note" maxlength="1000" placeholder="請求書に残す備考"></textarea></label>
-              <p class="muted">締め請求は取引先ごとにまとめ、都度請求は出荷1件ごとに請求書を作成します。都度請求の前回未入金は請求合計に混ぜず、確認用の残高として表示します。</p>
+              <p class="muted">締め請求は取引先ごとに集計し、確定前の請求データを作ります。都度請求は出荷1件ごとに計算します。前回請求額は請求合計には混ぜず、確認用の残高として表示します。</p>
             </div>
           </section>
           <section class="card">
@@ -156,23 +187,18 @@
       </div>
     @endif
 
-    @if ($section === 'spot-invoices')
+    @if ($section === 'spot-invoices' || $section === 'invoice-workflow')
       <div class="grid" data-screen="spot-invoices">
         <div class="stack">
           <section class="card">
             <div class="head"><h2>都度請求対象</h2><div class="actions"><button id="spot-refresh" type="button">検索</button><span id="spot-count" class="muted"></span></div></div>
-            <div class="filters">
-              <label class="wide">取引先検索<input id="spot-customer" placeholder="取引先名"></label>
-              <label>出荷日From<input id="spot-from" type="date"></label>
-              <label>出荷日To<input id="spot-to" type="date"></label>
-            </div>
             <table>
-              <thead><tr><th style="width:42px" class="center">選択</th><th>取引先 / 出荷</th><th>請求方式</th><th>出荷日</th><th>請求書作成</th></tr></thead>
+              <thead><tr><th style="width:42px" class="center">選択</th><th>取引先 / 出荷</th><th>請求方式</th><th>出荷日</th><th>計算</th></tr></thead>
               <tbody id="spot-list"></tbody>
             </table>
-            <div class="bulk-bar">
+            <div class="bulk-bar {{ $section === 'invoice-workflow' ? '' : 'sticky-footer' }}">
               <span id="spot-selection-summary" class="muted">選択中: 0件</span>
-              <div class="actions">@if($canInvoiceCreate)<button id="spot-create-selected" class="primary" type="button">選択分の請求書作成</button>@endif</div>
+              <div class="actions">@if($canInvoiceCreate)<button id="spot-create-selected" class="primary" type="button">選択分を計算</button>@endif</div>
             </div>
             <div class="pager"><span id="spot-msg" class="notice"></span></div>
           </section>
@@ -186,36 +212,33 @@
             <div class="head"><h2>作成条件</h2></div>
             <div class="panel">
               <label>請求日<input id="spot-invoice-date" type="date"></label>
-              <label>支払期限<input id="spot-due-date" type="date"></label>
               <label>備考<textarea id="spot-note" maxlength="1000" placeholder="請求書に残す備考"></textarea></label>
-              <p class="muted">都度請求は、選択した出荷1件ごとに請求書を1枚作成します。</p>
+              <p class="muted">都度請求は、選択した出荷1件ごとに確定前の請求データを1件作ります。</p>
             </div>
           </section>
         </aside>
       </div>
     @endif
 
-    @if ($section === 'invoices')
+    @if ($section === 'invoices' || $section === 'invoice-workflow')
       <div class="grid" data-screen="invoices">
         <div class="stack">
           <section class="card">
-            <div class="head"><h2>請求一覧</h2><div class="actions"><button id="invoice-search" type="button">検索</button><span id="invoice-count" class="muted"></span></div></div>
+            <div class="head"><h2>請求書確定</h2><div class="actions"><button id="invoice-search" type="button">検索</button><span id="invoice-count" class="muted"></span></div></div>
             <div class="filters">
-              <label class="wide">取引先<input id="invoice-customer" placeholder="取引先名"></label>
               <label>請求番号<input id="invoice-number" placeholder="請求番号"></label>
-              <label>請求月<input id="invoice-month" type="month"></label>
-              <label>状態<select id="invoice-status"><option value="">すべて</option><option value="draft">発行待ち</option><option value="confirmed">発行済</option><option value="cancelled">取消</option></select></label>
+              <label>状態<select id="invoice-status"><option value="">すべて</option><option value="draft">確定待ち</option><option value="confirmed">確定済</option><option value="cancelled">取消</option></select></label>
               <label>種別<select id="invoice-document-type"><option value="">すべて</option><option value="invoice">請求</option><option value="credit_memo">赤伝</option></select></label>
             </div>
             <table>
-              <thead><tr><th style="width:64px" class="center">請求書 <input id="invoice-issue-select-all" type="checkbox" aria-label="表示中の発行待ち請求書をすべて選択"></th><th style="width:74px" class="center">入金予定 <input id="invoice-schedule-select-all" type="checkbox" aria-label="表示中の入金予定待ち請求書をすべて選択"></th><th>取引先</th><th>請求方式</th><th>請求番号</th><th>出荷番号</th><th class="invoice-date-col">日付</th><th class="num invoice-total-col">税込合計</th></tr></thead>
+              <thead><tr><th style="width:64px" class="center">確定 <input id="invoice-issue-select-all" type="checkbox" aria-label="表示中の確定待ち請求書をすべて選択"></th><th style="width:74px" class="center">入金予定</th><th>取引先</th><th>請求方式</th><th>請求番号</th><th>出荷番号</th><th class="invoice-date-col">日付</th><th class="num invoice-total-col">税込合計</th></tr></thead>
               <tbody id="invoice-list"></tbody>
             </table>
-            <div class="bulk-bar">
-              <span id="invoice-selection-summary" class="muted">請求書発行: 0件 / 入金予定作成: 0件</span>
-              <div class="actions">@if($canInvoiceConfirm)<button id="invoice-confirm-selected" type="button">選択分の請求書発行</button>@endif @if($canScheduleCreate)<button id="invoice-create-schedules" type="button">選択分の入金予定作成</button>@endif</div>
+            <div class="bulk-bar {{ $section === 'invoice-workflow' ? '' : 'sticky-footer' }}">
+              <span id="invoice-selection-summary" class="muted">請求書確定: 0件</span>
+              <div class="actions">@if($canInvoiceConfirm)<button id="invoice-confirm-selected" type="button">選択分の請求書確定</button>@endif</div>
             </div>
-            <div class="pager"><span id="invoice-page" class="muted"></span><div class="actions"><button id="invoice-prev" type="button">前へ</button><button id="invoice-next" type="button">次へ</button></div></div>
+            <div class="pager"><span id="invoice-page" class="muted"></span></div>
           </section>
         </div>
         <aside class="stack">
@@ -231,22 +254,20 @@
       <div class="grid" data-screen="invoice-print">
         <div class="stack">
           <section class="card">
-            <div class="head"><h2>再請求書印刷</h2><div class="actions"><button id="print-invoice-search" type="button">検索</button><span id="print-invoice-count" class="muted"></span></div></div>
+            <div class="head"><h2>請求書印刷</h2><div class="actions"><button id="print-invoice-search" type="button">検索</button><span id="print-invoice-count" class="muted"></span></div></div>
             <div class="filters">
-              <label class="wide">取引先<input id="print-invoice-customer" placeholder="取引先名"></label>
               <label>請求番号<input id="print-invoice-number" placeholder="請求番号"></label>
-              <label>請求月<input id="print-invoice-month" type="month"></label>
               <label>種別<select id="print-invoice-type"><option value="invoice">請求</option><option value="">すべて</option><option value="credit_memo">赤伝</option></select></label>
             </div>
             <table>
-              <thead><tr><th style="width:58px" class="center">選択 <input id="print-invoice-select-all" type="checkbox" aria-label="表示中の請求書をすべて選択"></th><th>請求番号</th><th>取引先</th><th>請求方式</th><th class="invoice-date-col">請求日</th><th class="num invoice-total-col">税込合計</th><th style="width:92px">印刷</th></tr></thead>
+              <thead><tr><th style="width:58px" class="center">選択<input id="print-invoice-select-all" type="checkbox" aria-label="表示中の請求書をすべて選択"></th><th>請求番号</th><th>取引先</th><th>請求方式</th><th>状態</th><th class="invoice-date-col">請求日</th><th class="num invoice-total-col">税込合計</th><th style="width:92px">印刷</th></tr></thead>
               <tbody id="print-invoice-list"></tbody>
             </table>
-            <div class="bulk-bar">
-              <span id="print-invoice-selection-summary" class="muted">再印刷選択: 0件</span>
-              <div class="actions"><button id="print-invoice-selected" type="button">選択分をまとめて再印刷</button></div>
+            <div class="bulk-bar sticky-footer">
+              <span id="print-invoice-selection-summary" class="muted">印刷選択: 0件</span>
+              <div class="actions"><button id="print-invoice-selected" type="button">選択分をまとめて印刷</button></div>
             </div>
-            <div class="pager"><span id="print-invoice-page" class="muted"></span><div class="actions"><button id="print-invoice-prev" type="button">前へ</button><button id="print-invoice-next" type="button">次へ</button></div></div>
+            <div class="pager"><span id="print-invoice-page" class="muted"></span></div>
           </section>
         </div>
         <aside class="stack">
@@ -258,14 +279,12 @@
       </div>
     @endif
 
-    @if ($section === 'payment-confirmation')
-      <div class="grid" data-screen="payment-confirmation">
+    @if ($section === 'payment-entry')
+      <div class="grid" data-screen="payment-entry">
         <div class="stack">
           <section class="card">
-            <div class="head"><h2>入金予定</h2><div class="actions"><button id="schedule-search" type="button">検索</button><span id="schedule-count" class="muted"></span></div></div>
+            <div class="head"><h2>消込対象請求</h2><div class="actions"><button id="schedule-search" type="button">検索</button><span id="schedule-count" class="muted"></span></div></div>
             <div class="filters">
-              <label class="wide">取引先<input id="schedule-customer" placeholder="取引先名"></label>
-              <label>入金予定月<input id="schedule-month" type="month"></label>
               <label>状態<select id="schedule-status"><option value="">すべて</option><option value="open">未入金</option><option value="partial">一部入金</option><option value="closed">完了</option></select></label>
               <label class="inline-check"><input id="schedule-outstanding-only" type="checkbox" checked>未入金のみ</label>
             </div>
@@ -273,20 +292,25 @@
               <thead><tr><th>請求番号</th><th>取引先</th><th>入金予定日</th><th>状態</th><th class="num">予定額</th><th class="num">未入金</th></tr></thead>
               <tbody id="schedule-list"></tbody>
             </table>
-            <div class="pager"><span id="schedule-page" class="muted"></span><div class="actions"><button id="schedule-prev" type="button">前へ</button><button id="schedule-next" type="button">次へ</button></div></div>
+            <div class="pager"><span id="schedule-page" class="muted"></span></div>
           </section>
         </div>
         <aside class="stack">
           @if($canPaymentCreate)
           <section class="card">
-            <div class="head"><h2>入金登録</h2></div>
-            <form id="payment-form" class="panel" hidden>
-              <div id="payment-target" class="muted">入金予定を選択してください。</div>
+            <div class="head"><h2>入金登録・自動消込</h2></div>
+            <form id="payment-form" class="panel">
+              <div id="payment-target" class="muted">取引先を選択してください。</div>
+              <div class="form-grid">
+                <label class="full">取引先検索<input id="payment-customer-search" placeholder="取引先名・コード"></label>
+                <div class="actions full"><button id="payment-customer-search-button" type="button">取引先検索</button></div>
+                <div id="payment-customer-results" class="customer-results full"></div>
+              </div>
               <div class="form-grid">
                 <label>入金日<input id="payment-date" type="date" required></label>
                 <label>入金額<input id="payment-amount" inputmode="numeric" pattern="[0-9]*" required></label>
-                <label>消込方法<select id="payment-apply-mode"><option value="customer">得意先の古い請求から消込</option><option value="schedule">選択した請求だけに消込</option></select></label>
-                <label>参照番号<input id="payment-reference" maxlength="100"></label>
+                <label>参考番号<input id="payment-reference" maxlength="100"></label>
+                <label class="full">備考<textarea id="payment-note" maxlength="1000" placeholder="入金メモ"></textarea></label>
               </div>
               <div id="allocation-preview" class="detail-list"></div>
               <p id="payment-msg" class="notice"></p>
@@ -304,7 +328,6 @@
           <section class="card">
             <div class="head"><h2>入金一覧</h2><div class="actions"><button id="payment-review-search" type="button">検索</button><span id="payment-review-count" class="muted"></span></div></div>
             <div class="filters">
-              <label class="wide">取引先<input id="review-customer" placeholder="取引先名"></label>
               <label>入金日From<input id="review-from" type="date"></label>
               <label>入金日To<input id="review-to" type="date"></label>
               <label>状態<select id="review-status"><option value="review_required">要確認</option><option value="allocated">消込済み</option><option value="cancelled">取消済み</option><option value="">すべて</option></select></label>
@@ -319,10 +342,10 @@
                 <col style="width:122px">
                 <col>
               </colgroup>
-              <thead><tr><th>入金日</th><th>取引先</th><th>状態</th><th class="num">入金額</th><th class="num">未充当額</th><th>参照番号</th></tr></thead>
+              <thead><tr><th>入金日</th><th>取引先</th><th>状態</th><th class="num">入金額</th><th class="num">未充当額</th><th>参考番号</th></tr></thead>
               <tbody id="payment-review-list"></tbody>
             </table>
-            <div class="pager"><span id="payment-review-page" class="muted"></span><div class="actions"><button id="payment-review-prev" type="button">前へ</button><button id="payment-review-next" type="button">次へ</button></div></div>
+            <div class="pager"><span id="payment-review-page" class="muted"></span></div>
           </section>
         </div>
         <aside class="stack">
@@ -336,27 +359,35 @@
     @endif
 
     @if ($section === 'receivables')
+      <section class="card">
+        <div class="head">
+          <h2>取引先別月計／売掛残高一覧</h2>
+          <div class="actions">
+            <button id="customer-monthly-statement-print" type="button">印刷表示</button>
+          </div>
+        </div>
+        <p class="muted">共通検索項目の請求年月を対象月として帳票を開きます。</p>
+      </section>
       <div class="stack" data-screen="receivables">
         <section class="summary-grid">
-          <div class="card metric"><span class="muted">未入金合計</span><span id="ar-total" class="value">¥0</span></div>
-          <div class="card metric"><span class="muted">未入金件数</span><span id="ar-open" class="value">0</span></div>
+          <div class="card metric"><span class="muted">現在売掛残高</span><span id="ar-total" class="value">¥0</span></div>
+          <div class="card metric"><span class="muted">未回収件数</span><span id="ar-open" class="value">0</span></div>
           <div class="card metric"><span class="muted">30日超</span><span id="ar-over30" class="value">¥0</span></div>
           <div class="card metric"><span class="muted">60日超</span><span id="ar-over60" class="value">¥0</span></div>
         </section>
         <section class="card">
-          <div class="head"><h2>得意先別売掛</h2><div class="actions"><button id="ar-refresh" type="button">更新</button><span id="ar-count" class="muted"></span></div></div>
+          <div class="head"><h2>取引先別売掛残高</h2><div class="actions"><button id="ar-refresh" type="button">更新</button><span id="ar-count" class="muted"></span></div></div>
           <div class="filters">
-            <label class="wide">取引先<input id="ar-customer" placeholder="取引先名"></label>
-            <label>表示<select id="ar-kind"><option value="outstanding">未入金あり</option><option value="all">すべて</option></select></label>
+            <label>表示<select id="ar-kind"><option value="outstanding">未回収あり</option><option value="all">すべて</option></select></label>
           </div>
           <table>
-            <thead><tr><th>取引先</th><th class="num">予定額</th><th class="num">入金済</th><th class="num">未入金</th><th class="num">未入金件数</th><th class="num">完了件数</th></tr></thead>
+            <thead><tr><th>取引先</th><th class="num">予定額</th><th class="num">入金済</th><th class="num">未回収残高</th><th class="num">未回収件数</th><th class="num">完了件数</th></tr></thead>
             <tbody id="ar-list"></tbody>
           </table>
         </section>
         <section class="card">
           <div class="head"><h2>滞留明細</h2><span id="aging-count" class="muted"></span></div>
-          <table><thead><tr><th>請求番号</th><th>取引先</th><th>入金予定日</th><th>状態</th><th class="num">未入金</th><th class="num">経過</th></tr></thead><tbody id="aging-list"></tbody></table>
+          <table><thead><tr><th>請求番号</th><th>取引先</th><th>入金予定日</th><th>状態</th><th class="num">未回収</th><th class="num">経過</th></tr></thead><tbody id="aging-list"></tbody></table>
         </section>
       </div>
     @endif
@@ -365,7 +396,23 @@
     const screen = @json($section);
     const can = { invoiceCreate:@json($canInvoiceCreate), invoiceConfirm:@json($canInvoiceConfirm), invoiceCancel:@json($canInvoiceCancel), scheduleCreate:@json($canScheduleCreate), paymentCreate:@json($canPaymentCreate), paymentCancel:@json($canPaymentCancel) };
     const state = { page:1, lastPage:1, invoices:[], selectedInvoice:null, schedules:[], selectedSchedule:null, payments:[], selectedPayment:null, receivables:[] };
-    const labels = { draft:'発行待ち', confirmed:'発行済', cancelled:'取消', open:'未入金', partial:'一部入金', closed:'完了', overdue:'期限超過', allocated:'消込済み', review_required:'要確認', invoice:'請求', credit_memo:'赤伝' };
+    const listLimit = 1000;
+    const selectionKey = name => `billing:${name}`;
+    const loadIdSet = name => {
+      try { return new Set((JSON.parse(localStorage.getItem(selectionKey(name)) || '[]') || []).map(Number)); } catch (_) { return new Set(); }
+    };
+    const saveIdSet = (name, set) => localStorage.setItem(selectionKey(name), JSON.stringify([...set]));
+    const warnIfLimited = (selector, pagination, visibleCount) => {
+      const el=document.querySelector(selector);
+      if(!el) return;
+      const total=Number(pagination?.total || visibleCount || 0);
+      const limited=total > visibleCount;
+      el.textContent = limited
+        ? `${visibleCount}件表示 / 全${total}件。1000件を超えるため、検索条件を追加してください。`
+        : `${visibleCount}件表示`;
+      el.classList.toggle('error', limited);
+    };
+    const labels = { draft:'確定待ち', confirmed:'確定済', cancelled:'取消', open:'未入金', partial:'一部入金', closed:'完了', overdue:'期限超過', allocated:'消込済み', review_required:'要確認', invoice:'請求', credit_memo:'赤伝' };
     const yen = value => `¥${Number(value || 0).toLocaleString('ja-JP',{maximumFractionDigits:0})}`;
     const amountInputValue = value => String(Math.round(Number(value || 0)));
     const today = new Date();
@@ -377,6 +424,106 @@
     };
     const monthStart = () => iso(new Date(today.getFullYear(), today.getMonth(), 1));
     const monthEnd = () => iso(new Date(today.getFullYear(), today.getMonth()+1, 0));
+    const defaultBillingMonth = () => iso(new Date(today.getFullYear(), today.getMonth() - 1, 1)).slice(0, 7);
+    const common = {
+      customer: () => document.querySelector('#common-customer')?.value.trim() || '',
+      month: () => document.querySelector('#common-billing-month')?.value || defaultBillingMonth(),
+      closingDay: () => document.querySelector('#common-closing-day')?.value || '',
+      dueDate: () => document.querySelector('#common-due-date')?.value || '',
+    };
+    const billingSearchFieldIds = [
+      'common-customer','common-billing-month','common-closing-day','common-due-date',
+      'invoice-number','invoice-status','invoice-document-type',
+      'print-invoice-number','print-invoice-type',
+      'schedule-status','schedule-outstanding-only','payment-customer-search',
+      'review-from','review-to','review-status','review-unapplied-only',
+      'ar-kind'
+    ];
+    const saveBillingSearchState = () => {
+      const values = {};
+      billingSearchFieldIds.forEach(id => {
+        const input = document.querySelector(`#${id}`);
+        if(!input) return;
+        values[id] = input.type === 'checkbox' ? input.checked : input.value;
+      });
+      localStorage.setItem('billingSearchState', JSON.stringify(values));
+    };
+    const restoreBillingSearchState = () => {
+      let values = {};
+      try { values = JSON.parse(localStorage.getItem('billingSearchState') || '{}') || {}; } catch (_) { values = {}; }
+      Object.entries(values).forEach(([id, value]) => {
+        const input = document.querySelector(`#${id}`);
+        if(!input) return;
+        if(input.type === 'checkbox') input.checked = Boolean(value);
+        else input.value = value ?? '';
+      });
+    };
+    const applyCommonSearchToUrl = () => {
+      const params = new URLSearchParams(window.location.search);
+      const values = { customer: common.customer(), month: common.month(), closing_day: common.closingDay(), due_date: common.dueDate() };
+      Object.entries(values).forEach(([key, value]) => value ? params.set(key, value) : params.delete(key));
+      history.replaceState(null, '', `${window.location.pathname}?${params.toString()}`);
+      localStorage.setItem('billingCommonSearch', JSON.stringify(values));
+      saveBillingSearchState();
+      syncCommonSearchLinks(params);
+    };
+    const syncCommonSearchLinks = params => {
+      document.querySelectorAll('.tabs a,.workflow-tabs a,.app-sidebar__nav a[href^="/billing"]').forEach(link => {
+        const url = new URL(link.href, window.location.origin);
+        ['customer', 'month', 'closing_day', 'due_date'].forEach(key => {
+          const value = params.get(key);
+          value ? url.searchParams.set(key, value) : url.searchParams.delete(key);
+        });
+        link.href = `${url.pathname}${url.search}`;
+      });
+    };
+    const restoreCommonSearch = () => {
+      const params = new URLSearchParams(window.location.search);
+      let saved = {};
+      try { saved = JSON.parse(localStorage.getItem('billingCommonSearch') || '{}') || {}; } catch (_) { saved = {}; }
+      document.querySelector('#common-customer').value = params.get('customer') ?? saved.customer ?? '';
+      document.querySelector('#common-billing-month').value = params.get('month') ?? saved.month ?? defaultBillingMonth();
+      document.querySelector('#common-closing-day').value = params.get('closing_day') ?? saved.closing_day ?? '';
+      document.querySelector('#common-due-date').value = params.get('due_date') ?? saved.due_date ?? '';
+      applyCommonSearchToUrl();
+    };
+    const commonBillingMonthRange = () => ({ from: `${common.month()}-01`, to: monthEndForValue(common.month()) });
+    const openCustomerMonthlyStatementPrint = () => {
+      applyCommonSearchToUrl();
+      const [year, month] = common.month().split('-').map(Number);
+      const params = new URLSearchParams({ year:String(year), month:String(month) });
+      window.open(`/billing/customer-monthly-statements/print?${params.toString()}`, '_blank');
+    };
+    const reloadCurrentScreen = () => {
+      saveBillingSearchState();
+      applyCommonSearchToUrl();
+      if(screen === 'invoice-workflow') return Promise.allSettled([loadMonthly(), loadSpotInvoices(), loadInvoices(1)]);
+      if(screen === 'monthly-invoices') return loadMonthly();
+      if(screen === 'spot-invoices') return loadSpotInvoices();
+      if(screen === 'invoices') return loadInvoices(1);
+      if(screen === 'invoice-print') return loadPrintableInvoices(1);
+      if(screen === 'payment-entry') return loadSchedules(1);
+      if(screen === 'payment-reviews') return loadPaymentReviews(1);
+      if(screen === 'receivables') return loadReceivables();
+    };
+    const screenSearchButtonIds = {
+      'invoice-workflow':['common-search','monthly-refresh','spot-refresh','invoice-search'],
+      'monthly-invoices':['common-search','monthly-refresh'],
+      'spot-invoices':['common-search','spot-refresh'],
+      invoices:['common-search','invoice-search'],
+      'invoice-print':['common-search','print-invoice-search'],
+      'payment-entry':['common-search','schedule-search','payment-customer-search-button'],
+      'payment-reviews':['common-search','payment-review-search'],
+      receivables:['common-search','ar-refresh'],
+    };
+    const setSearchDirty = dirty => {
+      state.searchDirty = dirty;
+      (screenSearchButtonIds[screen] || ['common-search']).forEach(id => {
+        document.querySelector(`#${id}`)?.classList.toggle('search-attention', dirty);
+      });
+    };
+    const markSearchDirty = () => { saveBillingSearchState(); setSearchDirty(true); };
+    const markSearchClean = () => setSearchDirty(false);
     const api = async (url, options={}) => {
       const response = await fetch(url,{credentials:'same-origin',headers:{Accept:'application/json',...(options.body?{'Content-Type':'application/json'}:{})},...options});
       const body = await response.json();
@@ -389,17 +536,17 @@
     const badge = status => { const span=document.createElement('span'); span.className=`badge ${badgeClass(status)}`; span.textContent=labels[status] || status || ''; return span; };
     const invoiceBatchPrintUrl = ids => `/billing/invoices/print-batch?ids=${ids.join(',')}`;
     const invoiceCreated = invoice => invoice.status === 'confirmed';
-    const invoiceScheduleText = invoice => invoice.payment_schedule_id ? '入金予定 済' : '入金予定 未';
+    const invoiceScheduleText = invoice => invoice.payment_schedule_id ? '入金予定あり' : '入金予定なし';
     const invoiceStatusStack = invoice => {
       const wrap=document.createElement('div');
       wrap.className='status-stack';
       const invoiceBadge=document.createElement('span');
       invoiceBadge.className=`badge ${invoiceCreated(invoice) ? 'success' : 'schedule-missing'}`;
-      invoiceBadge.textContent=invoiceCreated(invoice) ? '発行 済' : '発行 未';
+      invoiceBadge.textContent=invoiceCreated(invoice) ? '確定済' : '未確定';
       const scheduleBadge=document.createElement('span');
       const scheduleDone=Boolean(invoice.payment_schedule_id);
       scheduleBadge.className=`badge ${scheduleDone ? 'success' : 'schedule-missing'}`;
-      scheduleBadge.textContent=scheduleDone ? '入金予定 済' : '入金予定 未';
+      scheduleBadge.textContent=scheduleDone ? '入金予定あり' : '入金予定なし';
       wrap.append(invoiceBadge, scheduleBadge);
       return wrap;
     };
@@ -412,10 +559,10 @@
       const missingScheduleCount=invoices.filter(invoice=>!invoice.payment_schedule_id).length;
       const invoiceBadge=document.createElement('span');
       invoiceBadge.className=`badge ${missingInvoiceCount ? 'schedule-missing' : 'success'}`;
-      invoiceBadge.textContent=missingInvoiceCount ? '発行 未' : '発行 済';
+      invoiceBadge.textContent=missingInvoiceCount ? '未確定' : '確定済';
       const scheduleBadge=document.createElement('span');
       scheduleBadge.className=`badge ${missingScheduleCount ? 'schedule-missing' : 'success'}`;
-      scheduleBadge.textContent=missingScheduleCount ? '入金予定 未' : '入金予定 済';
+      scheduleBadge.textContent=missingScheduleCount ? '入金予定なし' : '入金予定あり';
       wrap.append(invoiceBadge, scheduleBadge);
       return wrap;
     };
@@ -424,7 +571,7 @@
       if(payment.status === 'cancelled') return { label:'取消済み', className:'target' };
       if(Number(payment.unapplied_amount || 0) > 0) return { label:'過入金', className:'over' };
       const allocated = paymentAllocatedAmount(payment);
-      if(payment.status === 'review_required') return { label:allocated > 0 ? '不足金' : '対象確認', className:allocated > 0 ? 'short' : 'target' };
+      if(payment.status === 'review_required') return { label:allocated > 0 ? '不足入金' : '対象確認', className:allocated > 0 ? 'short' : 'target' };
       return null;
     };
     const reasonBadge = reason => {
@@ -437,12 +584,21 @@
     const elementCell = (element, cls='') => { const td=document.createElement('td'); if(cls) td.className=cls; td.append(element); return td; };
     const setPage = (selector, pagination) => {
       state.page = pagination?.page || 1; state.lastPage = pagination?.last_page || 1;
-      const el = document.querySelector(selector);
-      if(el) el.textContent = `${state.page} / ${state.lastPage}ページ・${pagination?.total || 0}件`;
+      const visibleCount = pagination?.from && pagination?.to ? (pagination.to - pagination.from + 1) : (pagination?.total || 0);
+      warnIfLimited(selector, pagination, visibleCount);
     };
     const selectedClass = (row, selected, id) => row.classList.toggle('selected', selected?.id === id);
-    const detailRow = (label, value) => { const div=document.createElement('div'); div.className='detail-row'; div.innerHTML=`<span>${label}</span><strong>${value ?? ''}</strong>`; return div; };
-    const monthValue = () => document.querySelector('#monthly-billing-month')?.value || iso(today).slice(0, 7);
+    const detailRow = (label, value) => {
+      const div=document.createElement('div');
+      div.className='detail-row';
+      const labelEl=document.createElement('span');
+      labelEl.textContent=label;
+      const valueEl=document.createElement('strong');
+      valueEl.textContent=value ?? '';
+      div.append(labelEl,valueEl);
+      return div;
+    };
+    const monthValue = () => common.month();
     const lastDayOfMonth = (year, month) => new Date(year, month, 0).getDate();
     const dateFromParts = (year, month, day) => iso(new Date(year, month - 1, day));
     const closingKey = value => Number(value || 31) >= 31 ? 'end' : String(Number(value));
@@ -479,6 +635,7 @@
     };
 
     async function loadMonthly() {
+      markSearchClean();
       const month = monthValue();
       const broadPeriod = broadMonthlyPeriod(month);
       const params = qs({ customer_id:'', billing_target_from:broadPeriod.from, billing_target_to:broadPeriod.to });
@@ -486,8 +643,8 @@
         api(`/api/v1/billing/billable-shipments?${params}`),
         api('/api/v1/billing/invoices?per_page=8')
       ]);
-      const keyword = document.querySelector('#monthly-customer').value.trim();
-      const selectedClosingDay = document.querySelector('#monthly-closing-day').value;
+      const keyword = common.customer();
+      const selectedClosingDay = common.closingDay();
       const shipments = (billableData.shipments || []).filter(shipment => {
         if(keyword && !(shipment.customer_name || '').includes(keyword)) return false;
         const method = shipment.billing_method || 'monthly_closing';
@@ -503,17 +660,27 @@
         row.count += 1; row.dates.push(shipment.billing_target_date); row.documents.push(shipment.document_number); return acc;
       }, {})).sort((a,b)=>(closingKey(a.closing_day)).localeCompare(closingKey(b.closing_day)) || (a.customer_name || '').localeCompare(b.customer_name || '', 'ja'));
       state.monthlyRows = rows;
+      if(!state.monthlySelectionRestored){
+        state.selectedMonthlyCustomerIds = new Set(rows.map(row=>Number(row.customer_id)));
+        saveIdSet('monthlyCustomerIds', state.selectedMonthlyCustomerIds);
+        state.monthlySelectionRestored = true;
+      }
       document.querySelector('#monthly-list').replaceChildren(...rows.map(row => {
         const tr=document.createElement('tr');
-        const check=document.createElement('input'); check.type='checkbox'; check.dataset.customerId=row.customer_id; check.checked=true;
+        const check=document.createElement('input'); check.type='checkbox'; check.dataset.customerId=row.customer_id; check.checked=state.selectedMonthlyCustomerIds.has(Number(row.customer_id));
+        check.addEventListener('change',()=>{
+          check.checked ? state.selectedMonthlyCustomerIds.add(Number(row.customer_id)) : state.selectedMonthlyCustomerIds.delete(Number(row.customer_id));
+          saveIdSet('monthlyCustomerIds', state.selectedMonthlyCustomerIds);
+          updateMonthlySelectionSummary();
+        });
         const checkCell=document.createElement('td'); checkCell.className='center'; checkCell.append(check);
-        const action=document.createElement('button'); action.type='button'; action.textContent='請求書作成'; action.disabled=!can.invoiceCreate; action.addEventListener('click',()=>createMonthlyInvoice(row));
+        const action=document.createElement('button'); action.type='button'; action.textContent='請求計算'; action.disabled=!can.invoiceCreate; action.addEventListener('click',()=>createMonthlyInvoice(row));
         const actionCell=document.createElement('td'); actionCell.append(action);
         const target = `${row.count}件 / ${row.period_start} - ${row.period_end}`;
         tr.append(checkCell, cell(closingLabel(row.closing_day)), cell(row.customer_name), cell(target), cell(yen(row.previous_balance_amount),'num'), actionCell);
         return tr;
       }));
-      document.querySelector('#monthly-count').textContent = `${rows.length}件`;
+      updateMonthlySelectionSummary();
       document.querySelector('#monthly-recent').replaceChildren(...(invoiceData.invoices || []).map(invoice => {
         const tr=document.createElement('tr'); tr.append(cell(invoice.invoice_number), cell(invoice.customer_name), cell(yen(invoice.total_amount),'num')); return tr;
       }));
@@ -523,17 +690,54 @@
     async function createMonthlyInvoice(row) {
       if(!can.invoiceCreate) return;
       try {
-        await api('/api/v1/billing/closing-invoices',{method:'POST',body:JSON.stringify({customer_id:Number(row.customer_id),closing_date:row.closing_date,due_date:document.querySelector('#monthly-due-date').value || null,note:document.querySelector('#monthly-note').value || null,reason:'月次請求作成画面から締め請求書を作成'})});
-        message('#monthly-msg','請求書を作成しました。'); await loadMonthly();
+        await api('/api/v1/billing/closing-invoices',{method:'POST',body:JSON.stringify({customer_id:Number(row.customer_id),closing_date:row.closing_date,due_date:common.dueDate() || null,note:document.querySelector('#monthly-note').value || null,reason:'月次請求計算画面から締め請求データを作成'})});
+        message('#monthly-msg','請求計算が完了しました。請求書確定画面で確認してください。'); await loadMonthly();
       } catch(error) { message('#monthly-msg',error.message,true); }
     }
+    async function createSelectedMonthlyInvoices(){
+      if(!can.invoiceCreate) return;
+      const selectedIds = [...(state.selectedMonthlyCustomerIds || new Set())].map(Number);
+      const rows = (state.monthlyRows || []).filter(row => selectedIds.includes(Number(row.customer_id)));
+      if(rows.length === 0) return message('#monthly-msg','請求計算対象を選択してください。',true);
+      for(const row of rows) await createMonthlyInvoice(row);
+    }
+    function setMonthlyVisibleSelection(checked){
+      state.selectedMonthlyCustomerIds ||= new Set();
+      (state.monthlyRows || []).forEach(row => {
+        const id = Number(row.customer_id);
+        checked ? state.selectedMonthlyCustomerIds.add(id) : state.selectedMonthlyCustomerIds.delete(id);
+      });
+      saveIdSet('monthlyCustomerIds', state.selectedMonthlyCustomerIds);
+      document.querySelectorAll('#monthly-list input[type="checkbox"]').forEach(check => { check.checked = checked; });
+      updateMonthlySelectionSummary();
+    }
+    function updateMonthlySelectionSummary(){
+      const visibleIds = new Set((state.monthlyRows || []).map(row=>Number(row.customer_id)));
+      const visibleSelected = [...(state.selectedMonthlyCustomerIds || new Set())].filter(id=>visibleIds.has(id)).length;
+      const totalSelected = (state.selectedMonthlyCustomerIds || new Set()).size;
+      const visibleCount = state.monthlyRows?.length || 0;
+      const summary = `表示中 ${visibleCount}件 / 選択中 ${totalSelected}件（表示中 ${visibleSelected}件）`;
+      document.querySelector('#monthly-count').textContent = summary;
+      const footerSummary = document.querySelector('#monthly-selection-summary');
+      if(footerSummary) footerSummary.textContent = `${summary} / 処理対象: 表示中の選択済み取引先`;
+      const selectAll = document.querySelector('#monthly-select-all');
+      if(selectAll){
+        selectAll.checked = visibleCount > 0 && visibleSelected === visibleCount;
+        selectAll.indeterminate = visibleSelected > 0 && visibleSelected < visibleCount;
+        selectAll.disabled = visibleCount === 0;
+      }
+    }
     async function loadSpotInvoices() {
-      const params = qs({ customer_id:'', billing_target_from:document.querySelector('#spot-from').value, billing_target_to:document.querySelector('#spot-to').value });
+      markSearchClean();
+      const period = broadMonthlyPeriod(common.month());
+      const params = qs({ customer_id:'', billing_target_from:period.from, billing_target_to:period.to });
       const data = await api(`/api/v1/billing/billable-shipments?${params}`);
-      const keyword = document.querySelector('#spot-customer').value.trim();
+      const keyword = common.customer();
+      const selectedClosingDay = common.closingDay();
       const shipments = (data.shipments || []).filter(shipment => {
         if((shipment.billing_method || '') !== 'per_shipment') return false;
         if(keyword && !(shipment.customer_name || '').includes(keyword)) return false;
+        if(selectedClosingDay && closingKey(shipment.closing_day) !== selectedClosingDay) return false;
         return true;
       });
       state.spotShipments = shipments;
@@ -561,6 +765,7 @@
         check.addEventListener('click',event=>event.stopPropagation());
         check.addEventListener('change',()=>{
           group.shipments.forEach(shipment=>{ check.checked ? state.selectedSpotShipmentIds.add(shipment.id) : state.selectedSpotShipmentIds.delete(shipment.id); });
+          saveIdSet('spotShipmentIds', state.selectedSpotShipmentIds);
           updateSpotSelectionSummary();
           renderSpotInvoices();
         });
@@ -579,13 +784,14 @@
             childCheck.addEventListener('click',event=>event.stopPropagation());
             childCheck.addEventListener('change',()=>{
               childCheck.checked ? state.selectedSpotShipmentIds.add(shipment.id) : state.selectedSpotShipmentIds.delete(shipment.id);
+              saveIdSet('spotShipmentIds', state.selectedSpotShipmentIds);
               updateSpotSelectionSummary();
               renderSpotInvoices();
             });
             const childCheckCell=document.createElement('td'); childCheckCell.className='center'; childCheckCell.append(childCheck);
             const action=document.createElement('button');
             action.type='button';
-            action.textContent='請求書作成';
+            action.textContent='請求計算';
             action.disabled=!can.invoiceCreate;
             action.addEventListener('click',event=>{ event.stopPropagation(); createSpotInvoice(shipment); });
             const actionCell=document.createElement('td'); actionCell.append(action);
@@ -614,7 +820,7 @@
         detailRow('請求方式', '都度請求'),
         detailRow('出荷番号', shipment.document_number),
         detailRow('出荷日', shipment.billing_target_date || ''),
-        detailRow('前回未入金', yen(shipment.previous_balance_amount || 0))
+        detailRow('前回請求額', yen(shipment.previous_balance_amount || 0))
       );
     }
     function clearSpotShipmentDetail(){
@@ -626,8 +832,9 @@
       if(!can.invoiceCreate) return;
       try {
         const shipmentDate = shipment.billing_target_date || document.querySelector('#spot-invoice-date').value;
-        await api('/api/v1/billing/invoices',{method:'POST',body:JSON.stringify({customer_id:Number(shipment.customer_id),invoice_date:document.querySelector('#spot-invoice-date').value,billing_period_start:shipmentDate,billing_period_end:shipmentDate,due_date:document.querySelector('#spot-due-date').value || null,note:document.querySelector('#spot-note').value || null,shipment_header_ids:[Number(shipment.id)],reason:'都度請求作成画面から請求書を作成'})});
+        await api('/api/v1/billing/invoices',{method:'POST',body:JSON.stringify({customer_id:Number(shipment.customer_id),invoice_date:document.querySelector('#spot-invoice-date').value,billing_period_start:shipmentDate,billing_period_end:shipmentDate,due_date:common.dueDate() || null,note:document.querySelector('#spot-note').value || null,shipment_header_ids:[Number(shipment.id)],reason:'都度請求計算画面から請求データを作成'})});
         state.selectedSpotShipmentIds?.delete(shipment.id);
+        saveIdSet('spotShipmentIds', state.selectedSpotShipmentIds || new Set());
         message('#spot-msg','請求書を作成しました。');
         await loadSpotInvoices();
       } catch(error) { message('#spot-msg',error.message,true); }
@@ -640,7 +847,9 @@
       }
     }
     async function legacyLoadInvoices(page=1) {
-      const params = qs({ customer:document.querySelector('#invoice-customer').value.trim(), invoice_number:document.querySelector('#invoice-number').value.trim(), invoice_date_from:document.querySelector('#invoice-date-from').value, invoice_date_to:document.querySelector('#invoice-date-to').value, status:document.querySelector('#invoice-status').value, document_type:document.querySelector('#invoice-document-type').value, per_page:30, page });
+      markSearchClean();
+      const invoiceMonth = common.month();
+      const params = qs({ customer:common.customer(), invoice_number:document.querySelector('#invoice-number').value.trim(), invoice_date_from:invoiceMonth ? `${invoiceMonth}-01` : '', invoice_date_to:invoiceMonth ? monthEndForValue(invoiceMonth) : '', closing_day:common.closingDay(), due_date:common.dueDate(), status:document.querySelector('#invoice-status').value, document_type:document.querySelector('#invoice-document-type').value, per_page:listLimit, page:1 });
       const data = await api(`/api/v1/billing/invoices?${params}`);
       state.invoices = data.invoices || []; state.selectedInvoice = null;
       document.querySelector('#invoice-list').replaceChildren(...state.invoices.map(invoice => {
@@ -656,19 +865,20 @@
     function selectInvoice(invoice) { state.selectedInvoice=invoice; document.querySelectorAll('#invoice-list tr').forEach(row=>row.classList.toggle('selected', row.children[0]?.textContent===invoice.invoice_number)); renderInvoiceDetail(invoice); }
     function renderInvoiceDetail(invoice) {
       const box=document.querySelector('#invoice-detail'); const lines=document.querySelector('#invoice-lines'); const actions=document.querySelector('#invoice-actions');
+      if(!box || !lines || !actions) return;
       box.replaceChildren(); lines.replaceChildren(); actions.replaceChildren();
       if(!invoice){ box.innerHTML='<p class="muted">請求を選択してください。</p>'; return; }
-      const previousLabel = invoice.billing_method === 'per_shipment' ? '参考残高（請求額に含めない）' : '前回未入金';
-      box.append(detailRow('請求番号',invoice.invoice_number),detailRow('取引先',invoice.customer_name),detailRow('状態',labels[invoice.status] || invoice.status),detailRow(previousLabel,yen(invoice.previous_balance_amount)),detailRow('請求へ繰越',yen(invoice.carried_forward_amount)),detailRow('期間内入金',yen(invoice.period_payment_amount)),detailRow('今回売上',yen(invoice.current_sales_amount)),detailRow('消費税',yen(invoice.current_tax_amount)),detailRow('今回請求額',yen(invoice.total_amount)),detailRow('支払依頼額',yen(invoice.payment_request_amount || invoice.total_amount)));
+      const previousLabel = invoice.billing_method === 'per_shipment' ? '前回請求額（都度請求には含めない）' : '前回請求額';
+      box.append(detailRow('請求番号',invoice.invoice_number),detailRow('取引先',invoice.customer_name),detailRow('状態',labels[invoice.status] || invoice.status),detailRow(previousLabel,yen(invoice.previous_balance_amount)),detailRow('繰越額',yen(invoice.carried_forward_amount)),detailRow('期間内入金',yen(invoice.period_payment_amount)),detailRow('今回売上',yen(invoice.current_sales_amount)),detailRow('消費税',yen(invoice.current_tax_amount)),detailRow('今回請求額',yen(invoice.total_amount)),detailRow('支払依頼額',yen(invoice.payment_request_amount || invoice.total_amount)));
       lines.replaceChildren(...(invoice.lines || []).map(line => { const tr=document.createElement('tr'); tr.append(cell(line.product_name),cell(line.quantity_display || line.quantity,'num'),cell(yen(line.total_amount),'num')); return tr; }));
-      if(invoice.status === 'draft' && can.invoiceConfirm){ const b=document.createElement('button'); b.className='primary'; b.textContent='請求書を発行'; b.onclick=()=>confirmInvoice(invoice); actions.append(b); }
+      if(invoice.status === 'draft' && can.invoiceConfirm){ const b=document.createElement('button'); b.className='primary'; b.textContent='請求書を確定'; b.onclick=()=>confirmInvoice(invoice); actions.append(b); }
       if(invoice.status === 'draft' && can.invoiceCancel){ const b=document.createElement('button'); b.className='danger'; b.textContent='請求を取消'; b.onclick=()=>cancelInvoice(invoice); actions.append(b); }
       if(invoice.status === 'confirmed' && invoice.payment_schedule_id){ actions.append(detailRow('入金予定', labels[invoice.payment_schedule_status] || invoice.payment_schedule_status || '作成済み')); }
       if(invoice.status === 'confirmed' && !invoice.payment_schedule_id && can.scheduleCreate){ const b=document.createElement('button'); b.textContent='入金予定を作成'; b.onclick=()=>createSchedule(invoice); actions.append(b); }
     }
-    async function confirmInvoice(invoice){ try{ await api(`/api/v1/billing/invoices/${invoice.id}/confirm`,{method:'POST',body:JSON.stringify({reason:'請求一覧画面から請求書発行'})}); await loadInvoices(state.page); }catch(error){ alert(error.message); } }
+    async function confirmInvoice(invoice){ try{ await api(`/api/v1/billing/invoices/${invoice.id}/confirm`,{method:'POST',body:JSON.stringify({reason:'請求書確定画面から請求書確定'})}); await loadInvoices(state.page); }catch(error){ alert(error.message); } }
     async function cancelInvoice(invoice){ const reason=prompt('請求を取り消す理由を入力してください。'); if(reason===null) return; if(!reason.trim()) return alert('取消理由を入力してください。'); try{ await api(`/api/v1/billing/invoices/${invoice.id}/cancel`,{method:'POST',body:JSON.stringify({reason:reason.trim()})}); await loadInvoices(state.page); }catch(error){ alert(error.message); } }
-    async function createSchedule(invoice){ if(invoice.payment_schedule_id) return alert('この請求には入金予定が作成済みです。'); try{ await api('/api/v1/billing/payment-schedules',{method:'POST',body:JSON.stringify({invoice_header_id:invoice.id,reason:'請求一覧画面から入金予定を作成'})}); await loadInvoices(state.page); }catch(error){ alert(error.message); } }
+    async function createSchedule(invoice){ if(invoice.payment_schedule_id) return alert('この請求には入金予定が作成済みです。'); try{ await api('/api/v1/billing/payment-schedules',{method:'POST',body:JSON.stringify({invoice_header_id:invoice.id,reason:'請求書確定画面から入金予定を作成'})}); await loadInvoices(state.page); }catch(error){ alert(error.message); } }
 
     const monthEndForValue = value => {
       const [year, month] = value.split('-').map(Number);
@@ -679,6 +889,10 @@
     const invoiceStepDone = (invoice, mode) => mode === 'issue' ? invoice.status === 'confirmed' : Boolean(invoice.payment_schedule_id);
     const invoiceSelectionSet = mode => mode === 'issue' ? state.selectedIssueInvoiceIds : state.selectedScheduleInvoiceIds;
     const canSelectInvoiceFor = (invoice, mode) => mode === 'issue' ? canIssueInvoiceFor(invoice) : canCreateScheduleFor(invoice);
+    const saveInvoiceSelections = () => {
+      saveIdSet('invoiceIssueIds', state.selectedIssueInvoiceIds || new Set());
+      saveIdSet('invoiceScheduleIds', state.selectedScheduleInvoiceIds || new Set());
+    };
     function emptyInvoiceCheckCell(){
       const td=document.createElement('td');
       td.className='center';
@@ -695,6 +909,7 @@
       check.addEventListener('click',event=>event.stopPropagation());
       check.addEventListener('change',()=>{
         check.checked ? selectedSet.add(invoice.id) : selectedSet.delete(invoice.id);
+        saveInvoiceSelections();
         updateInvoiceSelectionSummary();
         renderInvoiceList();
       });
@@ -707,25 +922,43 @@
       const targets=invoices.filter(invoice=>canSelectInvoiceFor(invoice, mode));
       const check=document.createElement('input');
       check.type='checkbox';
-      check.checked=invoices.length>0 && invoices.every(invoice=>invoiceStepDone(invoice, mode) || selectedSet?.has(invoice.id));
+      check.checked=targets.length>0 && targets.every(invoice=>selectedSet?.has(invoice.id));
       check.disabled=targets.length===0;
       check.addEventListener('click',event=>event.stopPropagation());
       check.addEventListener('change',()=>{
         targets.forEach(invoice=>{ check.checked ? selectedSet.add(invoice.id) : selectedSet.delete(invoice.id); });
+        saveInvoiceSelections();
         updateInvoiceSelectionSummary();
         renderInvoiceList();
       });
       td.append(check);
       return td;
     }
+    function invoiceScheduleStatusCell(invoice){
+      const td=emptyInvoiceCheckCell();
+      const done=Boolean(invoice.payment_schedule_id);
+      const span=document.createElement('span');
+      span.className=`badge ${done ? 'success' : 'schedule-missing'}`;
+      span.textContent=done ? '済' : '未';
+      td.append(span);
+      return td;
+    }
+    function invoiceGroupScheduleStatusCell(invoices){
+      const td=emptyInvoiceCheckCell();
+      const missing=invoices.filter(invoice=>!invoice.payment_schedule_id).length;
+      const span=document.createElement('span');
+      span.className=`badge ${missing ? 'schedule-missing' : 'success'}`;
+      span.textContent=missing ? `未 ${missing}件` : '済';
+      td.append(span);
+      return td;
+    }
     async function loadInvoices(page=1) {
-      const invoiceMonth = document.querySelector('#invoice-month').value;
-      const params = qs({ customer:document.querySelector('#invoice-customer').value.trim(), invoice_number:document.querySelector('#invoice-number').value.trim(), invoice_date_from:invoiceMonth ? `${invoiceMonth}-01` : '', invoice_date_to:invoiceMonth ? monthEndForValue(invoiceMonth) : '', status:document.querySelector('#invoice-status').value, document_type:document.querySelector('#invoice-document-type').value, per_page:30, page });
+      markSearchClean();
+      const invoiceMonth = common.month();
+      const params = qs({ customer:common.customer(), invoice_number:document.querySelector('#invoice-number').value.trim(), invoice_date_from:invoiceMonth ? `${invoiceMonth}-01` : '', invoice_date_to:invoiceMonth ? monthEndForValue(invoiceMonth) : '', closing_day:common.closingDay(), due_date:common.dueDate(), status:document.querySelector('#invoice-status').value, document_type:document.querySelector('#invoice-document-type').value, per_page:listLimit, page:1 });
       const data = await api(`/api/v1/billing/invoices?${params}`);
       state.invoices = data.invoices || [];
       state.selectedInvoice = null;
-      state.selectedIssueInvoiceIds = new Set();
-      state.selectedScheduleInvoiceIds = new Set();
       state.expandedInvoiceGroup = null;
       state.selectedShipmentKey = null;
       clearInvoiceShipmentDetail();
@@ -752,7 +985,7 @@
         const invoiceNumbers=[...new Set(invoices.map(invoice=>invoice.invoice_number).filter(Boolean))].join(', ');
         const total=invoices.reduce((sum,invoice)=>sum+Number(invoice.total_amount || 0),0);
         groupRow.classList.toggle('selected', isMonthlyGroup && state.selectedShipmentKey === `invoice-group:${firstInvoice?.id}`);
-        groupRow.append(invoiceGroupCheckCell(invoices, 'issue'), invoiceGroupCheckCell(invoices, 'schedule'), cell(group.customer_name || ''), cell(group.method), cell(isMonthlyGroup ? invoiceNumbers : `${invoices.length}件`), cell(''), cell(isMonthlyGroup && invoices.length === 1 ? firstInvoice.invoice_date : '', 'invoice-date-col'), cell(yen(total),'num invoice-total-col'));
+        groupRow.append(invoiceGroupCheckCell(invoices, 'issue'), invoiceGroupScheduleStatusCell(invoices), cell(group.customer_name || ''), cell(group.method), cell(isMonthlyGroup ? invoiceNumbers : `${invoices.length}件`), cell(''), cell(isMonthlyGroup && invoices.length === 1 ? firstInvoice.invoice_date : '', 'invoice-date-col'), cell(yen(total),'num invoice-total-col'));
         groupRow.addEventListener('click',()=>{
           const nextGroup = state.expandedInvoiceGroup === group.key ? null : group.key;
           if(nextGroup !== state.expandedInvoiceGroup){ clearInvoiceShipmentDetail(); }
@@ -784,10 +1017,10 @@
         const total=lines.reduce((sum,line)=>sum+Number(line.total_amount || 0),0);
         const date=lines.find(line=>line.shipment_document_date)?.shipment_document_date || invoice.invoice_date || '';
         const invoiceNumber = invoice.billing_method === 'per_shipment' ? invoice.invoice_number : '';
-        const shipmentLabel = invoice.billing_method === 'per_shipment' ? shipmentNumber : `　${shipmentNumber}`;
+        const shipmentLabel = invoice.billing_method === 'per_shipment' ? shipmentNumber : `縲${shipmentNumber}`;
         const issueCell = invoice.billing_method === 'per_shipment' ? invoiceCheckCell(invoice, 'issue') : emptyInvoiceCheckCell();
-        const scheduleCell = invoice.billing_method === 'per_shipment' ? invoiceCheckCell(invoice, 'schedule') : emptyInvoiceCheckCell();
-        shipmentRow.append(issueCell, scheduleCell, cell(''), cell(''), cell(invoiceNumber), cell(shipmentLabel), cell(date, 'invoice-date-col'), cell(yen(total),'num invoice-total-col'));
+        const scheduleCell = invoice.billing_method === 'per_shipment' ? invoiceScheduleStatusCell(invoice) : emptyInvoiceCheckCell();
+        shipmentRow.append(issueCell, scheduleCell, cell(''), cell(''), cell(invoiceNumber), cell(shipmentNumber), cell(date, 'invoice-date-col'), cell(yen(total),'num invoice-total-col'));
         shipmentRow.addEventListener('click',()=>{ state.selectedShipmentKey = shipmentKey; renderInvoiceList(); renderShipmentDetail(invoice, shipmentNumber, lines); });
         rows.push(shipmentRow);
       });
@@ -798,7 +1031,7 @@
       row.className='invoice-row';
       const key=`invoice:${invoice.id}`;
       row.classList.toggle('selected', state.selectedShipmentKey === key);
-      row.append(invoiceCheckCell(invoice, 'issue'), invoiceCheckCell(invoice, 'schedule'), cell(''), cell(''), cell(invoice.invoice_number), cell(''), cell(invoice.invoice_date, 'invoice-date-col'), cell(yen(invoice.total_amount),'num invoice-total-col'));
+      row.append(invoiceCheckCell(invoice, 'issue'), invoiceScheduleStatusCell(invoice), cell(''), cell(''), cell(invoice.invoice_number), cell(''), cell(invoice.invoice_date, 'invoice-date-col'), cell(yen(invoice.total_amount),'num invoice-total-col'));
       row.addEventListener('click',()=>{ state.selectedShipmentKey = key; renderInvoiceList(); renderInvoiceSummaryDetail(invoice); });
       return row;
     }
@@ -811,7 +1044,7 @@
       detail.append(detailRow('取引先',invoice.customer_name),detailRow('請求方式','締め請求'),detailRow('請求番号',invoice.invoice_number),detailRow('請求日',invoice.invoice_date),detailRow('状態',labels[invoice.status] || invoice.status),detailRow('税込合計',yen(invoice.total_amount)),detailRow('入金予定',invoiceScheduleText(invoice)));
       const actions=document.createElement('div');
       actions.className='actions left-actions';
-      if(invoice.status === 'draft' && can.invoiceConfirm){ const b=document.createElement('button'); b.className='primary'; b.textContent='請求書を発行'; b.onclick=()=>confirmInvoice(invoice); actions.append(b); }
+      if(invoice.status === 'draft' && can.invoiceConfirm){ const b=document.createElement('button'); b.className='primary'; b.textContent='請求書を確定'; b.onclick=()=>confirmInvoice(invoice); actions.append(b); }
       if(invoice.status === 'draft' && can.invoiceCancel){ const b=document.createElement('button'); b.className='danger'; b.textContent='請求を取消'; b.onclick=()=>cancelInvoice(invoice); actions.append(b); }
       if(canCreateScheduleFor(invoice) && can.scheduleCreate){ const b=document.createElement('button'); b.textContent='入金予定を作成'; b.onclick=()=>createSchedule(invoice); actions.append(b); }
       box.append(detail, actions);
@@ -823,13 +1056,13 @@
       const detail=document.createElement('div');
       detail.className='detail-list';
       detail.append(detailRow('取引先',invoice.customer_name),detailRow('請求方式',invoice.billing_method === 'per_shipment' ? '都度請求' : '締め請求'),detailRow('請求番号',invoice.invoice_number),detailRow('出荷番号',shipmentNumber),detailRow('出荷日',lines.find(line=>line.shipment_document_date)?.shipment_document_date || ''),detailRow('状態',labels[invoice.status] || invoice.status),detailRow('税込合計',yen(lines.reduce((sum,line)=>sum+Number(line.total_amount || 0),0))),detailRow('入金予定',invoiceScheduleText(invoice)));
-      if(invoice.billing_method === 'per_shipment' && Number(invoice.previous_balance_amount || 0) > 0){ detail.append(detailRow('参考残高（請求額に含めない）', yen(invoice.previous_balance_amount))); }
+      if(invoice.billing_method === 'per_shipment' && Number(invoice.previous_balance_amount || 0) > 0){ detail.append(detailRow('前回請求額（都度請求には含めない）', yen(invoice.previous_balance_amount))); }
       const actions=document.createElement('div');
       actions.className='actions left-actions';
-      if(invoice.billing_method === 'per_shipment' && invoice.status === 'draft' && can.invoiceConfirm){ const b=document.createElement('button'); b.className='primary'; b.textContent='請求書を発行'; b.onclick=()=>confirmInvoice(invoice); actions.append(b); }
+      if(invoice.billing_method === 'per_shipment' && invoice.status === 'draft' && can.invoiceConfirm){ const b=document.createElement('button'); b.className='primary'; b.textContent='請求書を確定'; b.onclick=()=>confirmInvoice(invoice); actions.append(b); }
       if(invoice.billing_method === 'per_shipment' && invoice.status === 'draft' && can.invoiceCancel){ const b=document.createElement('button'); b.className='danger'; b.textContent='請求を取消'; b.onclick=()=>cancelInvoice(invoice); actions.append(b); }
       if(invoice.billing_method === 'per_shipment' && canCreateScheduleFor(invoice) && can.scheduleCreate){ const b=document.createElement('button'); b.textContent='入金予定を作成'; b.onclick=()=>createSchedule(invoice); actions.append(b); }
-      if(invoice.billing_method !== 'per_shipment'){ actions.append(detailRow('請求書操作','上の請求書行で行います')); }
+      if(invoice.billing_method !== 'per_shipment'){ actions.append(detailRow('請求書操作','上の請求書行で行います。')); }
       const table=document.createElement('table');
       table.className='mini-table';
       table.innerHTML='<thead><tr><th>商品</th><th class="num">数量</th><th class="num">税込</th></tr></thead>';
@@ -846,13 +1079,10 @@
       const issueTargets = state.invoices.filter(invoice => state.selectedIssueInvoiceIds?.has(invoice.id)).filter(canIssueInvoiceFor);
       const scheduleTargets = state.invoices.filter(invoice => state.selectedScheduleInvoiceIds?.has(invoice.id)).filter(canCreateScheduleFor);
       const summary=document.querySelector('#invoice-selection-summary');
-      if(summary) summary.textContent=`請求書発行: ${issueTargets.length}件 / 入金予定作成: ${scheduleTargets.length}件`;
+      if(summary) summary.textContent=`請求書確定: ${issueTargets.length}件`;
       const issueButton=document.querySelector('#invoice-confirm-selected');
       if(issueButton) issueButton.disabled = issueTargets.length === 0;
-      const scheduleButton=document.querySelector('#invoice-create-schedules');
-      if(scheduleButton) scheduleButton.disabled = scheduleTargets.length === 0;
       updateInvoiceSelectAllControl('issue');
-      updateInvoiceSelectAllControl('schedule');
     }
     function updateInvoiceSelectAllControl(mode){
       const control=document.querySelector(mode === 'issue' ? '#invoice-issue-select-all' : '#invoice-schedule-select-all');
@@ -869,25 +1099,27 @@
       (state.invoices || []).filter(invoice=>canSelectInvoiceFor(invoice, mode)).forEach(invoice=>{
         checked ? selectedSet.add(invoice.id) : selectedSet.delete(invoice.id);
       });
+      saveInvoiceSelections();
       renderInvoiceList();
       updateInvoiceSelectionSummary();
     }
     async function confirmSelectedInvoices(){
       const targets = state.invoices.filter(invoice => state.selectedIssueInvoiceIds?.has(invoice.id)).filter(canIssueInvoiceFor);
-      if(targets.length === 0) return alert('請求書発行できる請求が選択されていません。');
+      if(targets.length === 0) return alert('請求書確定できる請求が選択されていません。');
       const issuedIds = new Set(targets.map(invoice=>invoice.id));
       const printWindow = window.open('about:blank', '_blank');
       try {
         for(const invoice of targets) {
-          await api(`/api/v1/billing/invoices/${invoice.id}/confirm`,{method:'POST',body:JSON.stringify({reason:'請求一覧画面から選択分の請求書発行'})});
+          await api(`/api/v1/billing/invoices/${invoice.id}/confirm`,{method:'POST',body:JSON.stringify({reason:'請求書確定画面から選択分の請求書確定'})});
         }
         if(printWindow) {
           printWindow.location.href = invoiceBatchPrintUrl([...issuedIds]);
         } else {
-          alert('請求書を発行しました。ブラウザでポップアップがブロックされたため、請求書印刷画面から再印刷してください。');
+          alert('請求書を確定しました。ブラウザでポップアップがブロックされたため、請求書印刷画面から印刷してください。');
         }
         await loadInvoices(state.page);
-        state.selectedScheduleInvoiceIds = new Set(state.invoices.filter(invoice=>issuedIds.has(invoice.id) && canCreateScheduleFor(invoice)).map(invoice=>invoice.id));
+        issuedIds.forEach(id=>state.selectedIssueInvoiceIds.delete(id));
+        saveInvoiceSelections();
         renderInvoiceList();
         updateInvoiceSelectionSummary();
       } catch(error) {
@@ -900,7 +1132,7 @@
       if(targets.length === 0) return alert('入金予定を作成できる請求が選択されていません。');
       try {
         for(const invoice of targets) {
-          await api('/api/v1/billing/payment-schedules',{method:'POST',body:JSON.stringify({invoice_header_id:invoice.id,reason:'請求一覧画面から選択分の入金予定を作成'})});
+          await api('/api/v1/billing/payment-schedules',{method:'POST',body:JSON.stringify({invoice_header_id:invoice.id,reason:'請求書確定画面から選択分の入金予定を作成'})});
         }
         await loadInvoices(state.page);
       } catch(error) {
@@ -909,21 +1141,23 @@
     }
 
     async function loadPrintableInvoices(page=1) {
-      const invoiceMonth = document.querySelector('#print-invoice-month').value;
+      markSearchClean();
+      const invoiceMonth = common.month();
       const params = qs({
-        customer:document.querySelector('#print-invoice-customer').value.trim(),
+        customer:common.customer(),
         invoice_number:document.querySelector('#print-invoice-number').value.trim(),
         invoice_date_from:invoiceMonth ? `${invoiceMonth}-01` : '',
         invoice_date_to:invoiceMonth ? monthEndForValue(invoiceMonth) : '',
+        closing_day:common.closingDay(),
+        due_date:common.dueDate(),
         status:'confirmed',
         document_type:document.querySelector('#print-invoice-type').value,
-        per_page:30,
-        page
+        per_page:listLimit,
+        page:1
       });
       const data = await api(`/api/v1/billing/invoices?${params}`);
       state.printInvoices = data.invoices || [];
       state.selectedPrintInvoice = null;
-      state.selectedPrintInvoiceIds = new Set();
       document.querySelector('#print-invoice-list').replaceChildren(...state.printInvoices.map(invoice => {
         const tr=document.createElement('tr');
         tr.addEventListener('click',()=>selectPrintableInvoice(invoice));
@@ -934,6 +1168,7 @@
         check.addEventListener('click',event=>event.stopPropagation());
         check.addEventListener('change',()=>{
           check.checked ? state.selectedPrintInvoiceIds.add(invoice.id) : state.selectedPrintInvoiceIds.delete(invoice.id);
+          saveIdSet('printInvoiceIds', state.selectedPrintInvoiceIds);
           updatePrintableInvoiceSelectionSummary();
         });
         const checkCell=document.createElement('td');
@@ -945,7 +1180,9 @@
         action.addEventListener('click',event=>{ event.stopPropagation(); window.open(`/billing/invoices/${invoice.id}/print`, '_blank'); });
         const actionCell=document.createElement('td');
         actionCell.append(action);
-        tr.append(checkCell, cell(invoice.invoice_number), cell(invoice.customer_name), cell(method), cell(invoice.invoice_date, 'invoice-date-col'), cell(yen(invoice.total_amount),'num invoice-total-col'), actionCell);
+        const statusCell=document.createElement('td');
+        statusCell.append(badge(invoice.status));
+        tr.append(checkCell, cell(invoice.invoice_number), cell(invoice.customer_name), cell(method), statusCell, cell(invoice.invoice_date, 'invoice-date-col'), cell(yen(invoice.total_amount),'num invoice-total-col'), actionCell);
         return tr;
       }));
       document.querySelector('#print-invoice-count').textContent = `${data.pagination?.total || state.printInvoices.length}件`;
@@ -970,7 +1207,7 @@
         detailRow('請求方式',invoice.billing_method === 'per_shipment' ? '都度請求' : '締め請求'),
         detailRow('請求番号',invoice.invoice_number),
         detailRow('請求日',invoice.invoice_date),
-        detailRow('支払期日',invoice.due_date || ''),
+        detailRow('支払期限日',invoice.due_date || ''),
         detailRow('税込合計',yen(invoice.total_amount))
       );
       const actions=document.createElement('div');
@@ -986,7 +1223,7 @@
     function updatePrintableInvoiceSelectionSummary(){
       const selectedCount = state.selectedPrintInvoiceIds?.size || 0;
       const summary=document.querySelector('#print-invoice-selection-summary');
-      if(summary) summary.textContent=`再印刷選択: ${selectedCount}件`;
+      if(summary) summary.textContent=`印刷選択 ${selectedCount}件`;
       const button=document.querySelector('#print-invoice-selected');
       if(button) button.disabled = selectedCount === 0;
       const selectAll=document.querySelector('#print-invoice-select-all');
@@ -1003,18 +1240,57 @@
       (state.printInvoices || []).forEach(invoice=>{
         checked ? state.selectedPrintInvoiceIds.add(invoice.id) : state.selectedPrintInvoiceIds.delete(invoice.id);
       });
+      saveIdSet('printInvoiceIds', state.selectedPrintInvoiceIds);
       document.querySelectorAll('#print-invoice-list input[type="checkbox"]').forEach(input=>{ input.checked = checked; });
       updatePrintableInvoiceSelectionSummary();
     }
     function printSelectedPrintableInvoices(){
       const ids=[...(state.selectedPrintInvoiceIds || new Set())];
-      if(ids.length === 0) return alert('再印刷する請求書を選択してください。');
+      if(ids.length === 0) return alert('印刷する請求書を選択してください。');
       window.open(invoiceBatchPrintUrl(ids), '_blank');
+      state.selectedPrintInvoiceIds = new Set();
+      saveIdSet('printInvoiceIds', state.selectedPrintInvoiceIds);
+      updatePrintableInvoiceSelectionSummary();
     }
 
+    async function searchPaymentCustomers(){
+      const box=document.querySelector('#payment-customer-results');
+      if(!box) return;
+      const q=document.querySelector('#payment-customer-search').value.trim();
+      if(!q) { box.replaceChildren(detailRow('検索','取引先名またはコードを入力してください。')); return; }
+      document.querySelector('#payment-customer-search-button')?.classList.remove('search-attention');
+      box.textContent='検索中...';
+      try {
+        const data=await api(`/api/v1/masters/customers?${qs({ q, active:'active', per_page:20 })}`);
+        const customers=data.customers || [];
+        if(customers.length === 0){ box.replaceChildren(detailRow('検索結果','該当する取引先がありません。')); return; }
+        box.replaceChildren(...customers.map(customer=>{
+          const button=document.createElement('button');
+          button.type='button';
+          button.textContent=`${customer.customer_code || ''} ${customer.name || customer.short_name || ''}`.trim();
+          button.addEventListener('click',()=>selectPaymentCustomer(customer));
+          return button;
+        }));
+      } catch(error) {
+        box.replaceChildren(detailRow('検索エラー', error.message));
+      }
+    }
+    async function selectPaymentCustomer(customer){
+      state.selectedPaymentCustomer = { id:Number(customer.id), name:customer.name || customer.short_name || '', customer_code:customer.customer_code || '' };
+      localStorage.setItem('billingSelectedPaymentCustomer', JSON.stringify(state.selectedPaymentCustomer));
+      document.querySelector('#payment-target').textContent=`選択中: ${state.selectedPaymentCustomer.name}`;
+      document.querySelector('#payment-customer-search').value=state.selectedPaymentCustomer.name;
+      saveBillingSearchState();
+      document.querySelector('#payment-customer-results').replaceChildren();
+      await loadSchedules(1);
+      renderAllocationPreview();
+    }
     async function loadSchedules(page=1) {
-      const scheduleMonth = document.querySelector('#schedule-month').value;
-      const params = qs({ customer:document.querySelector('#schedule-customer').value.trim(), expected_payment_from:scheduleMonth ? `${scheduleMonth}-01` : '', expected_payment_to:scheduleMonth ? monthEndForValue(scheduleMonth) : '', status:document.querySelector('#schedule-status').value, only_outstanding:document.querySelector('#schedule-outstanding-only').checked ? 1 : '', per_page:30, page });
+      markSearchClean();
+      const invoiceMonth = common.month();
+      const dueDate = common.dueDate();
+      const customerFilter = screen === 'payment-entry' && state.selectedPaymentCustomer ? state.selectedPaymentCustomer.name : common.customer();
+      const params = qs({ customer:customerFilter, invoice_date_from:invoiceMonth ? `${invoiceMonth}-01` : '', invoice_date_to:invoiceMonth ? monthEndForValue(invoiceMonth) : '', expected_payment_from:dueDate, expected_payment_to:dueDate, closing_day:common.closingDay(), status:document.querySelector('#schedule-status').value, only_outstanding:document.querySelector('#schedule-outstanding-only').checked ? 1 : '', per_page:listLimit, page:1 });
       const data = await api(`/api/v1/billing/payment-schedules?${params}`);
       state.schedules = data.payment_schedules || []; state.selectedSchedule = null;
       document.querySelector('#schedule-list').replaceChildren(...state.schedules.map(schedule => {
@@ -1030,6 +1306,11 @@
     function selectSchedule(schedule){ state.selectedSchedule=schedule; document.querySelectorAll('#schedule-list tr').forEach(row=>row.classList.toggle('selected', row.children[0]?.textContent===schedule.invoice_number)); renderPaymentTarget(schedule); }
     function renderPaymentTarget(schedule){
       const target=document.querySelector('#payment-target'); if(!target) return;
+      if(screen === 'payment-entry'){
+        target.textContent = state.selectedPaymentCustomer ? `選択中: ${state.selectedPaymentCustomer.name}` : '取引先を選択してください。';
+        renderAllocationPreview();
+        return;
+      }
       const form=document.querySelector('#payment-form');
       if(!schedule){ target.textContent='入金予定を選択してください。'; if(form) form.hidden=true; document.querySelector('#allocation-preview').replaceChildren(); return; }
       if(form) form.hidden=false;
@@ -1038,7 +1319,19 @@
       renderAllocationPreview();
     }
     function renderAllocationPreview(){
-      const box=document.querySelector('#allocation-preview'); if(!box || !state.selectedSchedule) return;
+      const box=document.querySelector('#allocation-preview'); if(!box) return;
+      if(screen === 'payment-entry'){
+        if(!state.selectedPaymentCustomer){ box.replaceChildren(detailRow('消込案','取引先を選択してください。')); return; }
+        const amount=Number(document.querySelector('#payment-amount')?.value || 0);
+        let rest=amount;
+        const targets = (state.schedules || []).filter(row => row.customer_id === state.selectedPaymentCustomer.id && Number(row.outstanding_amount) > 0).sort((a,b)=>(a.expected_payment_date || '').localeCompare(b.expected_payment_date || '') || a.id-b.id);
+        const rows = targets.map(row => { const alloc=Math.min(rest, Number(row.outstanding_amount || 0)); rest-=alloc; return detailRow(`${row.invoice_number} / ${row.expected_payment_date || ''}`, yen(alloc)); }).filter((_,i)=>i < 12);
+        if(rows.length === 0) rows.push(detailRow('消込対象','未回収請求はありません。全額を未消込入金として保持します。'));
+        if(rest > 0) rows.push(detailRow('未消込予定', yen(rest)));
+        box.replaceChildren(...rows);
+        return;
+      }
+      if(!state.selectedSchedule) return;
       const amount=Number(document.querySelector('#payment-amount').value || 0);
       const mode=document.querySelector('#payment-apply-mode').value;
       let rest=amount;
@@ -1049,15 +1342,19 @@
     }
     async function registerPayment(event){
       event.preventDefault();
-      if(!state.selectedSchedule) return message('#payment-msg','入金予定を選択してください。',true);
-      const mode=document.querySelector('#payment-apply-mode').value;
-      const payload={ amount:amountInputValue(document.querySelector('#payment-amount').value), payment_date:document.querySelector('#payment-date').value, payment_method:'bank_transfer', reference_number:document.querySelector('#payment-reference').value || null, reason:'入金確認画面から入金登録' };
+      if(screen === 'payment-entry' && !state.selectedPaymentCustomer) return message('#payment-msg','取引先を選択してください。',true);
+      if(screen !== 'payment-entry' && !state.selectedSchedule) return message('#payment-msg','入金予定を選択してください。',true);
+      const mode=document.querySelector('#payment-apply-mode')?.value || 'customer';
+      const payload={ amount:amountInputValue(document.querySelector('#payment-amount').value), payment_date:document.querySelector('#payment-date').value, payment_method:'bank_transfer', reference_number:document.querySelector('#payment-reference').value || null, note:document.querySelector('#payment-note')?.value || null, reason:'入金登録・消込画面から入金登録' };
+      if(screen === 'payment-entry') payload.customer_id = state.selectedPaymentCustomer.id;
+      else
       if(mode === 'schedule') payload.payment_schedule_id = state.selectedSchedule.id; else payload.customer_id = state.selectedSchedule.customer_id;
-      try{ await api('/api/v1/billing/payments',{method:'POST',body:JSON.stringify(payload)}); message('#payment-msg','入金を登録しました。'); await loadSchedules(state.page); }catch(error){ message('#payment-msg',error.message,true); }
+      try{ await api('/api/v1/billing/payments',{method:'POST',body:JSON.stringify(payload)}); message('#payment-msg','入金を登録しました。'); document.querySelector('#payment-amount').value=''; await loadSchedules(state.page); }catch(error){ message('#payment-msg',error.message,true); }
     }
 
     async function loadPaymentReviews(page=1){
-      const params = qs({ customer:document.querySelector('#review-customer').value.trim(), payment_date_from:document.querySelector('#review-from').value, payment_date_to:document.querySelector('#review-to').value, status:document.querySelector('#review-status').value, has_unapplied:document.querySelector('#review-unapplied-only').checked ? 1 : '', per_page:30, page });
+      markSearchClean();
+      const params = qs({ customer:common.customer(), payment_date_from:document.querySelector('#review-from').value, payment_date_to:document.querySelector('#review-to').value, status:document.querySelector('#review-status').value, has_unapplied:document.querySelector('#review-unapplied-only').checked ? 1 : '', per_page:listLimit, page:1 });
       const data=await api(`/api/v1/billing/payments?${params}`);
       state.payments=data.payments || []; state.selectedPayment=null;
       document.querySelector('#payment-review-list').replaceChildren(...state.payments.map(payment => {
@@ -1075,7 +1372,7 @@
       const box=document.querySelector('#payment-review-detail'); const actions=document.querySelector('#payment-review-actions'); box.replaceChildren(); actions.replaceChildren();
       if(!payment){ box.innerHTML='<p class="muted">入金を選択してください。</p>'; return; }
       const reason=paymentReviewReason(payment);
-      box.append(detailRow('取引先',payment.customer_name),detailRow('入金日',payment.payment_date),detailRow('状態',labels[payment.status] || payment.status),detailRow('確認理由',reason?.label || ''),detailRow('入金額',yen(payment.amount)),detailRow('消込済額',yen(paymentAllocatedAmount(payment))),detailRow('未充当額',yen(payment.unapplied_amount)),detailRow('参照番号',payment.reference_number || ''));
+      box.append(detailRow('取引先',payment.customer_name),detailRow('入金日',payment.payment_date),detailRow('状態',labels[payment.status] || payment.status),detailRow('確認理由',reason?.label || ''),detailRow('入金額',yen(payment.amount)),detailRow('消込済額',yen(paymentAllocatedAmount(payment))),detailRow('未充当額',yen(payment.unapplied_amount)),detailRow('参考番号',payment.reference_number || ''));
       (payment.allocations || []).forEach(allocation => box.append(detailRow(`消込 ${allocation.invoice_number || allocation.invoice_header_id}`, yen(allocation.allocated_amount))));
       if(payment.cancelled_reason) box.append(detailRow('取消理由', payment.cancelled_reason));
       if(payment.status !== 'cancelled' && !payment.is_legacy_history && can.paymentCancel){ const b=document.createElement('button'); b.className='danger'; b.textContent='入金を取消'; b.onclick=()=>cancelPayment(payment); actions.append(b); }
@@ -1083,8 +1380,12 @@
     async function cancelPayment(payment){ const reason=prompt('入金を取り消す理由を入力してください。'); if(reason===null) return; if(!reason.trim()) return alert('取消理由を入力してください。'); try{ await api(`/api/v1/billing/payments/${payment.id}/cancel`,{method:'POST',body:JSON.stringify({reason:reason.trim()})}); await loadPaymentReviews(state.page); }catch(error){ alert(error.message); } }
 
     async function loadReceivables(){
-      const [receivableData, scheduleData] = await Promise.all([api('/api/v1/billing/receivables'), api('/api/v1/billing/payment-schedules?only_outstanding=1&per_page=200')]);
-      const keyword=document.querySelector('#ar-customer').value.trim(); const kind=document.querySelector('#ar-kind').value;
+      markSearchClean();
+      const invoiceMonth = common.month();
+      const dueDate = common.dueDate();
+      const scheduleParams = qs({ only_outstanding:1, per_page:200, customer:common.customer(), invoice_date_from:invoiceMonth ? `${invoiceMonth}-01` : '', invoice_date_to:invoiceMonth ? monthEndForValue(invoiceMonth) : '', expected_payment_from:dueDate, expected_payment_to:dueDate, closing_day:common.closingDay() });
+      const [receivableData, scheduleData] = await Promise.all([api('/api/v1/billing/receivables'), api(`/api/v1/billing/payment-schedules?${scheduleParams}`)]);
+      const keyword=common.customer(); const kind=document.querySelector('#ar-kind').value;
       state.receivables=(receivableData.receivable_balances || []).filter(row => (!keyword || (row.customer_name || '').includes(keyword)) && (kind !== 'outstanding' || Number(row.outstanding_amount) > 0));
       document.querySelector('#ar-list').replaceChildren(...state.receivables.map(row => { const tr=document.createElement('tr'); tr.append(cell(row.customer_name),cell(yen(row.scheduled_amount),'num'),cell(yen(row.received_amount),'num'),cell(yen(row.outstanding_amount),'num'),cell(String(row.open_schedule_count + row.partial_schedule_count),'num'),cell(String(row.closed_schedule_count),'num')); return tr; }));
       const schedules=(scheduleData.payment_schedules || []).filter(row => !keyword || (row.customer_name || '').includes(keyword));
@@ -1093,61 +1394,85 @@
       const now=new Date(iso(today)); let over30=0, over60=0;
       schedules.forEach(row => { const days=Math.floor((now - new Date(row.expected_payment_date)) / 86400000); if(days > 30) over30 += Number(row.outstanding_amount || 0); if(days > 60) over60 += Number(row.outstanding_amount || 0); });
       document.querySelector('#ar-total').textContent=yen(total); document.querySelector('#ar-open').textContent=String(openCount); document.querySelector('#ar-over30').textContent=yen(over30); document.querySelector('#ar-over60').textContent=yen(over60); document.querySelector('#ar-count').textContent=`${state.receivables.length}件`;
-      document.querySelector('#aging-list').replaceChildren(...schedules.map(row => { const days=Math.max(0, Math.floor((now - new Date(row.expected_payment_date)) / 86400000)); const tr=document.createElement('tr'); const statusCell=document.createElement('td'); statusCell.append(badge(row.status)); tr.append(cell(row.invoice_number),cell(row.customer_name),cell(row.expected_payment_date),statusCell,cell(yen(row.outstanding_amount),'num'),cell(`${days}日`,'num')); return tr; }));
+      document.querySelector('#aging-list').replaceChildren(...schedules.map(row => { const days=Math.max(0, Math.floor((now - new Date(row.expected_payment_date)) / 86400000)); const tr=document.createElement('tr'); const statusCell=document.createElement('td'); statusCell.append(badge(row.status)); tr.append(cell(row.invoice_number),cell(row.customer_name),cell(row.expected_payment_date),statusCell,cell(yen(row.outstanding_amount),'num'),cell(`${days}譌･`,'num')); return tr; }));
       document.querySelector('#aging-count').textContent=`${schedules.length}件`;
     }
 
     function init(){
-      if(screen === 'monthly-invoices'){
-        document.querySelector('#monthly-billing-month').value=iso(today).slice(0,7);
-        document.querySelector('#monthly-refresh').onclick=loadMonthly; document.querySelector('#monthly-customer').addEventListener('input',loadMonthly);
-        document.querySelector('#monthly-billing-month').addEventListener('change',loadMonthly);
-        document.querySelector('#monthly-closing-day').addEventListener('change',loadMonthly);
-        document.querySelector('#monthly-create-selected')?.addEventListener('click',async()=>{
-          const selections=[...document.querySelectorAll('#monthly-list input[type="checkbox"]:checked')].map(input=>input.dataset.customerId);
-          for(const item of selections) {
-            const row = (state.monthlyRows || []).find(candidate => String(candidate.customer_id) === String(item));
-            if(row) await createMonthlyInvoice(row);
-          }
-        });
+      restoreCommonSearch();
+      restoreBillingSearchState();
+      if(!document.querySelector('#common-billing-month').value) document.querySelector('#common-billing-month').value=defaultBillingMonth();
+      applyCommonSearchToUrl();
+      document.querySelectorAll('.tabs a,.workflow-tabs a,.app-sidebar__nav a[href^="/billing"]').forEach(link => {
+        link.addEventListener('click', () => { saveBillingSearchState(); applyCommonSearchToUrl(); });
+      });
+      document.querySelector('#common-search').onclick=reloadCurrentScreen;
+      document.querySelector('#common-customer').addEventListener('input',markSearchDirty);
+      document.querySelector('#common-billing-month').addEventListener('change',markSearchDirty);
+      document.querySelector('#common-closing-day').addEventListener('change',markSearchDirty);
+      document.querySelector('#common-due-date').addEventListener('change',markSearchDirty);
+      state.selectedMonthlyCustomerIds = loadIdSet('monthlyCustomerIds');
+      state.monthlySelectionRestored = state.selectedMonthlyCustomerIds.size > 0;
+      state.selectedSpotShipmentIds = loadIdSet('spotShipmentIds');
+      state.selectedIssueInvoiceIds = loadIdSet('invoiceIssueIds');
+      state.selectedScheduleInvoiceIds = loadIdSet('invoiceScheduleIds');
+      state.selectedPrintInvoiceIds = loadIdSet('printInvoiceIds');
+      if(screen === 'monthly-invoices' || screen === 'invoice-workflow'){
+        document.querySelector('#monthly-refresh').onclick=loadMonthly;
+        document.querySelector('#monthly-select-all')?.addEventListener('change',event=>setMonthlyVisibleSelection(event.target.checked));
+        document.querySelector('#monthly-create-selected')?.addEventListener('click',createSelectedMonthlyInvoices);
+        document.querySelector('#monthly-create-selected-footer')?.addEventListener('click',createSelectedMonthlyInvoices);
         loadMonthly();
       }
-      if(screen === 'spot-invoices'){
-        state.selectedSpotShipmentIds = new Set();
-        document.querySelector('#spot-from').value=monthStart();
-        document.querySelector('#spot-to').value=monthEnd();
-        document.querySelector('#spot-invoice-date').value=iso(today);
+      if(screen === 'spot-invoices' || screen === 'invoice-workflow'){
+        if(!document.querySelector('#spot-invoice-date').value) document.querySelector('#spot-invoice-date').value=iso(today);
         document.querySelector('#spot-refresh').onclick=loadSpotInvoices;
-        document.querySelector('#spot-customer').addEventListener('input',loadSpotInvoices);
-        document.querySelector('#spot-from').addEventListener('change',loadSpotInvoices);
-        document.querySelector('#spot-to').addEventListener('change',loadSpotInvoices);
         document.querySelector('#spot-create-selected')?.addEventListener('click',createSelectedSpotInvoices);
         loadSpotInvoices();
       }
-      if(screen === 'invoices'){
-        document.querySelector('#invoice-month').value=iso(today).slice(0,7);
-        document.querySelector('#invoice-search').onclick=()=>loadInvoices(1); document.querySelector('#invoice-prev').onclick=()=>state.page>1&&loadInvoices(state.page-1); document.querySelector('#invoice-next').onclick=()=>state.page<state.lastPage&&loadInvoices(state.page+1); document.querySelector('#invoice-issue-select-all')?.addEventListener('change',event=>toggleInvoiceSelectAll('issue', event.target.checked)); document.querySelector('#invoice-schedule-select-all')?.addEventListener('change',event=>toggleInvoiceSelectAll('schedule', event.target.checked)); document.querySelector('#invoice-confirm-selected')?.addEventListener('click',confirmSelectedInvoices); document.querySelector('#invoice-create-schedules')?.addEventListener('click',createSelectedSchedules); loadInvoices();
+      if(screen === 'invoices' || screen === 'invoice-workflow'){
+        document.querySelector('#invoice-search').onclick=()=>loadInvoices(1); document.querySelector('#invoice-issue-select-all')?.addEventListener('change',event=>toggleInvoiceSelectAll('issue', event.target.checked)); document.querySelector('#invoice-confirm-selected')?.addEventListener('click',confirmSelectedInvoices); loadInvoices();
+        document.querySelector('#invoice-number').addEventListener('input',markSearchDirty);
+        document.querySelector('#invoice-status').addEventListener('change',markSearchDirty);
+        document.querySelector('#invoice-document-type').addEventListener('change',markSearchDirty);
       }
       if(screen === 'invoice-print'){
-        document.querySelector('#print-invoice-month').value=iso(today).slice(0,7);
         document.querySelector('#print-invoice-search').onclick=()=>loadPrintableInvoices(1);
-        document.querySelector('#print-invoice-prev').onclick=()=>state.page>1&&loadPrintableInvoices(state.page-1);
-        document.querySelector('#print-invoice-next').onclick=()=>state.page<state.lastPage&&loadPrintableInvoices(state.page+1);
         document.querySelector('#print-invoice-select-all')?.addEventListener('change',togglePrintableInvoiceSelectAll);
         document.querySelector('#print-invoice-selected')?.addEventListener('click',printSelectedPrintableInvoices);
         loadPrintableInvoices();
+        document.querySelector('#print-invoice-number').addEventListener('input',markSearchDirty);
+        document.querySelector('#print-invoice-type').addEventListener('change',markSearchDirty);
       }
-      if(screen === 'payment-confirmation'){
-        document.querySelector('#schedule-month').value=iso(today).slice(0,7); document.querySelector('#payment-date').value=iso(today);
-        document.querySelector('#schedule-search').onclick=()=>loadSchedules(1); document.querySelector('#schedule-prev').onclick=()=>state.page>1&&loadSchedules(state.page-1); document.querySelector('#schedule-next').onclick=()=>state.page<state.lastPage&&loadSchedules(state.page+1);
-        document.querySelector('#payment-form')?.addEventListener('submit',registerPayment); document.querySelector('#payment-amount')?.addEventListener('input',renderAllocationPreview); document.querySelector('#payment-amount')?.addEventListener('blur',event=>{ event.target.value = amountInputValue(event.target.value); renderAllocationPreview(); }); document.querySelector('#payment-apply-mode')?.addEventListener('change',renderAllocationPreview); loadSchedules();
+      if(screen === 'payment-entry'){
+        if(!document.querySelector('#payment-date').value) document.querySelector('#payment-date').value=iso(today);
+        try {
+          state.selectedPaymentCustomer = JSON.parse(localStorage.getItem('billingSelectedPaymentCustomer') || 'null');
+          if(state.selectedPaymentCustomer?.name){
+            document.querySelector('#payment-target').textContent=`選択中: ${state.selectedPaymentCustomer.name}`;
+            if(!document.querySelector('#payment-customer-search').value) document.querySelector('#payment-customer-search').value=state.selectedPaymentCustomer.name;
+          }
+        } catch (_) { state.selectedPaymentCustomer = null; }
+        document.querySelector('#schedule-search').onclick=()=>loadSchedules(1);
+        document.querySelector('#payment-customer-search')?.addEventListener('input',()=>{ saveBillingSearchState(); document.querySelector('#payment-customer-search-button')?.classList.add('search-attention'); });
+        document.querySelector('#payment-customer-search-button')?.addEventListener('click',searchPaymentCustomers);
+        document.querySelector('#payment-customer-search')?.addEventListener('keydown',event=>{ if(event.key === 'Enter'){ event.preventDefault(); searchPaymentCustomers(); } });
+        document.querySelector('#payment-form')?.addEventListener('submit',registerPayment); document.querySelector('#payment-amount')?.addEventListener('input',renderAllocationPreview); document.querySelector('#payment-amount')?.addEventListener('blur',event=>{ event.target.value = amountInputValue(event.target.value); renderAllocationPreview(); }); loadSchedules();
+        document.querySelector('#schedule-status').addEventListener('change',markSearchDirty);
+        document.querySelector('#schedule-outstanding-only').addEventListener('change',markSearchDirty);
       }
       if(screen === 'payment-reviews'){
-        document.querySelector('#review-from').value=monthStart(); document.querySelector('#review-to').value=monthEnd();
-        document.querySelector('#payment-review-search').onclick=()=>loadPaymentReviews(1); document.querySelector('#payment-review-prev').onclick=()=>state.page>1&&loadPaymentReviews(state.page-1); document.querySelector('#payment-review-next').onclick=()=>state.page<state.lastPage&&loadPaymentReviews(state.page+1); loadPaymentReviews();
+        if(!document.querySelector('#review-from').value) document.querySelector('#review-from').value=monthStart(); if(!document.querySelector('#review-to').value) document.querySelector('#review-to').value=monthEnd();
+        document.querySelector('#payment-review-search').onclick=()=>loadPaymentReviews(1); loadPaymentReviews();
+        document.querySelector('#review-from').addEventListener('change',markSearchDirty);
+        document.querySelector('#review-to').addEventListener('change',markSearchDirty);
+        document.querySelector('#review-status').addEventListener('change',markSearchDirty);
+        document.querySelector('#review-unapplied-only').addEventListener('change',markSearchDirty);
       }
       if(screen === 'receivables'){
-        document.querySelector('#ar-refresh').onclick=loadReceivables; document.querySelector('#ar-customer').addEventListener('input',loadReceivables); document.querySelector('#ar-kind').addEventListener('change',loadReceivables); loadReceivables();
+        document.querySelector('#customer-monthly-statement-print')?.addEventListener('click',openCustomerMonthlyStatementPrint);
+        document.querySelector('#ar-refresh').onclick=loadReceivables; loadReceivables();
+        document.querySelector('#ar-kind').addEventListener('change',markSearchDirty);
       }
     }
     init();

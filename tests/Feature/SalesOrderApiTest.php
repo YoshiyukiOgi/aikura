@@ -60,6 +60,7 @@ class SalesOrderApiTest extends TestCase
             ->assertJsonPath('data.sales_order.status', 'received')
             ->assertJsonPath('data.sales_order.customer_id', $customer->id)
             ->assertJsonPath('data.sales_order.lines.0.quantity', '3.0000')
+            ->assertJsonPath('data.sales_order.lines.0.note', 'api line')
             ->assertJsonPath('data.sales_order.lines.0.unit_price', '1000.0000')
             ->assertJsonPath('data.sales_order.lines.0.price_source', 'common');
 
@@ -317,19 +318,59 @@ class SalesOrderApiTest extends TestCase
                 'product_id' => $product->id,
                 'quantity' => '3.0000',
                 'unit_id' => $unit->id,
+                'note' => 'updated line note',
             ], [
                 'product_id' => $product->id,
                 'quantity' => '2.0000',
                 'unit_id' => $unit->id,
+                'note' => 'new line note',
             ]],
         ])->assertOk()
             ->assertJsonPath('data.sales_order.customer_order_number', 'UPDATED-PO')
             ->assertJsonPath('data.sales_order.lines.0.quantity', '3.0000')
+            ->assertJsonPath('data.sales_order.lines.0.note', 'updated line note')
+            ->assertJsonPath('data.sales_order.lines.1.note', 'new line note')
             ->assertJsonPath('data.sales_order.lines.1.unit_price', '1000.0000');
 
         $this->assertDatabaseHas('audit_logs', [
             'event' => 'sales_order.updated',
             'auditable_id' => $salesOrderId,
+        ]);
+    }
+
+    public function test_sales_order_line_note_is_saved_and_carried_to_shipment_instruction(): void
+    {
+        [$user, $customer, $product, $unit] = $this->prepareData();
+        PriceRule::create([
+            'price_list_id' => PriceList::where('code', 'common')->firstOrFail()->id,
+            'product_id' => $product->id,
+            'unit_id' => $unit->id,
+            'unit_price' => '1000.0000',
+            'priority' => 300,
+            'effective_from' => '2026-01-01',
+            'rounding_method' => 'round',
+        ]);
+
+        $this->actingAs($user)->postJson('/api/v1/sales-orders', [
+            'customer_id' => $customer->id,
+            'order_date' => '2026-06-20',
+            'auto_release_to_shipping' => true,
+            'lines' => [[
+                'product_id' => $product->id,
+                'quantity' => '1.0000',
+                'unit_id' => $unit->id,
+                'note' => '割れ注意',
+            ]],
+        ])->assertCreated()
+            ->assertJsonPath('data.sales_order.lines.0.note', '割れ注意');
+
+        $this->assertDatabaseHas('sales_order_lines', [
+            'product_id' => $product->id,
+            'note' => '割れ注意',
+        ]);
+        $this->assertDatabaseHas('shipment_instruction_lines', [
+            'product_id' => $product->id,
+            'note' => '割れ注意',
         ]);
     }
 

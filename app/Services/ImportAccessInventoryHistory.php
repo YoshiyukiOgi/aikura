@@ -18,18 +18,18 @@ class ImportAccessInventoryHistory
 
     private const LINE_MAPPING_TABLE = '伝票外在庫出入:明細';
 
-    public function import(AccessMigrationBatch $batch): array
+    public function import(AccessMigrationBatch $batch, bool $deltaOnly = false): array
     {
         if (! in_array($batch->status, ['shipments_imported', 'inventory_history_imported'], true)) {
             throw new RuntimeException("在庫履歴を移行できないバッチ状態です: {$batch->status}");
         }
 
-        return DB::transaction(function () use ($batch): array {
+        return DB::transaction(function () use ($batch, $deltaOnly): array {
             $context = $this->context($batch);
-            $detailResult = $this->importHistoricalLots($batch, $context);
-            $headerResult = $this->importHeaders($batch);
-            $lineCount = $this->importLines($batch, $context);
-            $this->recordMappings($batch, $detailResult['hashes']);
+            $detailResult = $this->importHistoricalLots($batch, $context, $deltaOnly);
+            $headerResult = $this->importHeaders($batch, $deltaOnly);
+            $lineCount = $this->importLines($batch, $context, $deltaOnly);
+            $this->recordMappings($batch, $detailResult['hashes'], $deltaOnly);
 
             $summary = [
                 'production_lots' => $detailResult['count'],
@@ -75,7 +75,7 @@ class ImportAccessInventoryHistory
         ];
     }
 
-    private function importHistoricalLots(AccessMigrationBatch $batch, array $context): array
+    private function importHistoricalLots(AccessMigrationBatch $batch, array $context, bool $deltaOnly): array
     {
         $names = $this->sourceQuery($batch, '商品詳細名称')
             ->get()
@@ -89,7 +89,7 @@ class ImportAccessInventoryHistory
             });
         $details = [];
 
-        $this->sourceQuery($batch, self::SOURCE_TABLE)->chunkById(500, function ($rows) use (&$details): void {
+        $this->sourceQuery($batch, self::SOURCE_TABLE, $deltaOnly)->chunkById(500, function ($rows) use (&$details): void {
             foreach ($rows as $row) {
                 $source = $this->payload($row);
                 foreach ([['増商品詳細ID', '増商品ID'], ['減商品詳細ID', '減商品ID']] as [$detailField, $productField]) {
@@ -162,13 +162,13 @@ class ImportAccessInventoryHistory
         );
     }
 
-    private function importHeaders(AccessMigrationBatch $batch): array
+    private function importHeaders(AccessMigrationBatch $batch, bool $deltaOnly): array
     {
         $count = 0;
         $taxReviewCount = 0;
         $now = now();
 
-        $this->sourceQuery($batch, self::SOURCE_TABLE)->chunkById(500, function ($rows) use ($batch, &$count, &$taxReviewCount, $now): void {
+        $this->sourceQuery($batch, self::SOURCE_TABLE, $deltaOnly)->chunkById(500, function ($rows) use ($batch, &$count, &$taxReviewCount, $now): void {
             $records = [];
             foreach ($rows as $row) {
                 $source = $this->payload($row);
@@ -208,14 +208,14 @@ class ImportAccessInventoryHistory
         return ['count' => $count, 'tax_review_count' => $taxReviewCount];
     }
 
-    private function importLines(AccessMigrationBatch $batch, array $context): int
+    private function importLines(AccessMigrationBatch $batch, array $context, bool $deltaOnly): int
     {
         $headers = DB::table('non_sales_stock_operation_headers')->whereNotNull('legacy_access_stock_operation_id')->pluck('id', 'legacy_access_stock_operation_id');
         $lots = DB::table('production_lots')->where('external_system_code', 'like', 'ITARO-DETAIL-%')->pluck('id', 'external_system_code');
         $count = 0;
         $now = now();
 
-        $this->sourceQuery($batch, self::SOURCE_TABLE)->chunkById(500, function ($rows) use ($context, $headers, $lots, &$count, $now): void {
+        $this->sourceQuery($batch, self::SOURCE_TABLE, $deltaOnly)->chunkById(500, function ($rows) use ($context, $headers, $lots, &$count, $now): void {
             $records = [];
             foreach ($rows as $row) {
                 $source = $this->payload($row);
@@ -291,13 +291,23 @@ class ImportAccessInventoryHistory
         return $count;
     }
 
-    private function recordMappings(AccessMigrationBatch $batch, array $detailHashes): void
+    private function recordMappings(AccessMigrationBatch $batch, array $detailHashes, bool $deltaOnly): void
     {
-        $sourceHashes = $this->sourceQuery($batch, self::SOURCE_TABLE)->pluck('payload_sha256', 'source_key');
+        $sourceHashes = $this->sourceQuery($batch, self::SOURCE_TABLE, $deltaOnly)->pluck('payload_sha256', 'source_key');
         $this->recordTargetMappings($batch, self::SOURCE_TABLE, 'non_sales_stock_operation_headers', 'legacy_access_stock_operation_id', $sourceHashes);
-        $this->recordTargetMappings($batch, self::LINE_MAPPING_TABLE, 'non_sales_stock_operation_lines', 'legacy_access_stock_leg_key');
+        $lineHashes = $sourceHashes->flatMap(fn (string $hash, string $key): array => [
+            $key.':plus' => $hash,
+            $key.':minus' => $hash,
+        ]);
+        $this->recordTargetMappings($batch, self::LINE_MAPPING_TABLE, 'non_sales_stock_operation_lines', 'legacy_access_stock_leg_key', $lineHashes);
 
-        $lots = DB::table('production_lots')->where('external_system_code', 'like', 'ITARO-DETAIL-%')->get(['id', 'external_system_code']);
+        $lots = DB::table('production_lots')
+            ->where('external_system_code', 'like', 'ITARO-DETAIL-%')
+            ->when($deltaOnly, fn ($query) => $query->whereIn(
+                'external_system_code',
+                array_map(fn (string $id): string => 'ITARO-DETAIL-'.$id, array_keys($detailHashes)),
+            ))
+            ->get(['id', 'external_system_code']);
         $records = [];
         $now = now();
         foreach ($lots as $lot) {
@@ -317,27 +327,31 @@ class ImportAccessInventoryHistory
         foreach (array_chunk($records, 500) as $chunk) {
             DB::table('access_migration_mappings')->upsert($chunk, ['batch_id', 'source_table', 'source_key'], ['target_table', 'target_id', 'action', 'source_payload_sha256', 'updated_at']);
         }
-        DB::table('access_migration_staging_rows')->where('batch_id', $batch->id)->where('source_table', self::SOURCE_TABLE)->update([
+        $this->sourceQuery($batch, self::SOURCE_TABLE, $deltaOnly)->update([
             'status' => 'imported', 'target_table' => 'non_sales_stock_operation_headers', 'updated_at' => now(),
         ]);
     }
 
     private function recordTargetMappings(AccessMigrationBatch $batch, string $sourceTable, string $targetTable, string $legacyColumn, $sourceHashes = null): void
     {
-        DB::table($targetTable)->whereNotNull($legacyColumn)->orderBy('id')->chunkById(500, function ($targets) use ($batch, $sourceTable, $targetTable, $legacyColumn): void {
-            $now = now();
-            $records = [];
-            foreach ($targets as $target) {
-                $key = (string) $target->{$legacyColumn};
-                $hash = $sourceHashes?->get($key) ?? strtoupper(hash('sha256', $key));
-                $records[] = [
-                    'batch_id' => $batch->id, 'source_table' => $sourceTable, 'source_key' => $key,
-                    'target_table' => $targetTable, 'target_id' => (string) $target->id, 'action' => 'imported',
-                    'source_payload_sha256' => $hash, 'created_at' => $now, 'updated_at' => $now,
-                ];
-            }
-            DB::table('access_migration_mappings')->upsert($records, ['batch_id', 'source_table', 'source_key'], ['target_table', 'target_id', 'action', 'source_payload_sha256', 'updated_at']);
-        });
+        DB::table($targetTable)
+            ->whereNotNull($legacyColumn)
+            ->when($sourceHashes !== null, fn ($query) => $query->whereIn($legacyColumn, $sourceHashes->keys()))
+            ->orderBy('id')
+            ->chunkById(500, function ($targets) use ($batch, $sourceTable, $targetTable, $legacyColumn, $sourceHashes): void {
+                $now = now();
+                $records = [];
+                foreach ($targets as $target) {
+                    $key = (string) $target->{$legacyColumn};
+                    $hash = $sourceHashes?->get($key) ?? strtoupper(hash('sha256', $key));
+                    $records[] = [
+                        'batch_id' => $batch->id, 'source_table' => $sourceTable, 'source_key' => $key,
+                        'target_table' => $targetTable, 'target_id' => (string) $target->id, 'action' => 'imported',
+                        'source_payload_sha256' => $hash, 'created_at' => $now, 'updated_at' => $now,
+                    ];
+                }
+                DB::table('access_migration_mappings')->upsert($records, ['batch_id', 'source_table', 'source_key'], ['target_table', 'target_id', 'action', 'source_payload_sha256', 'updated_at']);
+            });
     }
 
     private function operationType(int $typeId): array
@@ -354,9 +368,19 @@ class ImportAccessInventoryHistory
         };
     }
 
-    private function sourceQuery(AccessMigrationBatch $batch, string $table)
+    private function sourceQuery(AccessMigrationBatch $batch, string $table, bool $deltaOnly = false)
     {
-        return DB::table('access_migration_staging_rows')->where('batch_id', $batch->id)->where('source_table', $table)->orderBy('id');
+        return DB::table('access_migration_staging_rows')
+            ->where('batch_id', $batch->id)
+            ->where('source_table', $table)
+            ->when($deltaOnly, fn ($query) => $query->whereExists(function ($delta) use ($batch): void {
+                $delta->selectRaw('1')
+                    ->from('access_migration_deltas')
+                    ->whereColumn('access_migration_deltas.current_staging_row_id', 'access_migration_staging_rows.id')
+                    ->where('access_migration_deltas.batch_id', $batch->id)
+                    ->where('access_migration_deltas.change_type', 'new');
+            }))
+            ->orderBy('id');
     }
 
     private function payload(object $row): array

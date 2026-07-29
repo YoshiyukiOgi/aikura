@@ -5,6 +5,7 @@ namespace App\Services\Billing;
 use App\Exceptions\Billing\InvoiceCancellationException;
 use App\Exceptions\StateMachine\InvalidStatusTransitionException;
 use App\Models\InvoiceHeader;
+use App\Models\PaymentSchedule;
 use App\Services\Audit\AuditLogData;
 use App\Services\Audit\AuditLogService;
 use App\Services\StateMachine\StatusTransitionService;
@@ -61,6 +62,8 @@ class CancelInvoiceService
                 'cancelled_reason' => $reason,
             ])->save();
 
+            $this->closePaymentSchedule($invoice, $reason);
+
             $this->auditLogService->record(new AuditLogData(
                 event: 'invoice.cancelled',
                 auditable: $invoice->refresh(),
@@ -75,5 +78,44 @@ class CancelInvoiceService
 
             return $invoice->refresh()->load(['customer', 'billingCycle', 'lines']);
         });
+    }
+
+    private function closePaymentSchedule(InvoiceHeader $invoice, string $reason): void
+    {
+        $schedule = PaymentSchedule::query()
+            ->where('invoice_header_id', $invoice->id)
+            ->whereIn('status', ['open', 'partial'])
+            ->lockForUpdate()
+            ->first();
+
+        if ($schedule === null) {
+            return;
+        }
+
+        $before = [
+            'status' => $schedule->status,
+            'outstanding_amount' => $schedule->outstanding_amount,
+            'note' => $schedule->note,
+        ];
+
+        $schedule->forceFill([
+            'status' => 'closed',
+            'outstanding_amount' => '0.00',
+            'closed_at' => now(),
+            'note' => trim((string) $schedule->note."\n請求取消により回収対象外: {$reason}"),
+        ])->save();
+
+        $this->auditLogService->record(new AuditLogData(
+            event: 'payment_schedule.closed_by_invoice_cancellation',
+            auditable: $schedule,
+            beforeValues: $before,
+            afterValues: [
+                'status' => $schedule->status,
+                'outstanding_amount' => $schedule->outstanding_amount,
+                'closed_at' => $schedule->closed_at?->toISOString(),
+                'note' => $schedule->note,
+            ],
+            reason: $reason,
+        ));
     }
 }

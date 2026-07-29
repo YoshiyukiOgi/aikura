@@ -7,12 +7,15 @@ use App\Models\OpeningReceivableBalance;
 use App\Models\PaymentAllocation;
 use App\Models\PaymentSchedule;
 use App\Models\ReceivableMonthlyBalance;
+use App\Services\Operations\OperationalPeriod;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class CreateReceivableMonthlyBalanceDraftService
 {
+    public function __construct(private readonly OperationalPeriod $operationalPeriod) {}
+
     /**
      * @return Collection<int, ReceivableMonthlyBalance>
      */
@@ -38,6 +41,7 @@ class CreateReceivableMonthlyBalanceDraftService
                     $query
                         ->whereNotIn('status', ['draft', 'cancelled'])
                         ->whereNull('cancelled_at')
+                        ->whereDate('invoice_date', '>=', $this->operationalPeriod->startDate())
                         ->whereDate('invoice_date', '<=', $periodEnd->toDateString());
                 })
                 ->orderBy('customer_id')
@@ -51,12 +55,24 @@ class CreateReceivableMonthlyBalanceDraftService
                 ->with('customer')
                 ->whereIn('status', ['calculated', 'reconciled'])
                 ->where('opening_balance_amount', '!=', 0)
+                ->whereDate('as_of_date', '>=', $this->operationalPeriod->startDate())
                 ->whereDate('as_of_date', '<=', $periodEnd->toDateString())
                 ->orderByDesc('as_of_date')
                 ->orderByDesc('id')
                 ->get()
                 ->unique('customer_id')
-                ->each(function (OpeningReceivableBalance $opening) use (&$rows): void {
+                ->each(function (OpeningReceivableBalance $opening) use (&$rows, $schedules): void {
+                    $isCarriedByInvoice = $schedules->contains(function (PaymentSchedule $schedule) use ($opening): bool {
+                        return (int) $schedule->customer_id === (int) $opening->customer_id
+                            && $schedule->invoiceHeader !== null
+                            && $schedule->invoiceHeader->invoice_date !== null
+                            && $schedule->invoiceHeader->invoice_date->toDateString() >= $opening->as_of_date->toDateString();
+                    });
+
+                    if ($isCarriedByInvoice) {
+                        return;
+                    }
+
                     $amount = bcadd((string) $opening->opening_balance_amount, '0', 2);
                     $rows[$opening->customer_id] = [
                         'customer_id' => (int) $opening->customer_id,
@@ -103,6 +119,16 @@ class CreateReceivableMonthlyBalanceDraftService
                     $rows[$customerId]['open_schedule_count']++;
                 }
             }
+
+            ReceivableMonthlyBalance::query()
+                ->where('year', $year)
+                ->where('month', $month)
+                ->where('status', 'draft')
+                ->when(
+                    count($rows) > 0,
+                    fn ($query) => $query->whereNotIn('customer_id', array_keys($rows)),
+                )
+                ->delete();
 
             $balances = collect();
             foreach ($rows as $row) {

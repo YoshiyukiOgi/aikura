@@ -45,6 +45,13 @@ class ConfirmInvoiceTest extends TestCase
         $this->assertSame('300.00', $confirmed->tax_amount);
         $this->assertSame('3300.00', $confirmed->total_amount);
         $this->assertNotNull($confirmed->confirmed_at);
+        $this->assertDatabaseHas('payment_schedules', [
+            'invoice_header_id' => $confirmed->id,
+            'customer_id' => $confirmed->customer_id,
+            'status' => 'open',
+            'scheduled_amount' => '3300.00',
+            'outstanding_amount' => '3300.00',
+        ]);
 
         $this->assertDatabaseHas('audit_logs', [
             'event' => 'invoice.confirmed',

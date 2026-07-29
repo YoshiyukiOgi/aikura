@@ -17,6 +17,7 @@ class ConfirmInvoiceService
         private readonly AuditLogService $auditLogService,
         private readonly EnsureConsumptionTaxFilingPeriodIsOpenService $ensureConsumptionTaxFilingPeriodIsOpenService,
         private readonly EnsureReceivableMonthlyBalancePeriodIsOpenService $ensureReceivableMonthlyBalancePeriodIsOpenService,
+        private readonly CreatePaymentScheduleService $createPaymentScheduleService,
     ) {
     }
 
@@ -43,15 +44,23 @@ class ConfirmInvoiceService
 
             $subtotal = '0.00';
             $tax = '0.00';
-            $total = '0.00';
 
             foreach ($invoice->lines as $line) {
                 $subtotal = bcadd($subtotal, $line->amount, 2);
                 $tax = bcadd($tax, $line->tax_amount, 2);
-                $total = bcadd($total, $line->total_amount, 2);
             }
 
+            $currentInvoiceAmount = bcadd($subtotal, $tax, 2);
+            $total = $this->invoiceTotalAmount(
+                (string) $invoice->previous_balance_amount,
+                (string) $invoice->period_payment_amount,
+                $currentInvoiceAmount,
+            );
+
             $invoice->update([
+                'current_sales_amount' => $subtotal,
+                'current_tax_amount' => $tax,
+                'current_invoice_amount' => $currentInvoiceAmount,
                 'subtotal_amount' => $subtotal,
                 'tax_amount' => $tax,
                 'total_amount' => $total,
@@ -80,7 +89,21 @@ class ConfirmInvoiceService
                 reason: $reason,
             ));
 
-            return $invoice->refresh()->load(['customer', 'billingCycle', 'lines']);
+            $invoice = $invoice->refresh()->load(['customer', 'billingCycle', 'lines']);
+
+            $this->createPaymentScheduleService->create(
+                $invoice,
+                $reason ?? '請求書発行時に入金予定を自動作成'
+            );
+
+            return $invoice->refresh()->load(['customer', 'billingCycle', 'lines', 'paymentSchedule']);
         });
+    }
+
+    private function invoiceTotalAmount(string $previousBalance, string $periodPayment, string $currentInvoiceAmount): string
+    {
+        $amount = bcsub(bcadd($previousBalance, $currentInvoiceAmount, 2), $periodPayment, 2);
+
+        return bccomp($amount, '0.00', 2) > 0 ? $amount : '0.00';
     }
 }

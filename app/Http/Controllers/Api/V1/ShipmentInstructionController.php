@@ -20,8 +20,14 @@ class ShipmentInstructionController extends ApiController
     {
         $instructions = ShipmentInstruction::query()
             ->with(['customer', 'stockLocation', 'lines.product.capacityUnit', 'lines.unit', 'lines.salesOrder', 'lines.salesOrderLine'])
+            ->where('status', '!=', 'cancelled')
+            ->whereDoesntHave('picks.shipmentHeader', fn ($query) => $query->where('status', 'confirmed'))
+            ->whereNotIn('id', fn ($query) => $query
+                ->select('source_shipment_instruction_id')
+                ->from('shipment_headers')
+                ->where('status', 'confirmed')
+                ->whereNotNull('source_shipment_instruction_id'))
             ->orderByDesc('id')
-            ->limit(50)
             ->get()
             ->map(fn (ShipmentInstruction $instruction): array => $this->serializeInstruction($instruction))
             ->values()

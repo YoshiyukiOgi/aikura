@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Exceptions\Billing\InvoiceDraftException;
 use App\Models\BillingCycle;
 use App\Models\Customer;
+use App\Models\Payment;
 use App\Models\PriceList;
 use App\Models\PriceRule;
 use App\Models\Product;
@@ -12,6 +13,8 @@ use App\Models\SettlementReceivableCategory;
 use App\Models\ShipmentHeader;
 use App\Models\TransactionCategory;
 use App\Models\Unit;
+use App\Services\Billing\CancelInvoiceService;
+use App\Services\Billing\ConfirmInvoiceService;
 use App\Services\Billing\CreateInvoiceDraftData;
 use App\Services\Billing\CreateInvoiceDraftService;
 use App\Services\Shipment\ApplyDraftShipmentPricingService;
@@ -93,6 +96,107 @@ class CreateInvoiceDraftTest extends TestCase
 
         $this->assertSame('請求ドラフト確認酒', $line->product_name);
         $this->assertSame('請求ドラフト確認酒 表示名', $line->display_name);
+    }
+
+    public function test_it_excludes_cancelled_invoice_schedule_from_previous_balance(): void
+    {
+        [$customer, $product, $unit] = $this->prepareBaseData();
+        $firstShipment = $this->createConfirmedShipment($customer, $product, $unit, '2026-05-10', '2.0000');
+
+        $firstInvoice = app(CreateInvoiceDraftService::class)->create(new CreateInvoiceDraftData(
+            customerId: $customer->id,
+            invoiceDate: '2026-05-31',
+            shipmentHeaderIds: [$firstShipment->id],
+        ));
+        $firstInvoice = app(ConfirmInvoiceService::class)->confirm($firstInvoice);
+        app(CancelInvoiceService::class)->cancel($firstInvoice, 'cancelled invoice must not be carried forward');
+
+        $secondShipment = $this->createConfirmedShipment($customer, $product, $unit, '2026-06-10', '1.0000');
+        $secondInvoice = app(CreateInvoiceDraftService::class)->create(new CreateInvoiceDraftData(
+            customerId: $customer->id,
+            invoiceDate: '2026-06-30',
+            shipmentHeaderIds: [$secondShipment->id],
+        ));
+
+        $this->assertSame('0.00', $secondInvoice->previous_balance_amount);
+        $this->assertSame('0.00', $secondInvoice->carried_forward_amount);
+        $this->assertSame('1650.00', $secondInvoice->current_invoice_amount);
+        $this->assertSame('1650.00', $secondInvoice->total_amount);
+    }
+
+    public function test_confirming_invoice_preserves_carried_forward_in_total_amount(): void
+    {
+        [$customer, $product, $unit] = $this->prepareBaseData();
+        $firstShipment = $this->createConfirmedShipment($customer, $product, $unit, '2026-05-10', '2.0000');
+
+        $firstInvoice = app(CreateInvoiceDraftService::class)->create(new CreateInvoiceDraftData(
+            customerId: $customer->id,
+            invoiceDate: '2026-05-31',
+            shipmentHeaderIds: [$firstShipment->id],
+        ));
+        app(ConfirmInvoiceService::class)->confirm($firstInvoice);
+
+        $secondShipment = $this->createConfirmedShipment($customer, $product, $unit, '2026-06-10', '1.0000');
+        $secondInvoice = app(CreateInvoiceDraftService::class)->create(new CreateInvoiceDraftData(
+            customerId: $customer->id,
+            invoiceDate: '2026-06-30',
+            shipmentHeaderIds: [$secondShipment->id],
+        ));
+
+        $confirmed = app(ConfirmInvoiceService::class)->confirm($secondInvoice);
+
+        $this->assertSame('3300.00', $confirmed->previous_balance_amount);
+        $this->assertSame('3300.00', $confirmed->carried_forward_amount);
+        $this->assertSame('1650.00', $confirmed->current_invoice_amount);
+        $this->assertSame('4950.00', $confirmed->total_amount);
+        $this->assertDatabaseHas('payment_schedules', [
+            'invoice_header_id' => $confirmed->id,
+            'scheduled_amount' => '4950.00',
+            'outstanding_amount' => '4950.00',
+        ]);
+    }
+
+    public function test_period_payment_offsets_current_invoice_amount_after_previous_balance_is_cleared(): void
+    {
+        [$customer, $product, $unit] = $this->prepareBaseData();
+        $firstShipment = $this->createConfirmedShipment($customer, $product, $unit, '2026-05-10', '2.0000');
+
+        $firstInvoice = app(CreateInvoiceDraftService::class)->create(new CreateInvoiceDraftData(
+            customerId: $customer->id,
+            invoiceDate: '2026-05-31',
+            shipmentHeaderIds: [$firstShipment->id],
+        ));
+        app(ConfirmInvoiceService::class)->confirm($firstInvoice);
+
+        Payment::create([
+            'customer_id' => $customer->id,
+            'status' => 'unallocated',
+            'payment_date' => '2026-06-15',
+            'payment_method' => 'bank_transfer',
+            'amount' => '4950.00',
+            'unapplied_amount' => '4950.00',
+        ]);
+
+        $secondShipment = $this->createConfirmedShipment($customer, $product, $unit, '2026-06-10', '1.0000');
+        $secondInvoice = app(CreateInvoiceDraftService::class)->create(new CreateInvoiceDraftData(
+            customerId: $customer->id,
+            invoiceDate: '2026-06-30',
+            billingPeriodStart: '2026-06-01',
+            billingPeriodEnd: '2026-06-30',
+        ));
+
+        $confirmed = app(ConfirmInvoiceService::class)->confirm($secondInvoice);
+
+        $this->assertSame('3300.00', $confirmed->previous_balance_amount);
+        $this->assertSame('4950.00', $confirmed->period_payment_amount);
+        $this->assertSame('0.00', $confirmed->carried_forward_amount);
+        $this->assertSame('1650.00', $confirmed->current_invoice_amount);
+        $this->assertSame('0.00', $confirmed->total_amount);
+        $this->assertDatabaseHas('payment_schedules', [
+            'invoice_header_id' => $confirmed->id,
+            'scheduled_amount' => '0.00',
+            'outstanding_amount' => '0.00',
+        ]);
     }
 
     public function test_it_excludes_draft_and_cancelled_shipments(): void

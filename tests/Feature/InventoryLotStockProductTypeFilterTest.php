@@ -48,6 +48,111 @@ class InventoryLotStockProductTypeFilterTest extends TestCase
         $this->assertCount(1, $response->json('data.lot_stock_balances'));
     }
 
+    public function test_inventory_pages_default_to_sake_and_render_compact_lot_capacity(): void
+    {
+        $this->prepareLotStock();
+
+        $inventory = $this->get('/inventory');
+
+        $inventory->assertOk()
+            ->assertSee('<option value="sake" selected>酒</option>', false)
+            ->assertSee('title="${lotHover(r.lot_name,r.lot_code)}"', false)
+            ->assertSee('${wholeNumber(r.capacity_value)}', false);
+
+        $lotStockAsOf = $this->get('/inventory/lot-stock-as-of');
+
+        $lotStockAsOf->assertOk()
+            ->assertSee('productType.value = "sake"', false)
+            ->assertSee('class="lot-cell"', false)
+            ->assertDontSee('${esc(row.product_name)}</td>', false);
+    }
+
+    public function test_lot_stock_rows_are_sorted_by_type_lot_name_capacity_date_lot_and_location(): void
+    {
+        [$sakeLot, $kasuLot] = $this->prepareLotStock();
+        $location = StockLocation::query()->where('code', 'main_brewery')->firstOrFail();
+        $bottle = Unit::query()->where('code', 'bottle')->firstOrFail();
+        $milliliter = Unit::query()->where('code', 'milliliter')->firstOrFail();
+
+        $alpha720 = Product::query()->create([
+            'product_code' => 'SORT-SAKE-A-720',
+            'product_type' => 'sake',
+            'name' => 'Alpha Sake',
+            'display_name' => 'Alpha Sake 720ml',
+            'base_unit_id' => $bottle->id,
+            'inventory_unit_id' => $bottle->id,
+            'capacity_value' => '720.0000',
+            'capacity_unit_id' => $milliliter->id,
+            'is_alcohol' => true,
+            'legacy_code' => '3001',
+        ]);
+        $alpha1800 = Product::query()->create([
+            'product_code' => 'SORT-SAKE-A-1800',
+            'product_type' => 'sake',
+            'name' => 'Alpha Sake',
+            'display_name' => 'Alpha Sake 1800ml',
+            'base_unit_id' => $bottle->id,
+            'inventory_unit_id' => $bottle->id,
+            'capacity_value' => '1800.0000',
+            'capacity_unit_id' => $milliliter->id,
+            'is_alcohol' => true,
+            'legacy_code' => '3002',
+        ]);
+
+        $old720 = ProductionLot::query()->create([
+            'lot_code' => 'SORT-A-720-OLD',
+            'display_name' => 'Alpha Lot B 720ml',
+            'status' => 'active',
+            'stock_location_id' => $location->id,
+            'unit_id' => $bottle->id,
+            'capacity_value' => $alpha720->capacity_value,
+            'capacity_unit_id' => $alpha720->capacity_unit_id,
+            'production_date' => '2026-05-01',
+            'external_system_code' => 'ITARO-PRODUCT-DETAIL-3001-1',
+            'is_active' => true,
+        ]);
+        $new720 = ProductionLot::query()->create([
+            'lot_code' => 'SORT-A-720-NEW',
+            'display_name' => 'Alpha Lot A 720ml',
+            'status' => 'active',
+            'stock_location_id' => $location->id,
+            'unit_id' => $bottle->id,
+            'capacity_value' => $alpha720->capacity_value,
+            'capacity_unit_id' => $alpha720->capacity_unit_id,
+            'production_date' => '2026-06-01',
+            'external_system_code' => 'ITARO-PRODUCT-DETAIL-3001-2',
+            'is_active' => true,
+        ]);
+        $large = ProductionLot::query()->create([
+            'lot_code' => 'SORT-A-1800',
+            'display_name' => 'Alpha Lot C 1800ml',
+            'status' => 'active',
+            'stock_location_id' => $location->id,
+            'unit_id' => $bottle->id,
+            'capacity_value' => $alpha1800->capacity_value,
+            'capacity_unit_id' => $alpha1800->capacity_unit_id,
+            'production_date' => '2026-04-01',
+            'external_system_code' => 'ITARO-PRODUCT-DETAIL-3002-1',
+            'is_active' => true,
+        ]);
+
+        foreach ([$old720, $new720, $large] as $lot) {
+            $this->createMovement($lot, $location, $bottle, '1.0000');
+        }
+
+        $stockCodes = collect($this->getJson('/api/v1/inventory/stock')->assertOk()->json('data.stock_balances'))
+            ->pluck('lot_code')
+            ->all();
+        $asOfCodes = collect($this->getJson('/api/v1/inventory/lot-stock-as-of?as_of_date=2026-06-30')->assertOk()->json('data.lot_stock_balances'))
+            ->pluck('lot_code')
+            ->all();
+
+        $expectedRelativeOrder = ['SORT-A-720-NEW', 'SORT-A-720-OLD', 'SORT-A-1800'];
+        $this->assertSame($expectedRelativeOrder, array_values(array_intersect($stockCodes, $expectedRelativeOrder)));
+        $this->assertSame($expectedRelativeOrder, array_values(array_intersect($asOfCodes, $expectedRelativeOrder)));
+        $this->assertLessThan(array_search($kasuLot->lot_code, $stockCodes, true), array_search($sakeLot->lot_code, $stockCodes, true));
+    }
+
     /**
      * @return array{0: ProductionLot, 1: ProductionLot}
      */

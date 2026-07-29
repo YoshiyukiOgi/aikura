@@ -32,6 +32,8 @@
     .filters select{font:inherit;border:1px solid #cad6e6;border-radius:4px;padding:6px 8px;background:#fff}
     .actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
     button{font:inherit;font-size:11px;cursor:pointer;border:1px solid #cad6e6;border-radius:4px;background:#fff;color:#25344a;padding:7px 9px}
+    @keyframes searchPulse{0%,100%{background:#fff7d6;border-color:#f0b429;box-shadow:0 0 0 0 rgba(240,180,41,.28)}50%{background:#ffe08a;border-color:#d89b00;box-shadow:0 0 0 5px rgba(240,180,41,.12)}}
+    button.search-attention{animation:searchPulse 1.8s ease-in-out infinite;color:#172033;font-weight:800}
     .primary{background:#0b6ff6;color:#fff;border-color:#0b6ff6;font-weight:800}
     .danger{color:#b42318;border-color:#f0b7b1}
     .notice{min-height:17px;font-size:11px;color:#64748b}
@@ -59,7 +61,7 @@
     <div class="grid">
       <section class="card detail-card">
         <div class="head"><h2>出荷一覧</h2><div class="actions" style="padding:0"><button id="refresh-shipments" type="button">最新に更新</button><span id="count" class="muted"></span></div></div>
-        <div class="filters"><select id="status-filter"><option value="">状態：すべて</option><option value="waiting">出荷指示</option><option value="ready">発伝待ち</option><option value="issued">伝票作成済</option><option value="completed">出荷済み</option></select></div>
+        <div class="filters"><select id="status-filter"><option value="">状態：すべて</option><option value="waiting">出荷指示</option><option value="ready">発伝待ち</option><option value="issued">伝票作成済</option></select></div>
         <table>
           <thead><tr><th class="sortable"><button type="button" data-sort-key="sales_order">受注番号</button></th><th class="sortable"><button type="button" data-sort-key="document_number">出荷伝票</button></th><th class="sortable"><button type="button" data-sort-key="shipment_date">出荷日</button></th><th class="sortable"><button type="button" data-sort-key="customer">取引先</button></th><th>出荷状態</th><th>ピッキング</th></tr></thead>
           <tbody id="list"></tbody>
@@ -97,7 +99,11 @@
       return body.data;
     };
     const list = document.querySelector('#list'), count = document.querySelector('#count'), title = document.querySelector('#title'), detail = document.querySelector('#detail'), detailLines = document.querySelector('#detail-lines'), detailLineList = document.querySelector('#detail-line-list'), actions = document.querySelector('#actions'), message = document.querySelector('#message');
-    let rows = [], selected = null, sortState = { key: 'shipment_date', direction: 'desc' };
+    let rows = [], selected = null, sortState = { key: 'shipment_date', direction: 'desc' }, searchDirty = false;
+    const setSearchDirty = dirty => {
+      searchDirty = dirty;
+      document.querySelector('#refresh-shipments')?.classList.toggle('search-attention', dirty);
+    };
     const show = (text, error = false) => {
       message.textContent = text;
       message.classList.toggle('error', error);
@@ -105,8 +111,8 @@
     const statusKey = row => !row.shipment ? 'waiting' : row.shipment.shipping_status_key || '';
     const statusLabel = row => row.shipment?.shipping_status_label || ({waiting:'出荷指示',ready:'発伝待ち',issued:'伝票作成済',completed:'出荷済み'}[statusKey(row)] || '');
     const statusClass = row => ({waiting:'wait',ready:'progress',issued:'ready',completed:'done'}[statusKey(row)] || 'wait');
-    const pickLabel = row => row.instruction?.status === 'picked' ? 'ピッキング済み' : row.instruction?.status === 'partially_picked' ? 'ピッキング中' : 'ピッキング待ち';
-    const pickClass = row => row.instruction?.status === 'picked' ? 'done' : row.instruction?.status === 'partially_picked' ? 'progress' : 'wait';
+    const pickLabel = row => statusKey(row) === 'completed' || row.instruction?.status === 'picked' ? 'ピッキング済み' : row.instruction?.status === 'partially_picked' ? 'ピッキング中' : 'ピッキング待ち';
+    const pickClass = row => statusKey(row) === 'completed' || row.instruction?.status === 'picked' ? 'done' : row.instruction?.status === 'partially_picked' ? 'progress' : 'wait';
     const isLotReady = row => (row.instruction?.lines || []).length > 0 && (row.instruction.lines || []).every(line => Number(line.lot_allocated_quantity || 0) >= Number(line.quantity || 0));
     const canCompleteShipment = row => statusKey(row) === 'issued' && row.instruction?.status === 'picked' && isLotReady(row);
     const shortDate = date => date ? date.slice(5).replace('-', '/') : '—';
@@ -147,6 +153,7 @@
     async function load() {
       const refresh = document.querySelector('#refresh-shipments');
       try {
+        setSearchDirty(false);
         if (refresh) { refresh.disabled = true; refresh.textContent = '更新中...'; }
         const [shipData, pickData, instructionData] = await Promise.all([
           api('/api/v1/shipments'),
@@ -164,7 +171,7 @@
             return { instruction, pick, shipment };
           });
         const shipmentRows = shipments
-          .filter(shipment => ['draft','confirmed'].includes(shipment.status) && !shipment.invoiced)
+          .filter(shipment => shipment.status === 'draft' && !shipment.invoiced)
           .map(shipment => {
             const pick = shipment.source_shipment_pick_id ? picks.find(p => p.id === shipment.source_shipment_pick_id) : null;
             const instructionId = shipment.source_shipment_instruction_id || pick?.shipment_instruction_id;
@@ -372,7 +379,7 @@
         show(error.message, true);
       }
     }
-    document.querySelector('#status-filter')?.addEventListener('change',()=>render());
+    document.querySelector('#status-filter')?.addEventListener('change',()=>setSearchDirty(true));
     document.querySelector('#refresh-shipments')?.addEventListener('click',()=>load());
     document.querySelectorAll('[data-sort-key]').forEach(button => {
       button.addEventListener('click', () => {
@@ -386,7 +393,7 @@
       });
     });
     load();
-    if(autoRefreshEnabled) setInterval(load,autoRefreshMs);
+    if(autoRefreshEnabled) setInterval(()=>{ if(!searchDirty) load(); },autoRefreshMs);
   </script>
 </body>
 </html>

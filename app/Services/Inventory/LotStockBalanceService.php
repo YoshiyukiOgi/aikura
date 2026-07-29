@@ -5,10 +5,13 @@ namespace App\Services\Inventory;
 use App\Models\ShipmentLotAllocation;
 use App\Models\StockLotMonthlyBalance;
 use App\Models\StockMovement;
+use App\Services\Operations\OperationalPeriod;
 use Illuminate\Support\Collection;
 
 class LotStockBalanceService
 {
+    public function __construct(private readonly OperationalPeriod $operationalPeriod) {}
+
     public function forLotLocationUnit(int $productionLotId, int $stockLocationId, int $unitId): LotStockBalance
     {
         $base = StockLotMonthlyBalance::query()
@@ -16,6 +19,7 @@ class LotStockBalanceService
             ->where('stock_location_id', $stockLocationId)
             ->where('unit_id', $unitId)
             ->whereIn('status', ['confirmed', 'closed'])
+            ->whereDate('period_end', '>=', $this->operationalPeriod->startDate())
             ->orderByDesc('period_end')
             ->first();
         $query = StockMovement::query()
@@ -26,6 +30,8 @@ class LotStockBalanceService
             ->whereNull('cancelled_at');
         if ($base) {
             $query->whereDate('movement_date', '>', $base->period_end);
+        } else {
+            $query->whereDate('movement_date', '>=', $this->operationalPeriod->startDate());
         }
         $physical = bcadd($base ? (string) $base->closing_quantity : '0', (string) $query->sum('quantity'), 4);
 
@@ -35,7 +41,10 @@ class LotStockBalanceService
     /** @return Collection<int, LotStockBalance> */
     public function all(): Collection
     {
-        $latestPeriodEnd = StockLotMonthlyBalance::query()->whereIn('status', ['confirmed', 'closed'])->max('period_end');
+        $latestPeriodEnd = StockLotMonthlyBalance::query()
+            ->whereIn('status', ['confirmed', 'closed'])
+            ->whereDate('period_end', '>=', $this->operationalPeriod->startDate())
+            ->max('period_end');
         if (! $latestPeriodEnd) {
             return $this->allFromMovements();
         }
@@ -90,6 +99,7 @@ class LotStockBalanceService
             ->whereNotNull('production_lot_id')
             ->whereIn('status', ['confirmed', 'closed'])
             ->whereNull('cancelled_at')
+            ->whereDate('movement_date', '>=', $this->operationalPeriod->startDate())
             ->whereDate('movement_date', '<=', $asOfDate)
             ->groupBy('production_lot_id', 'stock_location_id', 'unit_id');
 
@@ -115,6 +125,7 @@ class LotStockBalanceService
             ->whereNotNull('production_lot_id')
             ->whereIn('status', ['confirmed', 'closed'])
             ->whereNull('cancelled_at')
+            ->whereDate('movement_date', '>=', $this->operationalPeriod->startDate())
             ->groupBy('production_lot_id', 'stock_location_id', 'unit_id')
             ->orderBy('production_lot_id')->orderBy('stock_location_id')->orderBy('unit_id')
             ->get()

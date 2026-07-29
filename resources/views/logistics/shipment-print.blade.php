@@ -94,11 +94,11 @@
       $rows[] = [
           'code' => $line->confirmed_product_code ?: $line->product?->product_code,
           'name' => $line->confirmed_display_name ?: $line->confirmed_product_name ?: $line->product?->name,
+          'note' => trim((string) ($line->note ?: $line->shipmentInstructionLine?->note ?: $line->sourceShipmentPickLine?->note)),
           'quantity' => $quantity,
           'unit' => $line->confirmed_unit_name ?: $line->unit?->name,
           'unit_price' => $unitPrice,
           'amount' => $amount,
-          'lots' => $line->lotAllocations->whereIn('status', ['allocated', 'confirmed'])->whereNull('cancelled_at')->map(fn ($allocation) => ($allocation->productionLot?->lot_code ?? '-').' / '.$allocation->quantity.'本 / '.($allocation->actual_alcohol_percentage ?? $allocation->productionLot?->alcohol_percentage ?? '-').'%')->implode('、'),
           'tax_rate' => $taxRate,
           'tax_key' => $taxKey,
           'tax' => $taxCalculationUnit === 'line' ? $lineTax : null,
@@ -135,35 +135,36 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8">
-  <title>出荷伝票</title>
+  <title>商品納品書</title>
   <style>
-    body{margin:32px;color:#172033;font:13px "Noto Sans JP",Meiryo,sans-serif}
+    body{margin:28px;color:#172033;font:11px "Noto Sans JP",Meiryo,sans-serif}
     .toolbar{display:flex;align-items:center;justify-content:flex-start;margin-bottom:8px}
     button{font:inherit;border:1px solid #94a3b8;border-radius:4px;background:#fff;padding:7px 10px;cursor:pointer}
-    h1{font-size:24px;margin:0 0 16px;text-align:center;letter-spacing:.08em}
-    .top{display:grid;grid-template-columns:1fr 320px;gap:24px;margin-bottom:18px}
+    h1{font-size:20px;margin:0 0 12px;text-align:center;letter-spacing:.08em}
+    .top{display:grid;grid-template-columns:1fr 280px;gap:20px;margin-bottom:14px}
     .customer{border-bottom:2px solid #172033;padding:6px 0 10px}
-    .customer-name{font-size:18px;font-weight:800;margin-bottom:8px}
-    .muted{color:#64748b;font-size:11px}.notice{margin:0 0 12px;color:#9a6700;font-size:12px}
+    .customer-name{font-size:15px;font-weight:800;margin-bottom:6px}
+    .muted{color:#64748b;font-size:9px}.notice{margin:0 0 10px;color:#9a6700;font-size:10px}
     .meta{border:1px solid #94a3b8;border-bottom:0}
-    .meta div{display:grid;grid-template-columns:116px 1fr;border-bottom:1px solid #94a3b8}
-    .meta span{padding:6px 8px;font-size:12px}.meta span:first-child{background:#f1f5f9;color:#475569;font-size:10px;font-weight:800;border-right:1px solid #94a3b8}
+    .meta div{display:grid;grid-template-columns:88px 1fr;border-bottom:1px solid #94a3b8}
+    .meta span{padding:4px 6px;font-size:9px}.meta span:first-child{background:#f1f5f9;color:#475569;font-size:8px;font-weight:800;border-right:1px solid #94a3b8}
     table{border-collapse:collapse;width:100%}
-    th,td{border:1px solid #94a3b8;padding:7px 8px;text-align:left;vertical-align:top}
-    th{background:#f1f5f9;font-size:11px;color:#334155}
-    .num{text-align:right;white-space:nowrap}.code{width:130px}.qty{width:72px}.unit{width:58px}.money{width:92px}.tax{width:74px}
-    .tax-section{margin-top:14px}.tax-heading{font-size:11px;font-weight:400;margin:0 0 4px;color:#475569}
-    .section-total td{border:0;background:#fff;font-weight:400;padding:10px 0 4px;line-height:1.3}.section-total-box{display:grid;grid-template-columns:max-content 190px;gap:12px;width:max-content;margin-left:auto;border-bottom:1px solid #172033}.section-total-label{text-align:right;white-space:nowrap}
-    .summary{display:grid;grid-template-columns:1fr 320px;gap:18px;margin-top:14px;align-items:start}
-    .summary-table td:first-child{background:#f8fafc;font-weight:800;color:#475569}.summary-table td{padding:8px 10px}
-    .note{border:1px solid #cbd5e1;min-height:72px;padding:8px;font-size:12px;color:#475569}
-    .footnote{margin-top:8px;color:#64748b;font-size:11px;line-height:1.5}
+    th,td{border:1px solid #94a3b8;padding:5px 6px;text-align:left;vertical-align:top}
+    th{background:#f1f5f9;font-size:9px;color:#334155}
+    .num{text-align:right;white-space:nowrap}.code{width:110px}.qty{width:58px}.unit{width:46px}.money{width:78px}.tax{width:60px}
+    .line-note{display:block;margin-top:3px;color:#475569;font-size:9px;line-height:1.35;white-space:pre-wrap}
+    .tax-section{margin-top:10px}.tax-heading{font-size:9px;font-weight:400;margin:0 0 3px;color:#475569}
+    .section-total td{border:0;background:#fff;font-weight:400;padding:8px 0 3px;line-height:1.25}.section-total-box{display:grid;grid-template-columns:max-content 170px;gap:10px;width:max-content;margin-left:auto;border-bottom:1px solid #172033}.section-total-label{text-align:right;white-space:nowrap}
+    .summary{display:grid;grid-template-columns:1fr 280px;gap:14px;margin-top:10px;align-items:start}
+    .summary-table td:first-child{background:#f8fafc;font-weight:800;color:#475569}.summary-table td{padding:6px 8px}
+    .note{border:1px solid #cbd5e1;min-height:60px;padding:6px;font-size:10px;color:#475569}
+    .footnote{margin-top:6px;color:#64748b;font-size:9px;line-height:1.4}
     @media print{body{margin:12mm}.no-print{display:none}.toolbar{display:none}a{color:inherit;text-decoration:none}}
   </style>
 </head>
 <body>
   <div class="toolbar"><button class="no-print" onclick="printShipmentSlip()">印刷する</button></div>
-  <h1>出荷伝票</h1>
+  <h1>商品納品書</h1>
   <div class="top">
     <div class="customer">
       <div class="customer-name">{{ $customer?->billing_name ?: $customer?->name }} 御中</div>
@@ -188,7 +189,6 @@
           <tr>
             <th class="code">商品コード</th>
             <th>商品名</th>
-            <th>ロット・実測度数</th>
             <th class="qty num">数量</th>
             <th class="unit">単位</th>
             <th class="money num">単価</th>
@@ -199,8 +199,7 @@
           @foreach($section['rows'] as $row)
             <tr>
               <td>{{ $row['code'] }}</td>
-              <td>{{ $row['name'] }}</td>
-              <td>{{ $row['lots'] ?: '-' }}</td>
+              <td>{{ $row['name'] }}@if($row['note'] !== '')<span class="line-note">備考: {{ $row['note'] }}</span>@endif</td>
               <td class="num">{{ $formatQuantity($row['quantity']) }}</td>
               <td>{{ $row['unit'] }}</td>
               <td class="num">{{ $formatMoney($row['unit_price']) }}</td>
@@ -208,7 +207,7 @@
             </tr>
           @endforeach
           <tr class="section-total">
-            <td colspan="7"><div class="section-total-box"><span class="section-total-label">税込小計（内消費税{{ $section['label'] }}）</span><span class="num">{{ $formatMoney($section['total']) }}（{{ $formatMoney($section['tax']) }}）</span></div></td>
+            <td colspan="6"><div class="section-total-box"><span class="section-total-label">税込小計（内消費税{{ $section['label'] }}）</span><span class="num">{{ $formatMoney($section['total']) }}（{{ $formatMoney($section['tax']) }}）</span></div></td>
           </tr>
         </tbody>
       </table>

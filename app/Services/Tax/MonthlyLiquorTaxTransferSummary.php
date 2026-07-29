@@ -22,6 +22,7 @@ class MonthlyLiquorTaxTransferSummary
         public readonly ?string $reductionRate,
         public readonly string $taxTreatment,
         public readonly string $sourceType,
+        public readonly ?int $reportingAlcoholPercentage,
         public readonly string $taxableKl,
         public readonly string $estimatedAmount,
         public readonly string $grossTaxAmount,

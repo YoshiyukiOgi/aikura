@@ -12,6 +12,7 @@ use App\Services\Inventory\LotStockBalance;
 use App\Services\Inventory\LotStockBalanceService;
 use App\Services\Inventory\LotVisibilityPolicy;
 use App\Services\Inventory\ProductLotCandidateSummaryService;
+use App\Services\Operations\OperationalPeriod;
 use App\Services\Shipment\AllocateShipmentLineLotService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -22,7 +23,7 @@ class InventoryController extends ApiController
     /** @var array<int, Product|null> */
     private array $lotProductCache = [];
 
-    public function stock(Request $request, LotStockBalanceService $service, LotVisibilityPolicy $visibility): JsonResponse
+    public function stock(Request $request, LotStockBalanceService $service, LotVisibilityPolicy $visibility, OperationalPeriod $operationalPeriod): JsonResponse
     {
         $validated = $request->validate([
             'stock_location_id' => ['nullable', 'integer', 'exists:stock_locations,id'],
@@ -31,6 +32,7 @@ class InventoryController extends ApiController
             'product_type' => ['nullable', 'in:sake,kasu,food,goods'],
         ]);
         $asOfDate = $validated['as_of_date'] ?? now()->toDateString();
+        $operationalPeriod->ensureOpen($asOfDate, '在庫基準日');
         $includeZeroStock = $visibility->includeZeroStock((bool) ($validated['include_zero_stock'] ?? false));
         $balances = $service->allAsOf($asOfDate, $includeZeroStock)
             ->filter(fn (LotStockBalance $balance): bool => $visibility->shouldDisplayBalance($balance, $includeZeroStock));
@@ -45,8 +47,8 @@ class InventoryController extends ApiController
             'inventory_basis' => 'production_lot',
             'as_of_date' => $asOfDate,
             'zero_stock_hidden' => ! $includeZeroStock,
-            'stock_balances' => $balances
-                ->map(fn (LotStockBalance $balance): array => $this->serializeLotStockBalance($balance))
+            'stock_balances' => $this->sortLotStockRows($balances
+                ->map(fn (LotStockBalance $balance): array => $this->serializeLotStockBalance($balance)))
                 ->values()
                 ->all(),
         ]);
@@ -155,7 +157,7 @@ class InventoryController extends ApiController
         ]);
     }
 
-    public function lotStockAsOf(Request $request, LotVisibilityPolicy $visibility): JsonResponse
+    public function lotStockAsOf(Request $request, LotVisibilityPolicy $visibility, OperationalPeriod $operationalPeriod): JsonResponse
     {
         $validated = $request->validate([
             'as_of_date' => ['nullable', 'date'],
@@ -165,6 +167,7 @@ class InventoryController extends ApiController
         ]);
 
         $asOfDate = $validated['as_of_date'] ?? now()->toDateString();
+        $operationalPeriod->ensureOpen($asOfDate, '在庫基準日');
         $keyword = trim((string) ($validated['q'] ?? ''));
         $includeZeroStock = $visibility->includeZeroStock((bool) ($validated['include_zero_stock'] ?? false));
 
@@ -175,6 +178,7 @@ class InventoryController extends ApiController
             ->whereNotNull('sm.production_lot_id')
             ->whereIn('sm.status', ['confirmed', 'closed'])
             ->whereNull('sm.cancelled_at')
+            ->whereDate('sm.movement_date', '>=', $operationalPeriod->startDate())
             ->whereDate('sm.movement_date', '<=', $asOfDate);
 
         if ($keyword !== '') {
@@ -197,6 +201,7 @@ class InventoryController extends ApiController
                 pl.note as lot_note,
                 pl.production_date,
                 pl.bottling_date,
+                pl.capacity_value,
                 sl.code as stock_location_code,
                 sl.name as stock_location_name,
                 COALESCE(u.symbol, u.name, u.code) as unit_name,
@@ -213,6 +218,7 @@ class InventoryController extends ApiController
                 'pl.note',
                 'pl.production_date',
                 'pl.bottling_date',
+                'pl.capacity_value',
                 'sl.code',
                 'sl.name',
                 'u.symbol',
@@ -224,9 +230,7 @@ class InventoryController extends ApiController
             $rowsQuery->havingRaw('ABS(SUM(sm.quantity)) > 0.00005');
         }
 
-        $rows = $rowsQuery
-            ->orderBy('pl.lot_code')
-            ->orderBy('sl.code')
+        $rows = $this->sortLotStockRows($rowsQuery
             ->get()
             ->map(function (object $row): array {
                 $product = $this->productForLotAttributes($row->external_system_code, $row->lot_note);
@@ -237,10 +241,12 @@ class InventoryController extends ApiController
                     'unit_id' => (int) $row->unit_id,
                     'product_code' => $product?->product_code,
                     'product_name' => $product?->display_name,
+                    'sort_product_name' => $product?->name ?? $product?->display_name,
                     'product_type' => $product?->product_type,
                     'product_type_label' => $this->productTypeLabel($product?->product_type),
                     'lot_code' => $row->lot_code,
                     'lot_name' => $row->lot_name,
+                    'capacity_value' => $row->capacity_value,
                     'production_date' => $row->production_date,
                     'bottling_date' => $row->bottling_date,
                     'stock_location_code' => $row->stock_location_code,
@@ -251,7 +257,7 @@ class InventoryController extends ApiController
                 ];
             })
             ->filter(fn (array $row): bool => ! isset($validated['product_type']) || $row['product_type'] === $validated['product_type'])
-            ->values()
+        )->values()
             ->all();
 
         return $this->ok([
@@ -264,11 +270,14 @@ class InventoryController extends ApiController
     public function allocate(
         AllocateInventoryLotRequest $request,
         AllocateShipmentLineLotService $service,
+        OperationalPeriod $operationalPeriod,
     ): JsonResponse {
         $validated = $request->validated();
+        $shipmentLine = ShipmentLine::query()->with('shipmentHeader')->findOrFail((int) $validated['shipment_line_id']);
+        $operationalPeriod->ensureOpen($shipmentLine->shipmentHeader?->document_date?->toDateString(), '出荷日');
 
         $allocation = $service->allocate(
-            shipmentLine: ShipmentLine::findOrFail((int) $validated['shipment_line_id']),
+            shipmentLine: $shipmentLine,
             productionLot: ProductionLot::findOrFail((int) $validated['production_lot_id']),
             stockLocation: StockLocation::findOrFail((int) $validated['stock_location_id']),
             quantity: $validated['quantity'],
@@ -287,6 +296,7 @@ class InventoryController extends ApiController
     {
         $lot = ProductionLot::query()->with(['unit', 'capacityUnit'])->find($balance->productionLotId);
         $product = $this->productForLot($lot);
+        $stockLocation = StockLocation::query()->find($balance->stockLocationId);
 
         return [
             'production_lot_id' => $balance->productionLotId,
@@ -294,6 +304,7 @@ class InventoryController extends ApiController
             'unit_id' => $balance->unitId,
             'product_code' => $product?->product_code,
             'product_name' => $product?->display_name,
+            'sort_product_name' => $product?->name ?? $product?->display_name,
             'product_type' => $product?->product_type,
             'product_type_label' => $this->productTypeLabel($product?->product_type),
             'physical_quantity' => $balance->physicalQuantity,
@@ -304,6 +315,10 @@ class InventoryController extends ApiController
             'lot_name' => $lot?->display_name,
             'capacity_value' => $lot?->capacity_value,
             'capacity_unit_name' => $lot?->capacityUnit?->symbol ?: $lot?->capacityUnit?->name,
+            'production_date' => $lot?->production_date?->toDateString(),
+            'bottling_date' => $lot?->bottling_date?->toDateString(),
+            'stock_location_code' => $stockLocation?->code,
+            'stock_location_name' => $stockLocation?->name,
             'alcohol_percentage' => $lot?->alcohol_percentage,
             'sake_meter_value' => $lot?->sake_meter_value,
             'acidity' => $lot?->acidity,
@@ -333,12 +348,42 @@ class InventoryController extends ApiController
         return $this->lotProductCache[$lot->id] = $this->productForLotAttributes($lot->external_system_code, $lot->note);
     }
 
+    private function sortLotStockRows($rows)
+    {
+        $productTypeRank = ['sake' => 1, 'kasu' => 2, 'food' => 3, 'goods' => 4];
+
+        return $rows->sort(function (array $a, array $b) use ($productTypeRank): int {
+            $aKeys = [
+                $productTypeRank[$a['product_type'] ?? ''] ?? 99,
+                (string) ($a['lot_name'] ?? $a['sort_product_name'] ?? $a['product_name'] ?? ''),
+                $a['capacity_value'] === null ? PHP_FLOAT_MAX : (float) $a['capacity_value'],
+                (string) ($a['production_date'] ?? $a['bottling_date'] ?? '9999-12-31'),
+                (string) ($a['lot_code'] ?? ''),
+                (string) ($a['stock_location_code'] ?? $a['stock_location_name'] ?? $a['stock_location_id'] ?? ''),
+            ];
+            $bKeys = [
+                $productTypeRank[$b['product_type'] ?? ''] ?? 99,
+                (string) ($b['lot_name'] ?? $b['sort_product_name'] ?? $b['product_name'] ?? ''),
+                $b['capacity_value'] === null ? PHP_FLOAT_MAX : (float) $b['capacity_value'],
+                (string) ($b['production_date'] ?? $b['bottling_date'] ?? '9999-12-31'),
+                (string) ($b['lot_code'] ?? ''),
+                (string) ($b['stock_location_code'] ?? $b['stock_location_name'] ?? $b['stock_location_id'] ?? ''),
+            ];
+
+            return $aKeys <=> $bKeys;
+        });
+    }
+
     private function productForLotAttributes(?string $externalSystemCode, ?string $note): ?Product
     {
         $legacyProductId = null;
         if (is_string($externalSystemCode) && preg_match('/^ITARO-PRODUCT-DETAIL-(\d+)-\d+$/', $externalSystemCode, $matches)) {
             $legacyProductId = $matches[1];
+        } elseif (is_string($externalSystemCode) && preg_match('/^migration-xlsx:(\d+):\d+$/', $externalSystemCode, $matches)) {
+            $legacyProductId = $matches[1];
         } elseif (is_string($note) && preg_match('/商品ID=(\d+)/u', $note, $matches)) {
+            $legacyProductId = $matches[1];
+        } elseif (is_string($note) && preg_match('/旧商品ID(\d+)/u', $note, $matches)) {
             $legacyProductId = $matches[1];
         }
 

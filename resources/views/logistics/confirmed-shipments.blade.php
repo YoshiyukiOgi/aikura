@@ -15,6 +15,8 @@
     .filters,.detail{padding:12px;display:grid;gap:9px}
     input,select,button,textarea{font:inherit;border:1px solid #cad6e6;border-radius:4px;padding:6px 8px}
     button{cursor:pointer}
+    @keyframes searchPulse{0%,100%{background:#fff7d6;border-color:#f0b429;box-shadow:0 0 0 0 rgba(240,180,41,.28)}50%{background:#ffe08a;border-color:#d89b00;box-shadow:0 0 0 5px rgba(240,180,41,.12)}}
+    button.search-attention{animation:searchPulse 1.8s ease-in-out infinite;color:#172033;font-weight:800}
     .danger{color:#b42318;border-color:#f0b7b1}
     table{width:100%;border-collapse:collapse;table-layout:fixed}
     th,td{padding:9px 11px;border-bottom:1px solid #edf1f6;text-align:left;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -111,7 +113,11 @@
       return body.data;
     };
     const list = document.querySelector('#list'), detail = document.querySelector('#detail'), q = document.querySelector('#q');
-    let rows = [], selected = null;
+    let rows = [], selected = null, searchDirty = false;
+    const setSearchDirty = dirty => {
+      searchDirty = dirty;
+      document.querySelector('#refresh-confirmed')?.classList.toggle('search-attention', dirty);
+    };
     const pickLabel = status => status === 'picked' ? ja.picked : status === 'partially_picked' ? ja.partiallyPicked : ja.waitingPick;
     const isDocumentIssued = shipment => !!(shipment?.document_issued_at && shipment.document_issued_at !== 'null');
     const shipmentStatusLabel = shipment => shipment.status === 'cancelled' ? ja.cancelled : shipment.status === 'draft' ? (isDocumentIssued(shipment) ? ja.issued : ja.ready) : ja.confirmed;
@@ -305,6 +311,7 @@
     async function load() {
       const refresh = document.querySelector('#refresh-confirmed');
       try {
+        setSearchDirty(false);
         if (refresh) { refresh.disabled = true; refresh.textContent = '更新中...'; }
         const [ships, picks, instructions] = await Promise.all([
           api('/api/v1/shipments'),
@@ -325,12 +332,12 @@
         if (refresh) { refresh.disabled = false; refresh.textContent = '最新に更新'; }
       }
     }
-    q.oninput = draw;
-    statusFilter.onchange = draw;
-    pickFilter.onchange = draw;
+    q.oninput = () => setSearchDirty(true);
+    statusFilter.onchange = () => setSearchDirty(true);
+    pickFilter.onchange = () => setSearchDirty(true);
     document.querySelector('#refresh-confirmed')?.addEventListener('click',()=>load());
     load();
-    if(autoRefreshEnabled) setInterval(()=>{ if(!selected){ load(); } },autoRefreshMs);
+    if(autoRefreshEnabled) setInterval(()=>{ if(!selected && !searchDirty){ load(); } },autoRefreshMs);
   </script>
 </body>
 </html>

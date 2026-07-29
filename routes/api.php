@@ -125,6 +125,10 @@ Route::prefix('v1')->name('api.v1.')->group(function (): void {
             ->middleware('permission:price.change')
             ->name('price-rules.update');
 
+        Route::post('/price-review-tasks/notify-selection', [PriceReviewTaskController::class, 'notifyForSelection'])
+            ->middleware('permission:sales_order.view')
+            ->name('price-review-tasks.notify-selection');
+
         Route::post('/price-review-tasks/{price_review_task}/keep', [PriceReviewTaskController::class, 'keep'])
             ->middleware('permission:price.change')
             ->name('price-review-tasks.keep');
@@ -232,6 +236,7 @@ Route::prefix('v1')->name('api.v1.')->group(function (): void {
             Route::get('/billing/payment-schedules', [BillingController::class, 'paymentSchedules'])->name('billing.payment-schedules');
             Route::get('/billing/payments', [BillingController::class, 'payments'])->name('billing.payments');
             Route::get('/billing/receivables', [BillingController::class, 'receivables'])->name('billing.receivables');
+            Route::get('/billing/customer-monthly-statements', [BillingController::class, 'customerMonthlyStatements'])->name('billing.customer-monthly-statements');
         });
 
         Route::post('/billing/invoices', [BillingController::class, 'createInvoice'])
@@ -321,6 +326,10 @@ Route::prefix('v1')->name('api.v1.')->group(function (): void {
         Route::post('/tax/liquor-monthly-filings/{filing}/confirm', [TaxController::class, 'confirmLiquorFiling'])
             ->middleware('permission:tax.liquor_filing.confirm')
             ->name('tax.liquor-monthly-filings.confirm');
+
+        Route::post('/tax/liquor-monthly-filings/{filing}/reopen', [TaxController::class, 'reopenLiquorFiling'])
+            ->middleware('permission:tax.liquor_filing.confirm')
+            ->name('tax.liquor-monthly-filings.reopen');
 
         Route::post('/tax/liquor-monthly-filings/{filing}/adjustments', [TaxController::class, 'createLiquorAdjustment'])
             ->middleware('permission:tax.liquor_filing.create')

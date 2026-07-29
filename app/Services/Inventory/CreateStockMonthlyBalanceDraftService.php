@@ -4,6 +4,7 @@ namespace App\Services\Inventory;
 
 use App\Models\StockLotMonthlyBalance;
 use App\Models\StockMovement;
+use App\Services\Operations\OperationalPeriod;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Support\Collection;
@@ -11,6 +12,8 @@ use Illuminate\Support\Facades\DB;
 
 class CreateStockMonthlyBalanceDraftService
 {
+    public function __construct(private readonly OperationalPeriod $operationalPeriod) {}
+
     /** @return Collection<int, StockLotMonthlyBalance> */
     public function create(int $year, int $month, ?string $reason = null): Collection
     {
@@ -29,6 +32,7 @@ class CreateStockMonthlyBalanceDraftService
                 ->whereNotNull('production_lot_id')
                 ->whereIn('status', ['confirmed', 'closed'])
                 ->whereNull('cancelled_at')
+                ->whereDate('movement_date', '>=', $this->operationalPeriod->startDate())
                 ->whereDate('movement_date', '<=', $periodEnd->toDateString())
                 ->groupBy('production_lot_id', 'stock_location_id', 'unit_id')
                 ->get();

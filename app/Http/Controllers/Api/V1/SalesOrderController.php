@@ -118,6 +118,7 @@ class SalesOrderController extends ApiController
                     fn (SalesOrderLine $line): CreateShipmentInstructionLineData => new CreateShipmentInstructionLineData(
                         salesOrderLineId: $line->id,
                         quantity: (string) $line->remaining_quantity,
+                        note: $line->note,
                     ),
                 )->all(),
             ));
@@ -170,6 +171,7 @@ class SalesOrderController extends ApiController
             ->map(fn (SalesOrderLine $line): CreateShipmentInstructionLineData => new CreateShipmentInstructionLineData(
                 salesOrderLineId: $line->id,
                 quantity: (string) $line->remaining_quantity,
+                note: $line->note,
             ))
             ->values()
             ->all();

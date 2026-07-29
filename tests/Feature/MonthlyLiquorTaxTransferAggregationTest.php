@@ -59,10 +59,28 @@ class MonthlyLiquorTaxTransferAggregationTest extends TestCase
         $this->assertSame('fixed_per_kl', $summary->calculationMethod);
         $this->assertSame('100000.0000', $summary->taxPerKl);
         $this->assertSame('0.0000', $summary->reductionRate);
+        $this->assertSame(15, $summary->reportingAlcoholPercentage);
         $this->assertSame('0.003600', $summary->taxableKl);
         $this->assertSame('360.00', $summary->estimatedAmount);
         $this->assertSame(2, $summary->shipmentCount);
         $this->assertSame(2, $summary->lineCount);
+    }
+
+    public function test_it_groups_transfers_by_reporting_alcohol_percentage_with_fraction_flooring(): void
+    {
+        [$customer, $product, $unit] = $this->prepareBaseData();
+
+        $this->confirmShipment($customer, $product, $unit, '2026-06-01', '2026-06-01', '1.0000');
+
+        $product->update(['alcohol_percentage' => '16.50']);
+        $product->refresh();
+        $this->confirmShipment($customer, $product, $unit, '2026-06-02', '2026-06-02', '1.0000');
+
+        $summaries = app(AggregateMonthlyLiquorTaxTransfersService::class)->aggregate(2026, 6);
+
+        $this->assertCount(2, $summaries);
+        $this->assertSame([15, 16], $summaries->pluck('reportingAlcoholPercentage')->values()->all());
+        $this->assertSame(['0.000720', '0.000720'], $summaries->pluck('taxableKl')->values()->all());
     }
 
     public function test_it_falls_back_to_document_date_when_transfer_date_is_empty(): void

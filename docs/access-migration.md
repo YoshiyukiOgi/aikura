@@ -132,7 +132,57 @@ docker compose exec -T app php artisan aikura:access-import-inventory-history <b
 - 通常検索で得意先・商品・出荷・履歴ロットを検索できる。`ITARO-P-02633`が`安芸虎夏純吟<生> 720ml`として取得されることを確認した。
 - Excel照合表は`storage/app/access-migrations/reports/access-migration-reconciliation-batch-3.xlsx`に保存した。
 
-## 6. 次の実装順
+## 6. 差分取込
+
+稼働開始後の`Itaro-xp.accdb`は、全スナップショットを再抽出して前回の移行済みバッチと比較する。業務テーブルへ直接投入せず、必ず`Plan -> CSV確認 -> Apply`の順で実行する。
+
+### 6.1 Plan
+
+```powershell
+.\scripts\access\Invoke-AccessDeltaMigration.ps1 `
+    -Mode Plan `
+    -SourcePath 'C:\path\to\Itaro-xp.accdb'
+```
+
+比較元を固定する場合:
+
+```powershell
+.\scripts\access\Invoke-AccessDeltaMigration.ps1 `
+    -Mode Plan `
+    -SourcePath 'C:\path\to\Itaro-xp.accdb' `
+    -BaselineBatchId 3
+```
+
+この処理は、読取専用抽出、ステージング、検証、差分分類を行う。差分は`(元テーブル, 元キー, payload SHA-256)`で`new / changed / unchanged / deleted`に分類され、次へCSV出力される。
+
+`storage/app/access-migrations/reports/access-delta-plan-batch-<batch-id>.csv`
+
+### 6.2 確認基準
+
+- `new`: 自動取込対象。
+- `changed`: マスタ・価格はApplyで再取込する。出荷、出荷明細、伝票外在庫出入、入金は自動適用を停止する。
+- `unchanged`: 取込を省略する。
+- `deleted`: テーブルを問わず自動適用を停止する。業務データを自動削除しない。
+- 価格テーブルはAccess側に安定IDがないため、CSVで変更内容を重点確認する。
+
+### 6.3 Apply
+
+CSV確認後、表示された新バッチIDを指定する。
+
+```powershell
+.\scripts\access\Invoke-AccessDeltaMigration.ps1 -Mode Apply -BatchId <batch-id>
+```
+
+Applyは得意先・商品・価格を再同期し、取引履歴は`new`だけを取り込む。過去出荷・在庫履歴から在庫移動は生成せず、開始在庫と開始売掛残高も再計算しない。入金はAccess入金IDを全バッチ共通キーとして重複を防止する。
+
+個別コマンド:
+
+```powershell
+docker compose exec -T app php artisan aikura:access-delta-plan <batch-id> --baseline=<baseline-batch-id>
+docker compose exec -T app php artisan aikura:access-delta-apply <batch-id>
+```
+
+## 7. 次の運用作業
 
 1. 入手後の紙帳票と開始売掛残高を照合し、差額があれば調整額と理由を記録する。
-2. 稼働開始日以降の差分データを取り込み、Accessとの並行運用期間を終了する。
+2. 差分CSVと取込件数を保管し、Accessとの並行運用終了日を記録する。

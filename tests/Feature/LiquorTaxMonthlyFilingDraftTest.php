@@ -66,6 +66,7 @@ class LiquorTaxMonthlyFilingDraftTest extends TestCase
             'liquor_tax_category_name',
             'liquor_taxability',
             'liquor_tax_rule_id',
+            'reporting_alcohol_percentage',
             'calculation_method',
             'tax_per_kl',
             'reduction_rate',
@@ -118,6 +119,7 @@ class LiquorTaxMonthlyFilingDraftTest extends TestCase
         $this->assertSame('seishu', $line->liquor_tax_category_code);
         $this->assertSame('taxable', $line->liquor_taxability);
         $this->assertSame('fixed_per_kl', $line->calculation_method);
+        $this->assertSame(15, $line->reporting_alcohol_percentage);
         $this->assertSame('100000.0000', $line->tax_per_kl);
         $this->assertSame('0.2000', $line->reduction_rate);
         $this->assertSame('0.003600', $line->taxable_kl);
@@ -129,6 +131,7 @@ class LiquorTaxMonthlyFilingDraftTest extends TestCase
         $this->assertSame('0.003600', $line->relief_calculation_basis['eligible_kl_after']);
         $this->assertSame('288.00', $line->estimated_amount);
         $this->assertCount(2, $filing->sources);
+        $this->assertSame([15, 15], $filing->sources->pluck('reporting_alcohol_percentage')->all());
     }
 
     public function test_it_updates_existing_draft_for_same_month(): void

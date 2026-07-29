@@ -5,12 +5,14 @@ namespace App\Services\Billing;
 use App\Exceptions\Billing\InvoiceDraftException;
 use App\Models\Customer;
 use App\Models\InvoiceHeader;
+use App\Models\OpeningReceivableBalance;
 use App\Models\Payment;
 use App\Models\PaymentSchedule;
 use App\Models\ShipmentHeader;
 use App\Services\Audit\AuditLogData;
 use App\Services\Audit\AuditLogService;
 use App\Services\NumberSequence\NumberSequenceService;
+use App\Services\Operations\OperationalPeriod;
 use App\Services\Tax\TaxRoundingService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -22,6 +24,7 @@ class CreateInvoiceDraftService
         private readonly NumberSequenceService $numberSequenceService,
         private readonly AuditLogService $auditLogService,
         private readonly TaxRoundingService $taxRoundingService,
+        private readonly OperationalPeriod $operationalPeriod,
     ) {
     }
 
@@ -112,6 +115,7 @@ class CreateInvoiceDraftService
                         'consumption_tax_rate_effective_from' => $shipmentLine->confirmed_consumption_tax_rate_effective_from,
                         'tax_amount' => $taxAmount,
                         'total_amount' => $lineTotal,
+                        'note' => $shipmentLine->note,
                     ]);
 
                     if ($customer->tax_calculation_unit === 'invoice' && $shipmentLine->confirmed_consumption_tax_rate !== null) {
@@ -133,10 +137,15 @@ class CreateInvoiceDraftService
                 $total = bcadd($total, $line->total_amount, 2);
             }
 
-            $previousBalance = $this->previousBalanceAmount($customer, $invoice->id);
+            $previousBalance = $this->previousBalanceAmount($customer, $invoice, $data->billingPeriodStart);
             $periodPayment = $this->periodPaymentAmount($customer, $data->billingPeriodStart, $data->billingPeriodEnd);
-            $carriedForward = $data->includeCarriedForward ? $previousBalance : '0.00';
+            $carriedForward = $data->includeCarriedForward
+                ? $this->carriedForwardAmount($previousBalance, $periodPayment)
+                : '0.00';
             $currentInvoiceAmount = bcadd($subtotal, $tax, 2);
+            $totalAmount = $data->includeCarriedForward
+                ? $this->invoiceTotalAmount($previousBalance, $periodPayment, $currentInvoiceAmount)
+                : $currentInvoiceAmount;
 
             $invoice->update([
                 'previous_balance_amount' => $previousBalance,
@@ -147,7 +156,7 @@ class CreateInvoiceDraftService
                 'current_invoice_amount' => $currentInvoiceAmount,
                 'subtotal_amount' => $subtotal,
                 'tax_amount' => $tax,
-                'total_amount' => bcadd($carriedForward, $currentInvoiceAmount, 2),
+                'total_amount' => $totalAmount,
             ]);
 
             $this->auditLogService->record(new AuditLogData(
@@ -168,16 +177,76 @@ class CreateInvoiceDraftService
         });
     }
 
-    private function previousBalanceAmount(Customer $customer, int $currentInvoiceId): string
+    private function previousBalanceAmount(Customer $customer, InvoiceHeader $invoice, ?string $billingPeriodStart): string
     {
         $amount = PaymentSchedule::query()
             ->where('customer_id', $customer->id)
+            ->whereHas('invoiceHeader', function ($query): void {
+                $query
+                    ->whereNotIn('status', ['draft', 'cancelled'])
+                    ->whereNull('cancelled_at')
+                    ->whereDate('invoice_date', '>=', $this->operationalPeriod->startDate());
+            })
             ->whereIn('status', ['open', 'partial'])
             ->where('outstanding_amount', '>', 0)
-            ->where('invoice_header_id', '!=', $currentInvoiceId)
+            ->where('invoice_header_id', '!=', $invoice->id)
             ->sum('outstanding_amount');
 
-        return bcadd((string) $amount, '0', 2);
+        return bcadd(
+            bcadd((string) $amount, '0', 2),
+            $this->openingReceivableAmount($customer, $invoice, $billingPeriodStart),
+            2,
+        );
+    }
+
+    private function openingReceivableAmount(Customer $customer, InvoiceHeader $invoice, ?string $billingPeriodStart): string
+    {
+        if ($billingPeriodStart === null) {
+            return '0.00';
+        }
+
+        $opening = OpeningReceivableBalance::query()
+            ->where('customer_id', $customer->id)
+            ->whereIn('status', ['calculated', 'reconciled'])
+            ->where('opening_balance_amount', '!=', 0)
+            ->whereDate('as_of_date', '>=', $this->operationalPeriod->startDate())
+            ->whereDate('as_of_date', '<=', $billingPeriodStart)
+            ->orderByDesc('as_of_date')
+            ->orderByDesc('id')
+            ->first();
+
+        if ($opening === null) {
+            return '0.00';
+        }
+
+        $alreadyCarried = InvoiceHeader::query()
+            ->where('customer_id', $customer->id)
+            ->where('id', '!=', $invoice->id)
+            ->whereNotIn('status', ['draft', 'cancelled'])
+            ->whereNull('cancelled_at')
+            ->whereDate('invoice_date', '>=', $opening->as_of_date->toDateString())
+            ->whereDate('invoice_date', '<', $invoice->invoice_date->toDateString())
+            ->exists();
+
+        if ($alreadyCarried) {
+            return '0.00';
+        }
+
+        return bcadd((string) $opening->opening_balance_amount, '0', 2);
+    }
+
+    private function carriedForwardAmount(string $previousBalance, string $periodPayment): string
+    {
+        $amount = bcsub($previousBalance, $periodPayment, 2);
+
+        return bccomp($amount, '0.00', 2) > 0 ? $amount : '0.00';
+    }
+
+    private function invoiceTotalAmount(string $previousBalance, string $periodPayment, string $currentInvoiceAmount): string
+    {
+        $amount = bcsub(bcadd($previousBalance, $currentInvoiceAmount, 2), $periodPayment, 2);
+
+        return bccomp($amount, '0.00', 2) > 0 ? $amount : '0.00';
     }
 
     private function periodPaymentAmount(Customer $customer, ?string $periodStart, ?string $periodEnd): string

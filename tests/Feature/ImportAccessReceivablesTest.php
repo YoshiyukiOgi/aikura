@@ -99,6 +99,74 @@ class ImportAccessReceivablesTest extends TestCase
         $monthly = app(CreateReceivableMonthlyBalanceDraftService::class)->create(2026, 7, 'migration test');
         $this->assertSame('255.00', $monthly->firstWhere('customer_id', $customer->id)->outstanding_amount);
         $this->assertSame('receivables_imported', $batch->refresh()->status);
+
+        $deltaBatch = AccessMigrationBatch::query()->create([
+            'status' => 'inventory_history_imported',
+            'baseline_batch_id' => $batch->id,
+            'source_file_name' => 'Itaro-xp.accdb',
+            'source_file_path' => 'C:\\source\\Itaro-xp.accdb',
+            'source_sha256' => str_repeat('E', 64),
+            'source_size' => 124,
+            'source_last_modified_at' => '2026-07-20 01:42:39+00',
+            'extractor_version' => 'test',
+            'package_version' => 1,
+            'source_table_count' => 1,
+            'source_row_count' => 2,
+            'manifest' => [],
+            'started_at' => now(),
+        ]);
+        DB::table('access_migration_mappings')->insert([
+            'batch_id' => $deltaBatch->id,
+            'source_table' => '取引先マスター',
+            'source_key' => '1',
+            'target_table' => 'customers',
+            'target_id' => (string) $customer->id,
+            'action' => 'imported',
+            'source_payload_sha256' => str_repeat('D', 64),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $this->insertPaymentSource($deltaBatch, '2', -60, false, false, 'PayPay銀行');
+        $this->insertPaymentSource($deltaBatch, '5', -25, false, false, '追加入金');
+        $deltaRows = DB::table('access_migration_staging_rows')
+            ->where('batch_id', $deltaBatch->id)
+            ->pluck('id', 'source_key');
+        DB::table('access_migration_deltas')->insert([
+            [
+                'batch_id' => $deltaBatch->id,
+                'baseline_batch_id' => $batch->id,
+                'source_table' => '入金',
+                'source_key' => '2',
+                'change_type' => 'unchanged',
+                'current_staging_row_id' => $deltaRows['2'],
+                'current_payload_sha256' => str_repeat('A', 64),
+                'apply_status' => 'planned',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'batch_id' => $deltaBatch->id,
+                'baseline_batch_id' => $batch->id,
+                'source_table' => '入金',
+                'source_key' => '5',
+                'change_type' => 'new',
+                'current_staging_row_id' => $deltaRows['5'],
+                'current_payload_sha256' => str_repeat('B', 64),
+                'apply_status' => 'planned',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $deltaSummary = app(ImportAccessReceivables::class)->import($deltaBatch, true);
+
+        $this->assertSame(1, $deltaSummary['ledger_entries']);
+        $this->assertSame(1, $deltaSummary['payments']);
+        $this->assertSame(0, $deltaSummary['opening_balances']);
+        $this->assertNull($deltaSummary['as_of_date']);
+        $this->assertDatabaseCount('access_receivable_ledger_entries', 5);
+        $this->assertDatabaseCount('payments', 3);
+        $this->assertDatabaseCount('opening_receivable_balances', 1);
     }
 
     private function createCustomer(): Customer

@@ -22,6 +22,8 @@ use App\Services\Shipment\ConfirmShipmentService;
 use App\Services\Shipment\CreateDraftShipmentData;
 use App\Services\Shipment\CreateDraftShipmentLineData;
 use App\Services\Shipment\CreateDraftShipmentService;
+use App\Services\Tax\ConfirmLiquorTaxMonthlyFilingService;
+use App\Services\Tax\CreateLiquorTaxMonthlyFilingDraftService;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -176,6 +178,79 @@ class TaxApiTest extends TestCase
             ->assertJsonPath('data.liquor_tax_monthly_filing.lines.0.sources.0.requires_review', false)
             ->assertJsonPath('data.liquor_tax_monthly_filing.lines.0.sources.0.evidence_status', 'confirmed')
             ->assertJsonPath('data.liquor_tax_monthly_filing.lines.0.sources.0.evidence_reference', 'EXP-API-001');
+    }
+
+    public function test_tax_user_can_create_and_download_liquor_tax_confirmation_sheets(): void
+    {
+        [$user] = $this->prepareData(email: 'tax-export@example.com');
+        $draft = app(CreateLiquorTaxMonthlyFilingDraftService::class)->create(2026, 6, 'api export draft');
+        $confirmed = app(ConfirmLiquorTaxMonthlyFilingService::class)->confirm($draft->year, $draft->month, 'api export confirm');
+
+        foreach (['xlsx', 'pdf'] as $format) {
+            $response = $this->actingAs($user)
+                ->postJson("/api/v1/tax/liquor-monthly-filings/{$confirmed->id}/exports", [
+                    'format' => $format,
+                    'reason' => 'api confirmation sheet',
+                ])
+                ->assertCreated()
+                ->assertJsonPath('data.report_export.format', $format);
+
+            $this->actingAs($user)
+                ->get($response->json('data.report_export.download_url'))
+                ->assertOk()
+                ->assertHeader('content-type', $format === 'xlsx'
+                    ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                    : 'application/pdf');
+        }
+    }
+
+    public function test_tax_user_can_reopen_latest_confirmed_liquor_filing(): void
+    {
+        [$user] = $this->prepareData(email: 'tax-reopen@example.com');
+        $draft = app(CreateLiquorTaxMonthlyFilingDraftService::class)->create(2026, 6, 'api reopen draft');
+        $confirmed = app(ConfirmLiquorTaxMonthlyFilingService::class)
+            ->confirm($draft->year, $draft->month, 'api reopen confirmation');
+
+        $this->actingAs($user)
+            ->getJson("/api/v1/tax/liquor-monthly-filings/{$confirmed->id}")
+            ->assertOk()
+            ->assertJsonPath('data.liquor_tax_monthly_filing.can_reopen', true);
+
+        $this->actingAs($user)
+            ->postJson("/api/v1/tax/liquor-monthly-filings/{$confirmed->id}/reopen", [
+                'reason' => 'correct confirmed filing through API',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.liquor_tax_monthly_filing.status', 'draft')
+            ->assertJsonPath('data.liquor_tax_monthly_filing.can_reopen', false)
+            ->assertJsonPath('data.liquor_tax_monthly_filing.total_confirmed_amount', null)
+            ->assertJsonPath('data.liquor_tax_monthly_filing.confirmed_at', null)
+            ->assertJsonPath('data.liquor_tax_monthly_filing.reason', 'correct confirmed filing through API');
+    }
+
+    public function test_tax_user_can_recalculate_existing_liquor_tax_draft(): void
+    {
+        [$user] = $this->prepareData(email: 'tax-recalculate@example.com');
+
+        $first = $this->actingAs($user)
+            ->postJson('/api/v1/tax/liquor-monthly-filings', [
+                'year' => 2026,
+                'month' => 6,
+                'reason' => 'first API draft',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.liquor_tax_monthly_filing.status', 'draft');
+
+        $this->actingAs($user)
+            ->postJson('/api/v1/tax/liquor-monthly-filings', [
+                'year' => 2026,
+                'month' => 6,
+                'reason' => 'API draft recalculation',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.liquor_tax_monthly_filing.id', $first->json('data.liquor_tax_monthly_filing.id'))
+            ->assertJsonPath('data.liquor_tax_monthly_filing.status', 'draft')
+            ->assertJsonPath('data.liquor_tax_monthly_filing.reason', 'API draft recalculation');
     }
 
     /**

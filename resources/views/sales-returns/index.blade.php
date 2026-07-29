@@ -47,6 +47,8 @@
     button{cursor:pointer;border:1px solid #cad6e6;border-radius:4px;background:#fff;color:#25344a;padding:7px 9px}
     button:disabled{opacity:.45;cursor:not-allowed}
     .primary{background:#0b6ff6;color:#fff;border-color:#0b6ff6;font-weight:800}
+    @keyframes searchPulse{0%,100%{background:#fff7d6;border-color:#f0b429;box-shadow:0 0 0 0 rgba(240,180,41,.28)}50%{background:#ffe08a;border-color:#d89b00;box-shadow:0 0 0 5px rgba(240,180,41,.12)}}
+    button.search-attention,button.primary.search-attention{animation:searchPulse 1.8s ease-in-out infinite;color:#172033!important;font-weight:800}
     .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
     .search-grid{display:grid;grid-template-columns:1fr 1fr 1fr 130px 130px auto;gap:8px;align-items:end}
     .return-search-grid{display:grid;grid-template-columns:1fr 130px 130px 120px auto;gap:8px;align-items:end}
@@ -221,6 +223,10 @@
       el.textContent = text;
       el.classList.toggle('error', isError);
     };
+    const pulseSearch = (selector, dirty = true) => document.querySelector(selector)?.classList.toggle('search-attention', dirty);
+    const markReturnSearchDirty = () => pulseSearch('#return-search', true);
+    const markSourceSearchDirty = () => pulseSearch('#source-search', true);
+    const clearSearchDirty = () => { pulseSearch('#return-search', false); pulseSearch('#source-search', false); };
     const cell = value => {
       const td = document.createElement('td');
       td.textContent = value ?? '';
@@ -520,6 +526,7 @@
         state.invoices = invoiceData.invoices || [];
         renderReturns();
         renderSourceLines();
+        clearSearchDirty();
         message('#list-msg', `更新 ${new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}`);
       } catch (error) {
         message('#list-msg', error.message, true);
@@ -537,6 +544,7 @@
     document.querySelector('#return-search')?.addEventListener('click', load);
     document.querySelector('#source-search')?.addEventListener('click', load);
     document.querySelectorAll('#return-customer,#return-date-from,#return-date-to').forEach(input => {
+      input.addEventListener('input', markReturnSearchDirty);
       input.addEventListener('keydown', event => {
         if (event.key === 'Enter') {
           event.preventDefault();
@@ -544,8 +552,9 @@
         }
       });
     });
-    document.querySelector('#return-status')?.addEventListener('change', load);
+    document.querySelector('#return-status')?.addEventListener('change', markReturnSearchDirty);
     document.querySelectorAll('#source-customer,#source-invoice-number,#source-product,#source-date-from,#source-date-to').forEach(input => {
+      input.addEventListener('input', markSourceSearchDirty);
       input.addEventListener('keydown', event => {
         if (event.key === 'Enter') {
           event.preventDefault();
@@ -553,7 +562,7 @@
         }
       });
     });
-    document.querySelector('#source-returnable-only')?.addEventListener('change', load);
+    document.querySelector('#source-returnable-only')?.addEventListener('change', markSourceSearchDirty);
     document.querySelector('#return-form')?.addEventListener('submit', async event => {
       event.preventDefault();
       if (!state.selected) {
