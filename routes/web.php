@@ -51,6 +51,7 @@ Route::middleware('auth')->group(function (): void {
     Route::get('/billing/invoices/print-batch', [LogisticsPageController::class, 'printInvoices'])->middleware('web.permission:billing.view')->name('billing.invoices.print-batch');
     Route::get('/billing/invoices/{invoice}/print', [LogisticsPageController::class, 'printInvoice'])->middleware('web.permission:billing.view')->name('billing.invoices.print');
     Route::get('/billing/customer-monthly-statements/print', [LogisticsPageController::class, 'printCustomerMonthlyStatements'])->middleware('web.permission:billing.view')->name('billing.customer-monthly-statements.print');
+    Route::get('/billing/payments/print', [LogisticsPageController::class, 'printPayments'])->middleware('web.permission:billing.view')->name('billing.payments.print');
     Route::get('/billing/payment-entry', [LogisticsPageController::class, 'billing'])->middleware('web.permission:billing.view')->name('billing.payment-entry');
     Route::get('/billing/payment-confirmation', [LogisticsPageController::class, 'billing'])->middleware('web.permission:billing.view')->name('billing.payment-confirmation');
     Route::get('/billing/payment-reviews', [LogisticsPageController::class, 'billing'])->middleware('web.permission:billing.view')->name('billing.payment-reviews');

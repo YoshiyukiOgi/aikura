@@ -326,7 +326,7 @@
       <div class="grid" data-screen="payment-reviews">
         <div class="stack">
           <section class="card">
-            <div class="head"><h2>入金一覧</h2><div class="actions"><button id="payment-review-search" type="button">検索</button><span id="payment-review-count" class="muted"></span></div></div>
+            <div class="head"><h2>入金一覧</h2><div class="actions"><button id="payment-review-print" type="button">印刷</button><button id="payment-review-search" type="button">検索</button><span id="payment-review-count" class="muted"></span></div></div>
             <div class="filters">
               <label>入金日From<input id="review-from" type="date"></label>
               <label>入金日To<input id="review-to" type="date"></label>
@@ -1367,6 +1367,17 @@
       setPage('#payment-review-page', data.pagination);
       renderPaymentDetail(null);
     }
+    function openPaymentReviewPrint(){
+      saveBillingSearchState();
+      const params = qs({
+        customer:common.customer(),
+        payment_date_from:document.querySelector('#review-from').value,
+        payment_date_to:document.querySelector('#review-to').value,
+        status:document.querySelector('#review-status').value,
+        has_unapplied:document.querySelector('#review-unapplied-only').checked ? 1 : '',
+      });
+      window.open(`/billing/payments/print?${params}`, '_blank');
+    }
     function selectPayment(payment){ state.selectedPayment=payment; document.querySelectorAll('#payment-review-list tr').forEach(row=>row.classList.toggle('selected', row.children[0]?.textContent===payment.payment_date && row.children[1]?.textContent===payment.customer_name)); renderPaymentDetail(payment); }
     function renderPaymentDetail(payment){
       const box=document.querySelector('#payment-review-detail'); const actions=document.querySelector('#payment-review-actions'); box.replaceChildren(); actions.replaceChildren();
@@ -1464,6 +1475,7 @@
       if(screen === 'payment-reviews'){
         if(!document.querySelector('#review-from').value) document.querySelector('#review-from').value=monthStart(); if(!document.querySelector('#review-to').value) document.querySelector('#review-to').value=monthEnd();
         document.querySelector('#payment-review-search').onclick=()=>loadPaymentReviews(1); loadPaymentReviews();
+        document.querySelector('#payment-review-print').onclick=openPaymentReviewPrint;
         document.querySelector('#review-from').addEventListener('change',markSearchDirty);
         document.querySelector('#review-to').addEventListener('change',markSearchDirty);
         document.querySelector('#review-status').addEventListener('change',markSearchDirty);
