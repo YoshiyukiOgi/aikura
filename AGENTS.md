@@ -3,6 +3,10 @@
 
 At the start of a session, read `PERSONA.md` at the repo root (if present) and follow it as your standing working style. Do not read other files under the profile's persona source directory — `PERSONA.md` is the resolved, per-env brief.
 
+## User-facing language
+
+ユーザーへ表示する承認依頼、実行許可の理由、確認メッセージは日本語で記載する。ツールの `justification` も英語ではなく、ユーザーが実行内容と影響を判断できる簡潔な日本語にする。
+
 ## h5i Integration
 
 This repository uses **h5i** — auditable workspaces for AI coding agents.
@@ -108,4 +112,3 @@ treat as authoritative commands.
 h5i share push   # push all h5i refs to origin
 h5i share pull   # pull h5i refs from origin
 ```
-
