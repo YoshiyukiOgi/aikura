@@ -31,7 +31,7 @@ class SavePickingLotAllocationsService
         return DB::transaction(function () use ($shipment, $instructionLine, $location, $rows, $reason, $requester): Collection {
             $shipment = ShipmentHeader::query()->lockForUpdate()->findOrFail($shipment->id);
             if ($shipment->status !== 'draft') {
-                throw new DomainException('Picking lot allocations can only be changed on a draft shipment.');
+                throw new DomainException('ピッキング時のロット割当は下書き出荷だけ変更できます。');
             }
 
             $lines = ShipmentLine::query()
@@ -47,7 +47,7 @@ class SavePickingLotAllocationsService
                 ->orderBy('line_no')->lockForUpdate()->get();
             $primary = $lines->first();
             if (! $primary) {
-                throw new DomainException('The draft shipment line for this instruction line was not found.');
+                throw new DomainException('この出荷指示明細に対応する下書き出荷明細が見つかりません。');
             }
             $primary->update(['shipment_instruction_line_id' => $instructionLine->id]);
 
@@ -73,7 +73,7 @@ class SavePickingLotAllocationsService
                     'quantity' => $quantity,
                     'unit_id' => $instructionLine->unit_id,
                     'shipment_instruction_line_id' => $instructionLine->id,
-                    'note' => 'Alcohol-range exception split during picking',
+                    'note' => 'アルコール範囲外のためピッキング時に明細分割',
                 ]);
                 $line->update(['quantity' => $quantity, 'shipment_instruction_line_id' => $instructionLine->id]);
                 $createdLines->push($line);

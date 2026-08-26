@@ -208,10 +208,10 @@ class FoundationMasterController extends ApiController
             if (isset($field['max_value'])) {
                 $fieldRules[] = 'max:'.$field['max_value'];
             }
-            if ($name === 'code') {
+            if (($field['unique'] ?? false) || $name === 'code') {
                 /** @var class-string<Model> $modelClass */
                 $modelClass = $config['model'];
-                $fieldRules[] = Rule::unique((new $modelClass)->getTable(), 'code')->ignore($record?->getKey());
+                $fieldRules[] = Rule::unique((new $modelClass)->getTable(), $name)->ignore($record?->getKey());
             }
 
             $rules[$name] = $fieldRules;

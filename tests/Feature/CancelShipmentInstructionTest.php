@@ -160,6 +160,7 @@ class CancelShipmentInstructionTest extends TestCase
             'sales_unit_id' => $unit->id,
             'inventory_unit_id' => $unit->id,
             'is_alcohol' => true,
+            'is_inventory_managed' => false,
         ]);
 
         return app(CreateSalesOrderService::class)->create(new CreateSalesOrderData(

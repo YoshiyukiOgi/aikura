@@ -21,6 +21,7 @@ use App\Models\ShipmentLotAllocation;
 use App\Models\ShipmentPick;
 use App\Models\StockLotMonthlyBalance;
 use App\Models\StockMovement;
+use App\Support\SearchTextNormalizer;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
@@ -273,7 +274,7 @@ class SearchService
     private function searchCustomers(string $query, int $limit): array
     {
         return Customer::query()
-            ->where(fn (Builder $builder): Builder => $this->whereLike($builder, ['customer_code', 'name', 'short_name', 'billing_name', 'search_key', 'legacy_code', 'legacy_name'], $query))
+            ->where('search_key_normalized', 'ilike', '%'.$query.'%')
             ->latest('updated_at')
             ->limit($limit)
             ->get()
@@ -284,7 +285,7 @@ class SearchService
     private function searchProducts(string $query, int $limit): array
     {
         return Product::query()
-            ->where(fn (Builder $builder): Builder => $this->whereLike($builder, ['product_code', 'name', 'display_name', 'brand_name', 'series_name', 'style_name', 'category_name', 'search_key', 'legacy_code', 'legacy_name'], $query))
+            ->where('search_key_normalized', 'ilike', '%'.$query.'%')
             ->latest('updated_at')
             ->limit($limit)
             ->get()
@@ -647,7 +648,7 @@ class SearchService
     private function whereLike(Builder $builder, array $columns, string $query): Builder
     {
         foreach ($columns as $column) {
-            $builder->orWhere($column, 'like', '%'.$query.'%');
+            $builder->orWhere($column, 'ilike', '%'.$query.'%');
         }
 
         return $builder;
@@ -741,7 +742,7 @@ class SearchService
             return null;
         }
 
-        $value = trim((string) $value);
+        $value = SearchTextNormalizer::normalize((string) $value);
 
         return $value === '' ? null : $value;
     }

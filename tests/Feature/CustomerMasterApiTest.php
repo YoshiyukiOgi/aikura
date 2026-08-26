@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\AuditLog;
 use App\Models\BillingCycle;
 use App\Models\Customer;
+use App\Models\Retail\RetailSupplier;
 use App\Models\Role;
 use App\Models\SettlementReceivableCategory;
 use App\Models\TransactionCategory;
@@ -62,7 +63,7 @@ class CustomerMasterApiTest extends TestCase
             ->assertJsonPath('data.customer.customer_code', 'MASTER-C-001');
         $customerId = $created->json('data.customer.id');
 
-        $this->getJson('/api/v1/masters/customers?q=マスター酒店&active=all')
+        $this->getJson('/api/v1/masters/customers?q='.urlencode('マスター 酒店').'&active=all')
             ->assertOk()
             ->assertJsonPath('data.pagination.total', 1)
             ->assertJsonPath('data.customers.0.id', $customerId);
@@ -97,5 +98,54 @@ class CustomerMasterApiTest extends TestCase
 
         $this->actingAs($user)->get('/masters/customers')->assertForbidden();
         $this->actingAs($user)->getJson('/api/v1/masters/customers')->assertForbidden();
+    }
+
+    public function test_retail_brewery_partner_customer_cannot_be_changed_from_brewery_master(): void
+    {
+        $this->seed([FoundationPermissionSeeder::class, CustomerMasterSeeder::class]);
+        $user = User::query()->create([
+            'name' => 'Master Administrator',
+            'email' => 'retail-locked-customer@example.test',
+            'password' => 'password',
+            'is_active' => true,
+        ]);
+        $user->roles()->attach(Role::query()->where('code', 'admin')->firstOrFail());
+
+        $transactionCategory = TransactionCategory::query()->where('code', 'wholesale')->firstOrFail();
+        $settlementCategory = SettlementReceivableCategory::query()->where('code', 'accounts_receivable_1')->firstOrFail();
+        $billingCycle = BillingCycle::query()->where('code', 'monthly_end_next_month_end')->firstOrFail();
+        $customer = Customer::query()->create([
+            'customer_code' => 'RETAIL-BREWERY-PARTNER',
+            'name' => 'Retail Brewery Partner',
+            'transaction_category_id' => $transactionCategory->id,
+            'settlement_receivable_category_id' => $settlementCategory->id,
+            'billing_cycle_id' => $billingCycle->id,
+        ]);
+        RetailSupplier::query()->create([
+            'supplier_code' => 'BREWERY-LOCKED',
+            'name' => 'Brewery',
+            'supplier_type' => 'brewery',
+            'ordering_method' => 'api',
+            'brewery_partner_id' => $customer->id,
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user)
+            ->putJson("/api/v1/masters/customers/{$customer->id}", [
+                'name' => 'Changed Name',
+                'transaction_category_id' => $transactionCategory->id,
+                'settlement_receivable_category_id' => $settlementCategory->id,
+                'billing_cycle_id' => $billingCycle->id,
+                'tax_rounding_method' => 'round',
+                'tax_calculation_unit' => 'invoice',
+                'amount_rounding_method' => 'round',
+                'invoice_required' => true,
+                'is_active' => true,
+                'change_reason' => 'manual change from brewery app',
+            ])
+            ->assertConflict()
+            ->assertJsonPath('error.code', 'business_rule_violation');
+
+        $this->assertSame('Retail Brewery Partner', $customer->refresh()->name);
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Api\V1;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 class StoreSalesOrderRequest extends FormRequest
 {
@@ -32,9 +33,38 @@ class StoreSalesOrderRequest extends FormRequest
             'awaiting_shipment_instruction' => ['nullable', 'boolean'],
             'lines' => ['required', 'array', 'min:1'],
             'lines.*.product_id' => ['required', 'integer', 'exists:products,id'],
-            'lines.*.quantity' => ['required', 'regex:/^\d+(\.\d{1,4})?$/'],
+            'lines.*.quantity' => ['required', 'regex:/^-?\d+(\.\d{1,4})?$/'],
             'lines.*.unit_id' => ['required', 'integer', 'exists:units,id'],
             'lines.*.note' => ['nullable', 'string'],
+        ];
+    }
+
+    public function after(): array
+    {
+        return [
+            function (Validator $validator): void {
+                $sourceType = (string) $this->input('source_type', '');
+                $allowsNegative = in_array($sourceType, [
+                    'retail_sale_correction',
+                    'retail_sale_credit_note',
+                    'retail_purchase_order_cancellation',
+                ], true);
+
+                foreach ((array) $this->input('lines', []) as $index => $line) {
+                    $quantity = (string) ($line['quantity'] ?? '0');
+                    if ($quantity === '' || ! is_numeric($quantity)) {
+                        continue;
+                    }
+
+                    if ($allowsNegative) {
+                        if (bccomp($quantity, '0', 4) === 0) {
+                            $validator->errors()->add("lines.{$index}.quantity", '数量は0以外で入力してください。');
+                        }
+                    } elseif (bccomp($quantity, '0', 4) <= 0) {
+                        $validator->errors()->add("lines.{$index}.quantity", '通常受注の数量は1以上で入力してください。');
+                    }
+                }
+            },
         ];
     }
 }

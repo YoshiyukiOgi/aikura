@@ -48,7 +48,7 @@ class ApiStateControlTest extends TestCase
 
         $invoice = app(CreateInvoiceDraftService::class)->create(new CreateInvoiceDraftData(
             customerId: $shipment->customer_id,
-            invoiceDate: '2026-06-30',
+            invoiceDate: '2026-07-31',
             shipmentHeaderIds: [$shipment->id],
         ));
         $invoice = app(ConfirmInvoiceService::class)->confirm($invoice);
@@ -112,8 +112,8 @@ class ApiStateControlTest extends TestCase
 
         $shipment = app(CreateDraftShipmentService::class)->create(new CreateDraftShipmentData(
             customerId: $customer->id,
-            documentDate: '2026-06-20',
-            billingTargetDate: '2026-06-20',
+            documentDate: '2026-07-20',
+            billingTargetDate: '2026-07-20',
             lines: [
                 new CreateDraftShipmentLineData($product->id, '2.0000', $bottle->id),
             ],

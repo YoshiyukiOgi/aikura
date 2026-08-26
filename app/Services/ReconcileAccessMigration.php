@@ -62,9 +62,19 @@ class ReconcileAccessMigration
 
     private function reconciliationRows(AccessMigrationBatch $batch): array
     {
-        $asOfDate = CarbonImmutable::parse($batch->source_last_modified_at ?? $batch->started_at)
-            ->setTimezone(config('app.timezone'))
-            ->toDateString();
+        $opening = DB::table('opening_receivable_balances')
+            ->where('access_migration_batch_id', $batch->id)
+            ->orderByDesc('as_of_date')
+            ->first(['as_of_date', 'status']);
+        if ($opening === null) {
+            $asOfDate = CarbonImmutable::parse($batch->source_last_modified_at ?? $batch->started_at)
+                ->setTimezone(config('app.timezone'))->toDateString();
+        } else {
+            $openingDate = CarbonImmutable::parse($opening->as_of_date);
+            $asOfDate = ($opening->status === 'reconciled' ? $openingDate->subDay() : $openingDate)
+                ->toDateString();
+        }
+        $cutoverDate = $this->cutoverDate($batch);
         $rows = [];
 
         foreach ([
@@ -88,6 +98,8 @@ class ReconcileAccessMigration
             ->where('source_table', '入金')
             ->whereRaw("COALESCE((payload->>'前月分請求')::boolean, false) = false")
             ->whereRaw("COALESCE(NULLIF(payload->>'金額', ''), '0')::numeric < 0")
+            ->when($cutoverDate !== null, fn ($query) => $query
+                ->whereRaw("CAST(payload->>'年月日' AS date) >= ?", [$cutoverDate]))
             ->count();
         $actualPayments = DB::table('payments as p')
             ->join('access_receivable_ledger_entries as l', 'l.id', '=', 'p.access_receivable_ledger_entry_id')
@@ -137,6 +149,8 @@ class ReconcileAccessMigration
         $inventorySource = DB::table('access_migration_staging_rows')
             ->where('batch_id', $batch->id)
             ->where('source_table', '伝票外在庫出入')
+            ->when($cutoverDate !== null, fn ($query) => $query
+                ->whereRaw("CAST(payload->>'年月日' AS date) >= ?", [$cutoverDate]))
             ->selectRaw("SUM(ABS(COALESCE(NULLIF(payload->>'増個数', ''), '0')::numeric)) as increase")
             ->selectRaw("SUM(ABS(COALESCE(NULLIF(payload->>'減個数', ''), '0')::numeric)) as decrease")
             ->first();
@@ -153,12 +167,24 @@ class ReconcileAccessMigration
         $rows[] = $this->row('在庫履歴', '増加数量合計', '個', $inventorySource->increase, $inventoryTarget->increase, '0.0001', '0数量を含む');
         $rows[] = $this->row('在庫履歴', '減少数量合計', '個', $inventorySource->decrease, $inventoryTarget->decrease, '0.0001', '絶対値で比較、0数量を含む');
 
-        [$sourceReceivableSales, $sourceLedger] = $this->sourceOpeningComponents($batch, $asOfDate);
-        $targetOpening = DB::table('opening_receivable_balances')
+        $openingDate = DB::table('opening_receivable_balances')
             ->where('access_migration_batch_id', $batch->id)
-            ->sum('opening_balance_amount');
-        $sourceOpening = bcadd($sourceReceivableSales, $sourceLedger, 2);
-        $rows[] = $this->row('売掛', '開始売掛残高', '円', $sourceOpening, $targetOpening, '0.01', "基準日{$asOfDate}、売掛対象出荷＋符号付き台帳");
+            ->max('as_of_date');
+        $openingQuery = DB::table('opening_receivable_balances')
+            ->where('access_migration_batch_id', $batch->id)
+            ->when($openingDate !== null, fn ($query) => $query->whereDate('as_of_date', $openingDate));
+        $targetOpening = (clone $openingQuery)->sum('opening_balance_amount');
+
+        if ($opening?->status === 'reconciled') {
+            $sourceOpening = (clone $openingQuery)->sum('statement_balance_amount');
+            $openingNote = "紙帳票で確定した締め残高と{$openingDate}開始残高を照合";
+        } else {
+            [$sourceReceivableSales, $sourceLedger, $sourceContainers] = $this->sourceOpeningComponents($batch, $asOfDate);
+            $sourceOpening = bcsub(bcadd($sourceReceivableSales, $sourceLedger, 2), $sourceContainers, 2);
+            $openingNote = "計算基準日{$asOfDate}、売掛対象出荷＋符号付き台帳－空容器取引。取引先別円単位丸めを許容";
+        }
+
+        $rows[] = $this->row('売掛', '開始売掛残高', '円', $sourceOpening, $targetOpening, '0.50', $openingNote);
 
         return $rows;
     }
@@ -193,7 +219,29 @@ class ReconcileAccessMigration
 
     private function sourceCount(AccessMigrationBatch $batch, string $sourceTable): int
     {
-        return (int) $batch->tables()->where('source_table', $sourceTable)->value('source_row_count');
+        $cutoverDate = $this->cutoverDate($batch);
+        if ($cutoverDate === null || ! in_array($sourceTable, ['出荷伝票・取引先', '出荷伝票・商品', '伝票外在庫出入', '入金'], true)) {
+            return (int) $batch->tables()->where('source_table', $sourceTable)->value('source_row_count');
+        }
+
+        if ($sourceTable === '出荷伝票・商品') {
+            return (int) DB::table('access_migration_staging_rows as l')
+                ->join('access_migration_staging_rows as h', function ($join) use ($batch): void {
+                    $join->where('h.batch_id', $batch->id)
+                        ->where('h.source_table', '出荷伝票・取引先')
+                        ->whereColumn('h.source_key', DB::raw("l.payload->>'伝票番号'"));
+                })
+                ->where('l.batch_id', $batch->id)
+                ->where('l.source_table', $sourceTable)
+                ->whereRaw("CAST(h.payload->>'年月日' AS date) >= ?", [$cutoverDate])
+                ->count();
+        }
+
+        return (int) DB::table('access_migration_staging_rows')
+            ->where('batch_id', $batch->id)
+            ->where('source_table', $sourceTable)
+            ->whereRaw("CAST(payload->>'年月日' AS date) >= ?", [$cutoverDate])
+            ->count();
     }
 
     private function mappedTargetCount(AccessMigrationBatch $batch, string $sourceTable, string $targetTable): int
@@ -212,6 +260,8 @@ class ReconcileAccessMigration
         $row = DB::table('access_migration_staging_rows')
             ->where('batch_id', $batch->id)
             ->where('source_table', '伝票外在庫出入')
+            ->when($this->cutoverDate($batch) !== null, fn ($query) => $query
+                ->whereRaw("CAST(payload->>'年月日' AS date) >= ?", [$this->cutoverDate($batch)]))
             ->selectRaw("COUNT(*) FILTER (WHERE NULLIF(payload->>'増商品ID', '') IS NOT NULL AND NULLIF(payload->>'増商品詳細ID', '') IS NOT NULL) as plus_count")
             ->selectRaw("COUNT(*) FILTER (WHERE NULLIF(payload->>'減商品ID', '') IS NOT NULL AND NULLIF(payload->>'減商品詳細ID', '') IS NOT NULL) as minus_count")
             ->first();
@@ -221,9 +271,25 @@ class ReconcileAccessMigration
 
     private function sourceSum(AccessMigrationBatch $batch, string $sourceTable, string $field): string
     {
+        if ($sourceTable === '出荷伝票・商品' && $this->cutoverDate($batch) !== null) {
+            return (string) DB::table('access_migration_staging_rows as l')
+                ->join('access_migration_staging_rows as h', function ($join) use ($batch): void {
+                    $join->where('h.batch_id', $batch->id)
+                        ->where('h.source_table', '出荷伝票・取引先')
+                        ->whereColumn('h.source_key', DB::raw("l.payload->>'伝票番号'"));
+                })
+                ->where('l.batch_id', $batch->id)
+                ->where('l.source_table', $sourceTable)
+                ->whereRaw("CAST(h.payload->>'年月日' AS date) >= ?", [$this->cutoverDate($batch)])
+                ->selectRaw("COALESCE(SUM(COALESCE(NULLIF(l.payload->>?, ''), '0')::numeric), 0) as amount", [$field])
+                ->value('amount');
+        }
+
         return (string) DB::table('access_migration_staging_rows')
             ->where('batch_id', $batch->id)
             ->where('source_table', $sourceTable)
+            ->when($this->cutoverDate($batch) !== null && in_array($sourceTable, ['出荷伝票・取引先', '伝票外在庫出入', '入金'], true), fn ($query) => $query
+                ->whereRaw("CAST(payload->>'年月日' AS date) >= ?", [$this->cutoverDate($batch)]))
             ->selectRaw("COALESCE(SUM(COALESCE(NULLIF(payload->>?, ''), '0')::numeric), 0) as amount", [$field])
             ->value('amount');
     }
@@ -293,7 +359,37 @@ class ReconcileAccessMigration
             ->selectRaw("COALESCE(SUM(COALESCE(NULLIF(s.payload->>'金額', ''), '0')::numeric), 0) as amount")
             ->value('amount');
 
-        return [bcadd((string) $sales, '0', 2), bcadd((string) $ledger, '0', 2)];
+        $containers = DB::table('access_migration_staging_rows as s')
+            ->join('access_migration_mappings as m', function ($join) use ($batch): void {
+                $join->where('m.batch_id', $batch->id)
+                    ->where('m.source_table', '取引先マスター')
+                    ->where('m.target_table', 'customers')
+                    ->whereColumn('m.source_key', DB::raw("s.payload->>'取引先ID'"));
+            })
+            ->join('customers as c', DB::raw('CAST(c.id AS text)'), '=', 'm.target_id')
+            ->join('settlement_receivable_categories as r', 'r.id', '=', 'c.settlement_receivable_category_id')
+            ->where('s.batch_id', $batch->id)
+            ->where('s.source_table', '空容器伝票-取引先')
+            ->where('r.receivable_method', 'accounts_receivable')
+            ->whereRaw("CAST(s.payload->>'年月日' AS date) <= ?", [$asOfDate])
+            ->selectRaw("COALESCE(SUM(COALESCE(NULLIF(s.payload->>'合計', ''), '0')::numeric), 0) as amount")
+            ->value('amount');
+
+        return [
+            bcadd((string) $sales, '0', 2),
+            bcadd((string) $ledger, '0', 2),
+            bcadd((string) $containers, '0', 2),
+        ];
+    }
+
+    private function cutoverDate(AccessMigrationBatch $batch): ?string
+    {
+        $summary = $batch->validation_summary ?? [];
+        $date = $summary['cutover_initialization']['cutover_date']
+            ?? $summary['imports']['receivables']['cutover_date']
+            ?? null;
+
+        return $date === null ? null : CarbonImmutable::parse($date)->toDateString();
     }
 
     private function writeWorkbook(AccessMigrationBatch $batch, array $rows, array $tableRows, string $path, string $status, bool $passed): void

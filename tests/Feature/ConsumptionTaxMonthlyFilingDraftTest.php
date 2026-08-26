@@ -89,17 +89,17 @@ class ConsumptionTaxMonthlyFilingDraftTest extends TestCase
     {
         [$customer, $product, $unit] = $this->prepareBaseData();
 
-        $this->createConfirmedInvoice($customer, $product, $unit, '2026-06-01', '2026-06-01', '2.0000');
-        $this->createConfirmedInvoice($customer, $product, $unit, '2026-06-15', '2026-06-15', '3.0000');
+        $this->createConfirmedInvoice($customer, $product, $unit, '2026-07-01', '2026-07-01', '2.0000');
+        $this->createConfirmedInvoice($customer, $product, $unit, '2026-07-15', '2026-07-15', '3.0000');
 
         $filing = app(CreateConsumptionTaxMonthlyFilingDraftService::class)
-            ->create(2026, 6, 'monthly consumption tax draft');
+            ->create(2026, 7, 'monthly consumption tax draft');
 
         $this->assertSame('draft', $filing->status);
         $this->assertSame(2026, $filing->year);
-        $this->assertSame(6, $filing->month);
-        $this->assertSame('2026-06-01', $filing->period_start->toDateString());
-        $this->assertSame('2026-06-30', $filing->period_end->toDateString());
+        $this->assertSame(7, $filing->month);
+        $this->assertSame('2026-07-01', $filing->period_start->toDateString());
+        $this->assertSame('2026-07-31', $filing->period_end->toDateString());
         $this->assertSame('7500.00', $filing->total_taxable_amount);
         $this->assertSame('750.00', $filing->total_tax_amount);
         $this->assertSame('8250.00', $filing->total_amount);
@@ -125,11 +125,11 @@ class ConsumptionTaxMonthlyFilingDraftTest extends TestCase
     {
         [$customer, $product, $unit] = $this->prepareBaseData();
 
-        $this->createConfirmedInvoice($customer, $product, $unit, '2026-06-01', '2026-06-01', '1.0000');
-        $first = app(CreateConsumptionTaxMonthlyFilingDraftService::class)->create(2026, 6);
+        $this->createConfirmedInvoice($customer, $product, $unit, '2026-07-01', '2026-07-01', '1.0000');
+        $first = app(CreateConsumptionTaxMonthlyFilingDraftService::class)->create(2026, 7);
 
-        $this->createConfirmedInvoice($customer, $product, $unit, '2026-06-02', '2026-06-02', '2.0000');
-        $second = app(CreateConsumptionTaxMonthlyFilingDraftService::class)->create(2026, 6);
+        $this->createConfirmedInvoice($customer, $product, $unit, '2026-07-02', '2026-07-02', '2.0000');
+        $second = app(CreateConsumptionTaxMonthlyFilingDraftService::class)->create(2026, 7);
 
         $this->assertSame($first->id, $second->id);
         $this->assertSame('4500.00', $second->total_taxable_amount);
@@ -144,13 +144,13 @@ class ConsumptionTaxMonthlyFilingDraftTest extends TestCase
     {
         [$customer, $product, $unit] = $this->prepareBaseData();
 
-        $this->createConfirmedInvoice($customer, $product, $unit, '2026-06-01', '2026-06-01', '1.0000');
-        $filing = app(CreateConsumptionTaxMonthlyFilingDraftService::class)->create(2026, 6);
+        $this->createConfirmedInvoice($customer, $product, $unit, '2026-07-01', '2026-07-01', '1.0000');
+        $filing = app(CreateConsumptionTaxMonthlyFilingDraftService::class)->create(2026, 7);
         $filing->update(['status' => 'confirmed']);
 
         $this->expectException(ConsumptionTaxMonthlyFilingDraftException::class);
 
-        app(CreateConsumptionTaxMonthlyFilingDraftService::class)->create(2026, 6);
+        app(CreateConsumptionTaxMonthlyFilingDraftService::class)->create(2026, 7);
     }
 
     /**

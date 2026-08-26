@@ -9,9 +9,10 @@ use App\Models\Customer;
 use App\Models\PriceList;
 use App\Models\PriceRule;
 use App\Models\Product;
+use App\Models\ProductionLot;
 use App\Models\SettlementReceivableCategory;
 use App\Models\StockLocation;
-use App\Models\StockMonthlyBalance;
+use App\Models\StockLotMonthlyBalance;
 use App\Models\StockMovement;
 use App\Models\TransactionCategory;
 use App\Models\Unit;
@@ -86,8 +87,7 @@ class CancelShipmentTest extends TestCase
         $this->assertDatabaseHas('stock_movements', [
             'status' => 'confirmed',
             'movement_type' => 'shipment_cancellation',
-            'movement_date' => '2026-05-23',
-            'product_id' => $line->product_id,
+            'movement_date' => '2026-07-23',
             'stock_location_id' => $location->id,
             'unit_id' => $unit->id,
             'quantity' => '2.0000',
@@ -107,16 +107,25 @@ class CancelShipmentTest extends TestCase
     {
         [$shipment, $product, $unit] = $this->prepareConfirmedShipment();
         $location = StockLocation::where('code', 'main_brewery')->firstOrFail();
-
-        StockMonthlyBalance::create([
-            'status' => 'confirmed',
-            'year' => 2026,
-            'month' => 5,
-            'period_start' => '2026-05-01',
-            'period_end' => '2026-05-31',
-            'product_id' => $product->id,
+        $lot = ProductionLot::create([
+            'lot_code' => 'CANCEL-SH-LOT-001',
+            'display_name' => 'Cancel shipment lot',
+            'status' => 'active',
             'stock_location_id' => $location->id,
             'unit_id' => $unit->id,
+            'is_active' => true,
+        ]);
+
+        StockLotMonthlyBalance::create([
+            'status' => 'confirmed',
+            'year' => 2026,
+            'month' => 7,
+            'period_start' => '2026-07-01',
+            'period_end' => '2026-07-31',
+            'production_lot_id' => $lot->id,
+            'stock_location_id' => $location->id,
+            'unit_id' => $unit->id,
+            'closing_quantity' => '0.0000',
             'confirmed_at' => now(),
         ]);
 
@@ -164,7 +173,7 @@ class CancelShipmentTest extends TestCase
 
         $shipment = app(CreateDraftShipmentService::class)->create(new CreateDraftShipmentData(
             customerId: $customer->id,
-            documentDate: '2026-05-23',
+            documentDate: '2026-07-23',
             lines: [
                 new CreateDraftShipmentLineData($product->id, '1.0000', $unit->id),
             ],
@@ -192,7 +201,7 @@ class CancelShipmentTest extends TestCase
 
         $shipment = app(CreateDraftShipmentService::class)->create(new CreateDraftShipmentData(
             customerId: $customer->id,
-            documentDate: '2026-05-23',
+            documentDate: '2026-07-23',
             lines: [
                 new CreateDraftShipmentLineData($product->id, '2.0000', $unit->id),
             ],

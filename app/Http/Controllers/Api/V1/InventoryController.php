@@ -8,15 +8,16 @@ use App\Models\ProductionLot;
 use App\Models\ShipmentLine;
 use App\Models\ShipmentLotAllocation;
 use App\Models\StockLocation;
+use App\Models\StockMovement;
 use App\Services\Inventory\LotStockBalance;
 use App\Services\Inventory\LotStockBalanceService;
 use App\Services\Inventory\LotVisibilityPolicy;
 use App\Services\Inventory\ProductLotCandidateSummaryService;
 use App\Services\Operations\OperationalPeriod;
 use App\Services\Shipment\AllocateShipmentLineLotService;
+use App\Support\SearchTextNormalizer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 class InventoryController extends ApiController
 {
@@ -157,7 +158,7 @@ class InventoryController extends ApiController
         ]);
     }
 
-    public function lotStockAsOf(Request $request, LotVisibilityPolicy $visibility, OperationalPeriod $operationalPeriod): JsonResponse
+    public function lotStockAsOf(Request $request, LotStockBalanceService $service, LotVisibilityPolicy $visibility, OperationalPeriod $operationalPeriod): JsonResponse
     {
         $validated = $request->validate([
             'as_of_date' => ['nullable', 'date'],
@@ -168,96 +169,37 @@ class InventoryController extends ApiController
 
         $asOfDate = $validated['as_of_date'] ?? now()->toDateString();
         $operationalPeriod->ensureOpen($asOfDate, '在庫基準日');
-        $keyword = trim((string) ($validated['q'] ?? ''));
+        $terms = SearchTextNormalizer::searchTerms($validated['q'] ?? null);
         $includeZeroStock = $visibility->includeZeroStock((bool) ($validated['include_zero_stock'] ?? false));
 
-        $query = DB::table('stock_movements as sm')
-            ->join('production_lots as pl', 'pl.id', '=', 'sm.production_lot_id')
-            ->join('stock_locations as sl', 'sl.id', '=', 'sm.stock_location_id')
-            ->join('units as u', 'u.id', '=', 'sm.unit_id')
-            ->whereNotNull('sm.production_lot_id')
-            ->whereIn('sm.status', ['confirmed', 'closed'])
-            ->whereNull('sm.cancelled_at')
-            ->whereDate('sm.movement_date', '>=', $operationalPeriod->startDate())
-            ->whereDate('sm.movement_date', '<=', $asOfDate);
+        $rows = $this->sortLotStockRows($service->allAsOf($asOfDate, $includeZeroStock)
+            ->map(function (LotStockBalance $balance) use ($asOfDate): array {
+                $row = $this->serializeLotStockBalance($balance);
+                $row['latest_movement_date'] = $this->latestMovementDate($balance, $asOfDate);
 
-        if ($keyword !== '') {
-            $like = '%'.$keyword.'%';
-            $query->where(function ($query) use ($like): void {
-                $query->where('pl.lot_code', 'like', $like)
-                    ->orWhere('pl.display_name', 'like', $like)
-                    ->orWhere('pl.legacy_lot_text', 'like', $like);
-            });
-        }
-
-        $rowsQuery = $query
-            ->selectRaw('
-                sm.production_lot_id,
-                sm.stock_location_id,
-                sm.unit_id,
-                pl.lot_code,
-                pl.display_name as lot_name,
-                pl.external_system_code,
-                pl.note as lot_note,
-                pl.production_date,
-                pl.bottling_date,
-                pl.capacity_value,
-                sl.code as stock_location_code,
-                sl.name as stock_location_name,
-                COALESCE(u.symbol, u.name, u.code) as unit_name,
-                COALESCE(SUM(sm.quantity), 0) as physical_quantity,
-                MAX(sm.movement_date) as latest_movement_date
-            ')
-            ->groupBy(
-                'sm.production_lot_id',
-                'sm.stock_location_id',
-                'sm.unit_id',
-                'pl.lot_code',
-                'pl.display_name',
-                'pl.external_system_code',
-                'pl.note',
-                'pl.production_date',
-                'pl.bottling_date',
-                'pl.capacity_value',
-                'sl.code',
-                'sl.name',
-                'u.symbol',
-                'u.name',
-                'u.code',
-            );
-
-        if (! $includeZeroStock) {
-            $rowsQuery->havingRaw('ABS(SUM(sm.quantity)) > 0.00005');
-        }
-
-        $rows = $this->sortLotStockRows($rowsQuery
-            ->get()
-            ->map(function (object $row): array {
-                $product = $this->productForLotAttributes($row->external_system_code, $row->lot_note);
-
-                return [
-                    'production_lot_id' => (int) $row->production_lot_id,
-                    'stock_location_id' => (int) $row->stock_location_id,
-                    'unit_id' => (int) $row->unit_id,
-                    'product_code' => $product?->product_code,
-                    'product_name' => $product?->display_name,
-                    'sort_product_name' => $product?->name ?? $product?->display_name,
-                    'product_type' => $product?->product_type,
-                    'product_type_label' => $this->productTypeLabel($product?->product_type),
-                    'lot_code' => $row->lot_code,
-                    'lot_name' => $row->lot_name,
-                    'capacity_value' => $row->capacity_value,
-                    'production_date' => $row->production_date,
-                    'bottling_date' => $row->bottling_date,
-                    'stock_location_code' => $row->stock_location_code,
-                    'stock_location_name' => $row->stock_location_name,
-                    'unit_name' => $row->unit_name,
-                    'physical_quantity' => bcadd((string) $row->physical_quantity, '0', 4),
-                    'latest_movement_date' => $row->latest_movement_date,
-                ];
+                return $row;
             })
             ->filter(fn (array $row): bool => ! isset($validated['product_type']) || $row['product_type'] === $validated['product_type'])
-        )->values()
+            ->filter(function (array $row) use ($terms): bool {
+                if ($terms === []) {
+                    return true;
+                }
+
+                $searchKey = $this->lotStockSearchKey($row);
+
+                if ($searchKey === '') {
+                    return false;
+                }
+
+                foreach ($terms as $term) {
+                    if (! str_contains($searchKey, $term)) {
+                        return false;
+                    }
+                }
+
+                return true;
+            }))
+            ->values()
             ->all();
 
         return $this->ok([
@@ -313,6 +255,7 @@ class InventoryController extends ApiController
             'available_quantity' => $balance->availableQuantity,
             'lot_code' => $lot?->lot_code,
             'lot_name' => $lot?->display_name,
+            'legacy_lot_text' => $lot?->legacy_lot_text,
             'capacity_value' => $lot?->capacity_value,
             'capacity_unit_name' => $lot?->capacityUnit?->symbol ?: $lot?->capacityUnit?->name,
             'production_date' => $lot?->production_date?->toDateString(),
@@ -326,6 +269,18 @@ class InventoryController extends ApiController
             'analysis_status' => $lot?->analysis_status,
             'unit_name' => $lot?->unit?->symbol ?: $lot?->unit?->name,
         ];
+    }
+
+    private function latestMovementDate(LotStockBalance $balance, string $asOfDate): ?string
+    {
+        return StockMovement::query()
+            ->where('production_lot_id', $balance->productionLotId)
+            ->where('stock_location_id', $balance->stockLocationId)
+            ->where('unit_id', $balance->unitId)
+            ->whereIn('status', ['confirmed', 'closed'])
+            ->whereNull('cancelled_at')
+            ->whereDate('movement_date', '<=', $asOfDate)
+            ->max('movement_date');
     }
 
     private function lotStockBalanceMatchesProductType(LotStockBalance $balance, string $productType): bool
@@ -401,6 +356,22 @@ class InventoryController extends ApiController
             'goods' => 'グッズ・その他',
             default => null,
         };
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function lotStockSearchKey(array $row): string
+    {
+        return SearchTextNormalizer::searchKey(
+            $row['product_code'] ?? null,
+            $row['product_name'] ?? null,
+            $row['lot_code'] ?? null,
+            $row['lot_name'] ?? null,
+            $row['legacy_lot_text'] ?? null,
+            isset($row['capacity_value']) ? (string) $row['capacity_value'] : null,
+            $row['capacity_unit_name'] ?? null,
+        );
     }
 
     /**

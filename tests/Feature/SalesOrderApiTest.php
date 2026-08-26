@@ -15,8 +15,8 @@ use App\Models\Unit;
 use App\Models\User;
 use Database\Seeders\CustomerMasterSeeder;
 use Database\Seeders\FoundationPermissionSeeder;
-use Database\Seeders\ProductUnitMasterSeeder;
 use Database\Seeders\PriceMasterSeeder;
+use Database\Seeders\ProductUnitMasterSeeder;
 use Database\Seeders\ShipmentMasterSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -62,7 +62,10 @@ class SalesOrderApiTest extends TestCase
             ->assertJsonPath('data.sales_order.lines.0.quantity', '3.0000')
             ->assertJsonPath('data.sales_order.lines.0.note', 'api line')
             ->assertJsonPath('data.sales_order.lines.0.unit_price', '1000.0000')
-            ->assertJsonPath('data.sales_order.lines.0.price_source', 'common');
+            ->assertJsonPath('data.sales_order.lines.0.price_source', 'common')
+            ->assertJsonPath('data.sales_order.lines.0.price_effective_from', '2026-01-01')
+            ->assertJsonPath('data.sales_order.lines.0.previous_unit_price', null)
+            ->assertJsonPath('data.sales_order.lines.0.price_change_notice', null);
 
         $salesOrderId = $createResponse->json('data.sales_order.id');
         $salesOrderLineId = $createResponse->json('data.sales_order.lines.0.id');
@@ -108,8 +111,8 @@ class SalesOrderApiTest extends TestCase
                 'reason' => 'return to applicable price',
             ])
             ->assertOk()
-            ->assertJsonPath('data.sales_order.lines.0.unit_price', '1250.0000')
-            ->assertJsonPath('data.sales_order.lines.0.price_source', 'customer');
+            ->assertJsonPath('data.sales_order.lines.0.unit_price', '1000.0000')
+            ->assertJsonPath('data.sales_order.lines.0.price_source', 'common');
 
         $this->actingAs($user)
             ->getJson("/api/v1/sales-orders/{$salesOrderId}")
@@ -190,6 +193,7 @@ class SalesOrderApiTest extends TestCase
             ->assertJsonPath('data.sales_order.lines.0.price_source', 'customer');
 
         $this->assertDatabaseHas('price_rules', [
+            'price_list_id' => PriceList::where('code', 'customer_price')->firstOrFail()->id,
             'product_id' => $product->id,
             'customer_id' => $customer->id,
             'unit_id' => $unit->id,
@@ -222,6 +226,152 @@ class SalesOrderApiTest extends TestCase
             ])
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['lines']);
+    }
+
+    public function test_retail_correction_api_accepts_negative_quantity_but_normal_order_rejects_it(): void
+    {
+        [$user, $customer, $product, $unit] = $this->prepareData();
+        PriceRule::create([
+            'price_list_id' => PriceList::where('code', 'common')->firstOrFail()->id,
+            'product_id' => $product->id,
+            'unit_id' => $unit->id,
+            'unit_price' => '1000.0000',
+            'priority' => 300,
+            'effective_from' => '2026-01-01',
+            'rounding_method' => 'round',
+        ]);
+
+        $payload = [
+            'customer_id' => $customer->id,
+            'order_date' => '2026-08-02',
+            'source_reference' => 'RS-20260802-0001:cancel',
+            'lines' => [[
+                'product_id' => $product->id,
+                'quantity' => '-2.0000',
+                'unit_id' => $unit->id,
+            ]],
+        ];
+
+        $this->actingAs($user)
+            ->postJson('/api/v1/sales-orders', $payload)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['lines.0.quantity']);
+
+        $this->actingAs($user)
+            ->postJson('/api/v1/sales-orders', $payload + ['source_type' => 'retail_sale_correction'])
+            ->assertCreated()
+            ->assertJsonPath('data.sales_order.source_type', 'retail_sale_correction')
+            ->assertJsonPath('data.sales_order.display_status', 'cancellation_correction')
+            ->assertJsonPath('data.sales_order.correction_notice', '訂正のためのマイナス伝票です。元の小売販売取消に連動しています。')
+            ->assertJsonPath('data.sales_order.lines.0.quantity', '-2.0000');
+
+        $this->assertDatabaseHas('sales_orders', [
+            'source_type' => 'retail_sale_correction',
+            'source_reference' => 'RS-20260802-0001:cancel',
+        ]);
+
+        $this->actingAs($user)
+            ->getJson('/api/v1/sales-orders?status=received')
+            ->assertOk()
+            ->assertJsonCount(1, 'data.sales_orders')
+            ->assertJsonPath('data.sales_orders.0.display_status', 'cancellation_correction');
+    }
+
+    public function test_retail_purchase_order_sales_order_cannot_be_changed_from_brewery_api(): void
+    {
+        [$user, $customer, $product, $unit] = $this->prepareData();
+        PriceRule::create([
+            'price_list_id' => PriceList::where('code', 'common')->firstOrFail()->id,
+            'product_id' => $product->id,
+            'unit_id' => $unit->id,
+            'unit_price' => '1000.0000',
+            'priority' => 300,
+            'effective_from' => '2026-01-01',
+            'rounding_method' => 'round',
+        ]);
+
+        $created = $this->actingAs($user)->postJson('/api/v1/sales-orders', [
+            'customer_id' => $customer->id,
+            'order_date' => '2026-08-02',
+            'source_type' => 'retail_purchase_order',
+            'source_reference' => 'RPO-20260802-LOCKED',
+            'lines' => [[
+                'product_id' => $product->id,
+                'quantity' => '2.0000',
+                'unit_id' => $unit->id,
+            ]],
+        ])->assertCreated();
+        $salesOrderId = $created->json('data.sales_order.id');
+        $lineId = $created->json('data.sales_order.lines.0.id');
+
+        $this->actingAs($user)->putJson("/api/v1/sales-orders/{$salesOrderId}", [
+            'requested_delivery_date' => '2026-08-05',
+            'reason' => 'manual brewery edit',
+            'lines' => [[
+                'id' => $lineId,
+                'product_id' => $product->id,
+                'quantity' => '3.0000',
+                'unit_id' => $unit->id,
+            ]],
+        ])->assertConflict()->assertJsonPath('error.code', 'business_rule_violation');
+
+        $this->actingAs($user)
+            ->postJson("/api/v1/sales-orders/{$salesOrderId}/cancel", ['reason' => 'manual brewery cancellation'])
+            ->assertConflict()
+            ->assertJsonPath('error.code', 'business_rule_violation');
+
+        $this->actingAs($user)
+            ->postJson("/api/v1/sales-orders/{$salesOrderId}/price", ['reason' => 'manual brewery reprice'])
+            ->assertConflict()
+            ->assertJsonPath('error.code', 'business_rule_violation');
+
+        $this->actingAs($user)->patchJson("/api/v1/sales-orders/{$salesOrderId}/lines/{$lineId}/price", [
+            'unit_price' => '900.0000',
+            'reason' => 'manual brewery price override',
+        ])->assertConflict()->assertJsonPath('error.code', 'business_rule_violation');
+
+        $this->actingAs($user)->postJson("/api/v1/sales-orders/{$salesOrderId}/lines/{$lineId}/reprice", [
+            'reason' => 'manual brewery line reprice',
+        ])->assertConflict()->assertJsonPath('error.code', 'business_rule_violation');
+
+        $this->assertDatabaseHas('sales_order_lines', [
+            'id' => $lineId,
+            'quantity' => '2.0000',
+            'unit_price' => '1000.0000',
+        ]);
+    }
+
+    public function test_retail_purchase_order_cancellation_order_cannot_be_released_to_shipping(): void
+    {
+        [$user, $customer, $product, $unit] = $this->prepareData();
+        PriceRule::create([
+            'price_list_id' => PriceList::where('code', 'common')->firstOrFail()->id,
+            'product_id' => $product->id,
+            'unit_id' => $unit->id,
+            'unit_price' => '1000.0000',
+            'priority' => 300,
+            'effective_from' => '2026-01-01',
+            'rounding_method' => 'round',
+        ]);
+
+        $created = $this->actingAs($user)->postJson('/api/v1/sales-orders', [
+            'customer_id' => $customer->id,
+            'order_date' => '2026-08-02',
+            'source_type' => 'retail_purchase_order_cancellation',
+            'source_reference' => 'RPO-20260802-CANCEL:cancel',
+            'lines' => [[
+                'product_id' => $product->id,
+                'quantity' => '-2.0000',
+                'unit_id' => $unit->id,
+            ]],
+        ])->assertCreated();
+
+        $salesOrderId = $created->json('data.sales_order.id');
+
+        $this->actingAs($user)
+            ->postJson("/api/v1/sales-orders/{$salesOrderId}/release-to-shipping")
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['sales_order']);
     }
 
     public function test_sales_order_create_api_rejects_an_unpriced_line(): void

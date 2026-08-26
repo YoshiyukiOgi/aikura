@@ -3,7 +3,10 @@
 namespace App\Services\Masters;
 
 use App\Models\Customer;
+use App\Models\Retail\RetailSupplier;
 use App\Services\Audit\AuditLogService;
+use App\Support\SearchTextNormalizer;
+use DomainException;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -33,6 +36,10 @@ class SaveCustomerMasterService
     public function update(Customer $customer, array $values): Customer
     {
         return DB::transaction(function () use ($customer, $values): Customer {
+            if ($this->isRetailBreweryPartner($customer)) {
+                throw new DomainException("取引先 [{$customer->id}] は小売側で使用中のため、酒蔵側では変更できません。");
+            }
+
             $before = $customer->getAttributes();
             $customer->fill($this->attributes($values));
             $customer->save();
@@ -62,21 +69,23 @@ class SaveCustomerMasterService
         }
 
         $attributes = Arr::only($values, $fields);
-        foreach (['name_kana', 'short_name', 'billing_name', 'postal_code', 'address1', 'address2', 'phone', 'fax', 'email', 'contact_name', 'note'] as $field) {
+        foreach (['name_kana', 'short_name', 'billing_name', 'postal_code', 'address1', 'address2', 'phone', 'fax', 'email', 'contact_name', 'legacy_code', 'legacy_name', 'note'] as $field) {
             if (array_key_exists($field, $attributes)) {
                 $attributes[$field] = $this->blankToNull($attributes[$field]);
             }
         }
         $attributes['disabled_at'] = ($attributes['is_active'] ?? true) ? null : now();
-        $attributes['search_key'] = implode(' ', array_filter([
-            $attributes['customer_code'] ?? null,
+        $attributes['search_key'] = SearchTextNormalizer::searchKey(
             $attributes['name'] ?? null,
             $attributes['name_kana'] ?? null,
             $attributes['short_name'] ?? null,
             $attributes['billing_name'] ?? null,
+            $attributes['legacy_code'] ?? null,
+            $attributes['legacy_name'] ?? null,
             $attributes['phone'] ?? null,
             $attributes['address1'] ?? null,
-        ]));
+            $attributes['customer_code'] ?? null,
+        );
 
         return $attributes;
     }
@@ -91,5 +100,13 @@ class SaveCustomerMasterService
     private function clearCustomerCaches(): void
     {
         Cache::forget('sales_order_page.customers');
+    }
+
+    private function isRetailBreweryPartner(Customer $customer): bool
+    {
+        return RetailSupplier::query()
+            ->where('supplier_type', 'brewery')
+            ->where('brewery_partner_id', $customer->id)
+            ->exists();
     }
 }

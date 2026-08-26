@@ -19,15 +19,31 @@ class StockMovementController extends ApiController
             'to' => ['nullable', 'date'],
             'stock_location_id' => ['nullable', 'integer'],
             'movement_type' => ['nullable', 'string', 'max:80'],
+            'q' => ['nullable', 'string', 'max:100'],
         ]);
         $q = StockMovement::query()->with(['stockLocation', 'unit', 'productionLot'])->orderByDesc('movement_date')->orderByDesc('id');
-        $operationalPeriod->applyVisiblePeriod($q, 'movement_date');
+        if (! (isset($v['year']) && isset($v['month']))) {
+            $operationalPeriod->applyVisiblePeriod($q, 'movement_date');
+        }
         if (isset($v['year'])) $q->whereYear('movement_date', $v['year']);
         if (isset($v['month'])) $q->whereMonth('movement_date', $v['month']);
         if (isset($v['from'])) $q->whereDate('movement_date', '>=', $v['from']);
         if (isset($v['to'])) $q->whereDate('movement_date', '<=', $v['to']);
         if (isset($v['stock_location_id'])) $q->where('stock_location_id', $v['stock_location_id']);
         if (isset($v['movement_type'])) $q->where('movement_type', $v['movement_type']);
+        if (isset($v['q'])) {
+            $needle = trim($v['q']);
+            if ($needle !== '') {
+                $q->where(function ($inner) use ($needle): void {
+                    $inner->where('source_document_number', 'like', '%'.$needle.'%')
+                        ->orWhere('lot_code', 'like', '%'.$needle.'%')
+                        ->orWhereHas('productionLot', function ($lotQuery) use ($needle): void {
+                            $lotQuery->where('lot_code', 'like', '%'.$needle.'%')
+                                ->orWhere('display_name', 'like', '%'.$needle.'%');
+                        });
+                });
+            }
+        }
         return $this->ok(['stock_movements' => $q->limit(300)->get()->map(fn (StockMovement $m) => $this->serialize($m))->values()->all()]);
     }
 

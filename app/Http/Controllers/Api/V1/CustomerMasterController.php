@@ -7,6 +7,7 @@ use App\Http\Requests\Api\V1\UpdateCustomerMasterRequest;
 use App\Models\AuditLog;
 use App\Models\Customer;
 use App\Services\Masters\SaveCustomerMasterService;
+use App\Support\SearchTextNormalizer;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -28,19 +29,11 @@ class CustomerMasterController extends ApiController
 
         $query = Customer::query()
             ->with(['transactionCategory:id,name', 'settlementReceivableCategory:id,name', 'billingCycle:id,name']);
-        $search = trim((string) ($validated['q'] ?? ''));
+        $search = SearchTextNormalizer::normalize($validated['q'] ?? null);
         if ($search !== '') {
             $query->where(function (Builder $query) use ($search): void {
                 $like = '%'.$search.'%';
-                $query->where('customer_code', 'ilike', $like)
-                    ->orWhere('name', 'ilike', $like)
-                    ->orWhere('name_kana', 'ilike', $like)
-                    ->orWhere('short_name', 'ilike', $like)
-                    ->orWhere('billing_name', 'ilike', $like)
-                    ->orWhere('legacy_code', 'ilike', $like)
-                    ->orWhere('legacy_name', 'ilike', $like)
-                    ->orWhere('phone', 'ilike', $like)
-                    ->orWhere('address1', 'ilike', $like);
+                $query->where('search_key_normalized', 'ilike', $like);
             });
         }
         match ($validated['active'] ?? 'active') {

@@ -8,13 +8,91 @@ use App\Http\Controllers\FoundationMasterPageController;
 use App\Http\Controllers\InventoryPageController;
 use App\Http\Controllers\LogisticsPageController;
 use App\Http\Controllers\ProductMasterPageController;
+use App\Http\Controllers\Retail\RetailBreweryProductImportController;
+use App\Http\Controllers\Retail\RetailCompanyController;
+use App\Http\Controllers\Retail\RetailCustomerController;
+use App\Http\Controllers\Retail\RetailDeliveryController;
+use App\Http\Controllers\Retail\RetailInvoiceController;
+use App\Http\Controllers\Retail\RetailPaymentController;
+use App\Http\Controllers\Retail\RetailProductController;
+use App\Http\Controllers\Retail\RetailPurchaseOrderController;
+use App\Http\Controllers\Retail\RetailSaleController;
+use App\Http\Controllers\Retail\RetailSettingController;
 use App\Http\Controllers\SalesOrderPageController;
 use App\Http\Controllers\TaxPageController;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/sales-orders');
+Route::view('/concept/retail-architecture', 'concepts.retail-architecture');
+Route::view('/concept/retail-top', 'concepts.retail-top');
+Route::view('/concept/retail-sales', 'concepts.retail-sales');
+Route::view('/concept/retail-pos', 'concepts.retail-pos');
+Route::view('/concept/retail-settings', 'concepts.retail-settings');
+
+$retailRoutes = static function (): void {
+    Route::get('/', fn () => redirect()->route('retail.pos'))->name('index');
+    Route::get('/companies', [RetailCompanyController::class, 'index'])->name('companies.index');
+    Route::get('/companies/manage', fn () => redirect()->route('retail.system.manage'))->name('companies.manage');
+    Route::get('/system-management', [RetailCompanyController::class, 'manage'])->name('system.manage');
+    Route::put('/system-management', [RetailCompanyController::class, 'updateSystem'])->name('system.update');
+    Route::post('/companies', [RetailCompanyController::class, 'store'])->name('companies.store');
+    Route::post('/companies/select', [RetailCompanyController::class, 'select'])->name('companies.select');
+    Route::delete('/companies/{company}', [RetailCompanyController::class, 'destroy'])->name('companies.destroy');
+    Route::view('/sales-menu', 'concepts.retail-sales')->name('sales-menu');
+    Route::get('/pos', [RetailSaleController::class, 'create'])->name('pos');
+    Route::get('/sales', [RetailSaleController::class, 'index'])->name('sales.index');
+    Route::post('/sales', [RetailSaleController::class, 'store'])->name('sales.store');
+    Route::get('/sales/{retailSale}', [RetailSaleController::class, 'show'])->name('sales.show');
+    Route::put('/sales/{retailSale}', [RetailSaleController::class, 'revise'])->name('sales.revise');
+    Route::post('/sales/{retailSale}/cancel', [RetailSaleController::class, 'cancel'])->name('sales.cancel');
+    Route::post('/sales/{retailSale}/credit-note', [RetailSaleController::class, 'creditNote'])->name('sales.credit-note');
+    Route::get('/deliveries', [RetailDeliveryController::class, 'index'])->name('deliveries.index');
+    Route::post('/deliveries', [RetailDeliveryController::class, 'store'])->name('deliveries.store');
+    Route::get('/deliveries/{retailDelivery}', [RetailDeliveryController::class, 'show'])->name('deliveries.show');
+    Route::post('/deliveries/{retailDelivery}/cancel', [RetailDeliveryController::class, 'cancel'])->name('deliveries.cancel');
+    Route::get('/invoices', [RetailInvoiceController::class, 'index'])->name('invoices.index');
+    Route::post('/invoices', [RetailInvoiceController::class, 'store'])->name('invoices.store');
+    Route::get('/invoices/{retailInvoice}', [RetailInvoiceController::class, 'show'])->name('invoices.show');
+    Route::post('/invoices/{retailInvoice}/cancel', [RetailInvoiceController::class, 'cancel'])->name('invoices.cancel');
+    Route::get('/payments', [RetailPaymentController::class, 'index'])->name('payments.index');
+    Route::post('/payments', [RetailPaymentController::class, 'store'])->name('payments.store');
+    Route::get('/payments/{retailPayment}', [RetailPaymentController::class, 'show'])->name('payments.show');
+    Route::post('/payments/{retailPayment}/refund', [RetailPaymentController::class, 'refund'])->name('payments.refund');
+    Route::get('/purchase-orders', [RetailPurchaseOrderController::class, 'index'])->name('purchase-orders.index');
+    Route::post('/purchase-orders/suggestions', [RetailPurchaseOrderController::class, 'createSuggestions'])->name('purchase-orders.suggestions');
+    Route::post('/purchase-orders/{retailPurchaseOrder}/send-brewery', [RetailPurchaseOrderController::class, 'sendBrewery'])->name('purchase-orders.send-brewery');
+    Route::delete('/purchase-orders/{retailPurchaseOrder}', [RetailPurchaseOrderController::class, 'destroy'])->name('purchase-orders.destroy');
+    Route::post('/purchase-orders/{retailPurchaseOrder}/cancel', [RetailPurchaseOrderController::class, 'cancel'])->name('purchase-orders.cancel');
+    Route::get('/settings', [RetailSettingController::class, 'index'])->name('settings');
+    Route::put('/settings', [RetailSettingController::class, 'update'])->name('settings.update');
+    Route::get('/customers', [RetailCustomerController::class, 'index'])->name('customers.index');
+    Route::post('/customers', [RetailCustomerController::class, 'store'])->name('customers.store');
+    Route::put('/customers/{retailCustomer}', [RetailCustomerController::class, 'update'])->name('customers.update');
+    Route::get('/products', [RetailProductController::class, 'index'])->name('products.index');
+    Route::post('/products', [RetailProductController::class, 'store'])->name('products.store');
+    Route::put('/products/{retailProduct}', [RetailProductController::class, 'update'])->name('products.update');
+    Route::get('/products/import', [RetailBreweryProductImportController::class, 'index'])->name('products.import');
+    Route::put('/products/import/selections', [RetailBreweryProductImportController::class, 'updateSelections'])->name('products.import.selections.update');
+    Route::post('/products/import/bulk', [RetailBreweryProductImportController::class, 'bulkStore'])->name('products.import.bulk');
+    Route::post('/products/import/price-sync-setting', [RetailBreweryProductImportController::class, 'updatePriceSyncSetting'])->name('products.import.price-sync-setting');
+    Route::post('/products/import/price-changes/detect', [RetailBreweryProductImportController::class, 'detectPriceChanges'])->name('products.import.price-changes.detect');
+    Route::post('/products/import/price-changes/{candidate}/apply', [RetailBreweryProductImportController::class, 'applyPriceChange'])->name('products.import.price-changes.apply');
+    Route::post('/products/import/{product}', [RetailBreweryProductImportController::class, 'store'])->name('products.import.store');
+};
+
+$retailRouteRegistrar = Route::name('retail.')
+    ->prefix(config('retail.route_prefix', 'retail'))
+    ->middleware('auth');
+
+if (config('retail.domain')) {
+    $retailRouteRegistrar->domain(config('retail.domain'));
+}
+
+$retailRouteRegistrar->group($retailRoutes);
+
 Route::middleware('guest')->group(function (): void {
     Route::get('/login', [AuthController::class, 'create'])->name('login');
+    Route::get('/retail-login', [AuthController::class, 'createRetail'])->name('retail.login');
     Route::post('/login', [AuthController::class, 'store'])->name('login.store');
 });
 

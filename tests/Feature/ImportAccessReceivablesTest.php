@@ -52,6 +52,22 @@ class ImportAccessReceivablesTest extends TestCase
         $this->insertPaymentSource($batch, '2', -60, false, false, 'PayPay銀行');
         $this->insertPaymentSource($batch, '3', -5, false, true, '振込料');
         $this->insertPaymentSource($batch, '4', 20, false, false, '調整');
+        DB::table('access_migration_staging_rows')->insert([
+            'batch_id' => $batch->id,
+            'source_table' => '空容器伝票-取引先',
+            'source_row_number' => 5,
+            'source_key' => '500',
+            'payload' => json_encode([
+                '伝票番号' => 500,
+                '取引先ID' => 1,
+                '年月日' => '2026-07-01T00:00:00.0000000',
+                '合計' => 25,
+            ], JSON_UNESCAPED_UNICODE),
+            'payload_sha256' => str_repeat('F', 64),
+            'status' => 'staged',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         ShipmentHeader::query()->create([
             'document_number' => 'ITARO-S-TEST-1',
             'status' => 'confirmed',
@@ -82,7 +98,7 @@ class ImportAccessReceivablesTest extends TestCase
 
         $this->assertSame(4, $summary['ledger_entries']);
         $this->assertSame(2, $summary['payments']);
-        $this->assertSame('255.00', $summary['opening_balance_total']);
+        $this->assertSame('230.00', $summary['opening_balance_total']);
         $this->assertSame('2026-07-19', $summary['as_of_date']);
         $this->assertSame($summary['opening_balance_total'], $summaryAgain['opening_balance_total']);
         $this->assertDatabaseCount('access_receivable_ledger_entries', 4);
@@ -93,11 +109,13 @@ class ImportAccessReceivablesTest extends TestCase
         $opening = OpeningReceivableBalance::query()->firstOrFail();
         $this->assertSame('200.00', $opening->source_sales_amount);
         $this->assertSame('55.00', $opening->source_ledger_amount);
-        $this->assertSame('255.00', $opening->opening_balance_amount);
-        $this->assertSame('255.00', app(ReceivableBalanceService::class)->forCustomer($customer)->outstandingAmount);
+        $this->assertSame('25.00', $opening->source_container_amount);
+        $this->assertSame(1, $opening->source_container_entry_count);
+        $this->assertSame('230.00', $opening->opening_balance_amount);
+        $this->assertSame('230.00', app(ReceivableBalanceService::class)->forCustomer($customer)->outstandingAmount);
 
         $monthly = app(CreateReceivableMonthlyBalanceDraftService::class)->create(2026, 7, 'migration test');
-        $this->assertSame('255.00', $monthly->firstWhere('customer_id', $customer->id)->outstanding_amount);
+        $this->assertSame('230.00', $monthly->firstWhere('customer_id', $customer->id)->outstanding_amount);
         $this->assertSame('receivables_imported', $batch->refresh()->status);
 
         $deltaBatch = AccessMigrationBatch::query()->create([

@@ -15,6 +15,7 @@ class StockMovement extends Model
         'status',
         'movement_type',
         'movement_date',
+        'product_id',
         'stock_location_id',
         'unit_id',
         'quantity',

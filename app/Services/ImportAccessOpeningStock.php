@@ -16,15 +16,25 @@ class ImportAccessOpeningStock
     public function __construct(private readonly ExportAccessDetailStockWorkbook $calculator) {}
 
     /** @return array<string, mixed> */
-    public function preview(AccessMigrationBatch $batch, string $asOfDate, string $locationCode = 'main_brewery'): array
+    public function preview(
+        AccessMigrationBatch $batch,
+        string $asOfDate,
+        string $locationCode = 'main_brewery',
+        ?string $openingDate = null,
+    ): array
     {
-        return $this->summary($this->buildPlan($batch, $asOfDate, $locationCode));
+        return $this->summary($this->buildPlan($batch, $asOfDate, $locationCode, $openingDate));
     }
 
     /** @return array<string, mixed> */
-    public function import(AccessMigrationBatch $batch, string $asOfDate, string $locationCode = 'main_brewery'): array
+    public function import(
+        AccessMigrationBatch $batch,
+        string $asOfDate,
+        string $locationCode = 'main_brewery',
+        ?string $openingDate = null,
+    ): array
     {
-        $plan = $this->buildPlan($batch, $asOfDate, $locationCode);
+        $plan = $this->buildPlan($batch, $asOfDate, $locationCode, $openingDate);
 
         return DB::transaction(function () use ($plan): array {
             $now = now();
@@ -54,7 +64,7 @@ class ImportAccessOpeningStock
                 $attributes = [
                     'status' => 'confirmed',
                     'movement_type' => 'opening_stock',
-                    'movement_date' => $plan['as_of_date'],
+                    'movement_date' => $plan['opening_date'],
                     'stock_location_id' => $plan['location']->id,
                     'unit_id' => $product->inventory_unit_id ?: $product->base_unit_id,
                     'quantity' => bcadd((string) $row->calculated_stock, '0', 4),
@@ -64,8 +74,8 @@ class ImportAccessOpeningStock
                     'closed_at' => null,
                     'cancelled_at' => null,
                     'cancelled_reason' => null,
-                    'reason' => "Access履歴から算出した{$plan['as_of_date']}期首在庫",
-                    'note' => "Access移行 batch={$plan['batch_id']}; 商品ID={$row->access_product_id}; 商品詳細ID={$row->access_detail_id}; 基準日={$plan['as_of_date']}",
+                    'reason' => "Access履歴から算出した{$plan['as_of_date']}締め・{$plan['opening_date']}期首在庫",
+                    'note' => "Access移行 batch={$plan['batch_id']}; 商品ID={$row->access_product_id}; 商品詳細ID={$row->access_detail_id}; 計算基準日={$plan['as_of_date']}; 期首日={$plan['opening_date']}",
                 ];
 
                 $movement = StockMovement::query()->where($key)->first();
@@ -78,24 +88,41 @@ class ImportAccessOpeningStock
                 }
             }
 
+            $plannedLineNumbers = $plan['rows']->pluck('source_line_no');
+            $staleMovements = StockMovement::query()
+                ->where('source_type', 'access_opening_stock')
+                ->where('source_document_number', $documentNumber)
+                ->when(
+                    $plannedLineNumbers->isNotEmpty(),
+                    fn ($query) => $query->whereNotIn('source_line_no', $plannedLineNumbers),
+                );
+            $deletedMovements = $staleMovements->delete();
+
             return $this->summary($plan) + [
                 'committed' => true,
                 'lots_created' => $createdLots,
                 'lots_activated' => $activatedLots,
                 'movements_created' => $createdMovements,
                 'movements_updated' => $updatedMovements,
+                'movements_deleted' => $deletedMovements,
             ];
         }, 3);
     }
 
     /** @return array<string, mixed> */
-    private function buildPlan(AccessMigrationBatch $batch, string $asOfDate, string $locationCode): array
+    private function buildPlan(
+        AccessMigrationBatch $batch,
+        string $asOfDate,
+        string $locationCode,
+        ?string $openingDate,
+    ): array
     {
         if ($batch->status !== 'completed') {
             throw new RuntimeException("完了済みのAccess移行バッチだけを期首在庫へ取り込めます: {$batch->status}");
         }
 
         $asOfDate = CarbonImmutable::parse($asOfDate)->toDateString();
+        $openingDate = CarbonImmutable::parse($openingDate ?? $asOfDate)->toDateString();
         $location = StockLocation::query()
             ->where('code', $locationCode)
             ->where('is_inventory_managed', true)
@@ -108,7 +135,8 @@ class ImportAccessOpeningStock
 
                 return $row;
             })
-            ->filter(fn (object $row): bool => bccomp(bcadd((string) $row->calculated_stock, '0', 4), '0.0000', 4) !== 0)
+            ->filter(fn (object $row): bool => $row->product_type === 'sake'
+                && bccomp(bcadd((string) $row->calculated_stock, '0', 4), '0.0000', 4) === 1)
             ->values();
 
         $duplicateDetails = $rows->groupBy(fn (object $row): string => (string) $row->access_detail_id)
@@ -140,7 +168,7 @@ class ImportAccessOpeningStock
         if ($duplicateLots->isNotEmpty()) {
             throw new RuntimeException('商品詳細に対応する既存ロットが重複しています: '.$duplicateLots->take(10)->implode(', '));
         }
-        $documentNumber = "ITARO-OPENING-BATCH-{$batch->id}-{$asOfDate}";
+        $documentNumber = "ITARO-OPENING-BATCH-{$batch->id}-{$openingDate}";
         $duplicateMovements = StockMovement::query()
             ->where('source_type', 'access_opening_stock')
             ->where('source_document_number', $documentNumber)
@@ -155,6 +183,7 @@ class ImportAccessOpeningStock
         return [
             'batch_id' => $batch->id,
             'as_of_date' => $asOfDate,
+            'opening_date' => $openingDate,
             'source_document_number' => $documentNumber,
             'location' => $location,
             'rows' => $rows,
@@ -172,6 +201,7 @@ class ImportAccessOpeningStock
         return [
             'batch_id' => $plan['batch_id'],
             'as_of_date' => $plan['as_of_date'],
+            'opening_date' => $plan['opening_date'],
             'location_code' => $plan['location']->code,
             'source_document_number' => $plan['source_document_number'],
             'row_count' => $rows->count(),

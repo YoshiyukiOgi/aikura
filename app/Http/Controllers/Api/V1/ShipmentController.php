@@ -8,6 +8,7 @@ use App\Http\Requests\Api\V1\StoreShipmentRequest;
 use App\Models\ShipmentHeader;
 use App\Models\ShipmentInstruction;
 use App\Models\ShipmentLine;
+use App\Services\Operations\OperationalPeriod;
 use App\Services\Shipment\ApplyDraftShipmentPricingService;
 use App\Services\Shipment\CancelShipmentService;
 use App\Services\Shipment\ConfirmShipmentService;
@@ -17,7 +18,6 @@ use App\Services\Shipment\CreateDraftShipmentFromPickData;
 use App\Services\Shipment\CreateDraftShipmentFromPickService;
 use App\Services\Shipment\CreateDraftShipmentLineData;
 use App\Services\Shipment\CreateDraftShipmentService;
-use App\Services\Operations\OperationalPeriod;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -72,7 +72,11 @@ class ShipmentController extends ApiController
                 'invoiceLines.invoiceHeader',
             ])
             ->withCount('invoiceLines');
-        $operationalPeriod->applyVisiblePeriod($query, 'document_date');
+        $operationalPeriod->applyVisiblePeriodOrImportedHistory(
+            $query,
+            'document_date',
+            fn ($imported) => $imported->whereNotNull('legacy_access_document_number'),
+        );
 
         if ($customer = trim((string) ($validated['customer'] ?? ''))) {
             $query->whereHas('customer', fn ($builder) => $builder->where('name', 'like', "%{$customer}%"));

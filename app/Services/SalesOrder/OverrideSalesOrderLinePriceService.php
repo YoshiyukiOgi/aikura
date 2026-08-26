@@ -13,9 +13,7 @@ use Illuminate\Support\Facades\DB;
 
 class OverrideSalesOrderLinePriceService
 {
-    public function __construct(private readonly AuditLogService $auditLogService)
-    {
-    }
+    public function __construct(private readonly AuditLogService $auditLogService) {}
 
     public function override(SalesOrder $salesOrder, SalesOrderLine $line, string $unitPrice, string $reason, bool $saveAsCustomerPrice = false): SalesOrder
     {
@@ -30,6 +28,10 @@ class OverrideSalesOrderLinePriceService
                 throw SalesOrderException::notPriceEditable($salesOrder->id, $salesOrder->status);
             }
 
+            if ($salesOrder->isRetailManaged()) {
+                throw SalesOrderException::retailManagedOrderCannotBeChanged($salesOrder->id);
+            }
+
             $line = SalesOrderLine::query()->lockForUpdate()->findOrFail($line->id);
             if ($line->sales_order_id !== $salesOrder->id) {
                 throw SalesOrderException::lineDoesNotBelong($line->id, $salesOrder->id);
@@ -41,12 +43,21 @@ class OverrideSalesOrderLinePriceService
             }
 
             $before = ['unit_price' => $line->unit_price, 'price_source' => $line->price_source];
+            $effectiveFrom = $priceRule?->effective_from?->toDateString()
+                ?? $salesOrder->order_date?->toDateString()
+                ?? now()->toDateString();
+            $notice = bccomp((string) $line->unit_price, $unitPrice, 4) === 0
+                ? null
+                : '受注単価を変更（旧価格 '.number_format((float) $line->unit_price).'円 → 新価格 '.number_format((float) $unitPrice).'円）';
             $line->update([
                 'unit_price' => $unitPrice,
                 'price_list_id' => $priceRule?->price_list_id,
                 'price_rule_id' => $priceRule?->id,
                 'price_source' => $priceRule ? 'customer' : 'manual',
                 'price_reason' => $priceRule ? '取引先個別価格' : $reason,
+                'price_effective_from' => $effectiveFrom,
+                'previous_unit_price' => $line->unit_price,
+                'price_change_notice' => $notice,
                 'priced_at' => now(),
             ]);
 
@@ -66,8 +77,7 @@ class OverrideSalesOrderLinePriceService
     {
         $priceList = PriceList::query()
             ->where('code', 'customer_price')
-            ->orWhere('code', 'customer')
-            ->orderByRaw("case when code = 'customer_price' then 0 else 1 end")
+            ->where('is_active', true)
             ->firstOrFail();
 
         $effectiveFrom = $salesOrder->order_date?->toDateString() ?? now()->toDateString();

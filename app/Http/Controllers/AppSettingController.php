@@ -73,13 +73,13 @@ class AppSettingController extends Controller
     private function defaults(): array
     {
         return [
-            'company_name' => '有限会社 有光酒造場',
+            'company_name' => '譛蛾剞莨夂､ｾ 譛牙・驟帝蝣ｴ',
             'company_postal_code' => '784-0033',
-            'company_address' => '安芸市赤野甲38番地1',
+            'company_address' => '螳芽敢蟶りｵ､驥守抜38逡ｪ蝨ｰ1',
             'company_phone' => '0887-33-2117',
             'company_fax' => '0887-33-4477',
             'company_registration_number' => 'T2-4900-0201-2728',
-            'system_name' => 'B2B販売管理システム',
+            'system_name' => 'B2B雋ｩ螢ｲ邂｡逅・す繧ｹ繝・Β',
             'theme' => 'blue',
             'auto_refresh_enabled' => '1',
             'auto_refresh_interval_seconds' => '30',

@@ -16,9 +16,10 @@ class ReplaceNonSalesStockOperationLinesService
 {
     private const OUTGOING_TYPES = ['breakage', 'disposal', 'loss', 'self_consumption', 'gift', 'sample', 'inspection'];
 
-    public function __construct(private readonly CalculateLiquorTaxService $calculateLiquorTaxService)
-    {
-    }
+    public function __construct(
+        private readonly CalculateLiquorTaxService $calculateLiquorTaxService,
+        private readonly OperationalStartStockLotEligibilityService $lotEligibility,
+    ) {}
 
     /**
      * @param array<int, CreateNonSalesStockOperationLineData> $lines
@@ -40,7 +41,8 @@ class ReplaceNonSalesStockOperationLinesService
 
             $productionLot = ProductionLot::query()->lockForUpdate()->findOrFail($lineData->productionLotId);
             $stockLocation = StockLocation::query()->lockForUpdate()->findOrFail($lineData->stockLocationId);
-            if (! $productionLot->is_active || $productionLot->status !== 'active') {
+            if ((! $productionLot->is_active || $productionLot->status !== 'active')
+                && ! $this->lotEligibility->isEligibleLot($productionLot)) {
                 throw new DomainException('使用できないロットです。');
             }
             if ($productionLot->unit_id === null) {

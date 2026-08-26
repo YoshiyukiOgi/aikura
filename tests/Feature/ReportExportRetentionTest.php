@@ -128,7 +128,6 @@ class ReportExportRetentionTest extends TestCase
             'status' => 'confirmed',
             'movement_type' => 'inventory_adjustment',
             'movement_date' => '2026-06-15',
-            'product_id' => $product->id,
             'stock_location_id' => $location->id,
             'unit_id' => $unit->id,
             'quantity' => '1.0000',

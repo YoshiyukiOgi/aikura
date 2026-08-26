@@ -38,7 +38,7 @@ class InventoryLotStockProductTypeFilterTest extends TestCase
     {
         [$sakeLot] = $this->prepareLotStock();
 
-        $response = $this->getJson('/api/v1/inventory/lot-stock-as-of?as_of_date=2026-06-30&product_type=sake');
+        $response = $this->getJson('/api/v1/inventory/lot-stock-as-of?as_of_date=2026-07-30&product_type=sake');
 
         $response->assertOk()
             ->assertJsonPath('data.lot_stock_balances.0.production_lot_id', $sakeLot->id)
@@ -46,6 +46,46 @@ class InventoryLotStockProductTypeFilterTest extends TestCase
             ->assertJsonPath('data.lot_stock_balances.0.product_type_label', '酒');
 
         $this->assertCount(1, $response->json('data.lot_stock_balances'));
+    }
+
+    public function test_lot_stock_as_of_search_normalizes_spaces_and_full_width_digits(): void
+    {
+        $this->prepareLotStock();
+
+        $bottle = Unit::query()->where('code', 'bottle')->firstOrFail();
+        $milliliter = Unit::query()->where('code', 'milliliter')->firstOrFail();
+        $location = StockLocation::query()->where('code', 'main_brewery')->firstOrFail();
+
+        $product = Product::query()->create([
+            'product_code' => 'FILTER-AKI-720',
+            'product_type' => 'sake',
+            'name' => '安芸虎 純米吟醸',
+            'display_name' => '安芸虎 純米吟醸 720ml',
+            'base_unit_id' => $bottle->id,
+            'inventory_unit_id' => $bottle->id,
+            'capacity_value' => '720.0000',
+            'capacity_unit_id' => $milliliter->id,
+            'alcohol_percentage' => '16.00',
+            'is_alcohol' => true,
+            'legacy_code' => '3001',
+        ]);
+        $lot = $this->createLot('FILTER-AKI-720-LOT', $product, $location, $bottle);
+        $this->createMovement($lot, $location, $bottle, '12.0000');
+
+        $this->getJson('/api/v1/inventory/lot-stock-as-of?as_of_date=2026-07-30&q=' . rawurlencode('安芸虎　純米吟醸'))
+            ->assertOk()
+            ->assertJsonPath('data.lot_stock_balances.0.production_lot_id', $lot->id)
+            ->assertJsonPath('data.lot_stock_balances.0.product_code', 'FILTER-AKI-720');
+
+        $this->getJson('/api/v1/inventory/lot-stock-as-of?as_of_date=2026-07-30&q=' . rawurlencode('安芸虎　７２０'))
+            ->assertOk()
+            ->assertJsonPath('data.lot_stock_balances.0.production_lot_id', $lot->id)
+            ->assertJsonPath('data.lot_stock_balances.0.product_code', 'FILTER-AKI-720');
+
+        $this->getJson('/api/v1/inventory/lot-stock-as-of?as_of_date=2026-07-30&q=' . rawurlencode('安芸虎 720'))
+            ->assertOk()
+            ->assertJsonPath('data.lot_stock_balances.0.production_lot_id', $lot->id)
+            ->assertJsonPath('data.lot_stock_balances.0.product_code', 'FILTER-AKI-720');
     }
 
     public function test_inventory_pages_default_to_sake_and_render_compact_lot_capacity(): void
@@ -57,7 +97,8 @@ class InventoryLotStockProductTypeFilterTest extends TestCase
         $inventory->assertOk()
             ->assertSee('<option value="sake" selected>酒</option>', false)
             ->assertSee('title="${lotHover(r.lot_name,r.lot_code)}"', false)
-            ->assertSee('${wholeNumber(r.capacity_value)}', false);
+            ->assertSee('${wholeNumber(r.capacity_value)}', false)
+            ->assertSee("document.getElementById('stock-as-of-date').onchange=()=>pulseButton('refresh-stock')", false);
 
         $lotStockAsOf = $this->get('/inventory/lot-stock-as-of');
 
@@ -143,7 +184,7 @@ class InventoryLotStockProductTypeFilterTest extends TestCase
         $stockCodes = collect($this->getJson('/api/v1/inventory/stock')->assertOk()->json('data.stock_balances'))
             ->pluck('lot_code')
             ->all();
-        $asOfCodes = collect($this->getJson('/api/v1/inventory/lot-stock-as-of?as_of_date=2026-06-30')->assertOk()->json('data.lot_stock_balances'))
+        $asOfCodes = collect($this->getJson('/api/v1/inventory/lot-stock-as-of?as_of_date=2026-07-30')->assertOk()->json('data.lot_stock_balances'))
             ->pluck('lot_code')
             ->all();
 
@@ -228,7 +269,7 @@ class InventoryLotStockProductTypeFilterTest extends TestCase
         StockMovement::query()->create([
             'status' => 'confirmed',
             'movement_type' => 'opening_stock',
-            'movement_date' => '2026-06-30',
+            'movement_date' => '2026-07-30',
             'stock_location_id' => $location->id,
             'unit_id' => $unit->id,
             'quantity' => $quantity,

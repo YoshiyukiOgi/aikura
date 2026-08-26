@@ -43,9 +43,9 @@ class SearchApiTest extends TestCase
         [$user] = $this->prepareData();
 
         $this->actingAs($user)
-            ->getJson('/api/v1/search?q=SEARCH&limit=20')
+            ->getJson('/api/v1/search?q='.urlencode('ＳＥＡＲＣＨ　').'&limit=20')
             ->assertOk()
-            ->assertJsonPath('data.search.query', 'SEARCH')
+            ->assertJsonPath('data.search.query', 'search')
             ->assertJsonFragment(['type' => 'customer', 'label' => 'SEARCH-CUST-001'])
             ->assertJsonFragment(['type' => 'product', 'label' => 'SEARCH-SAKE-001'])
             ->assertJsonFragment(['type' => 'sales_order', 'label' => 'SEARCH-SO-001'])
@@ -175,24 +175,22 @@ class SearchApiTest extends TestCase
 
         $customer = Customer::create([
             'customer_code' => 'SEARCH-CUST-001',
-            'name' => 'Search Customer',
+            'name' => 'Search　Customer',
             'transaction_category_id' => $transactionCategory->id,
             'settlement_receivable_category_id' => $settlementCategory->id,
             'billing_cycle_id' => $billingCycle->id,
-            'search_key' => 'SEARCH CUSTOMER',
         ]);
 
         $product = Product::create([
             'product_code' => 'SEARCH-SAKE-001',
             'product_type' => 'sake',
-            'name' => 'Search Sake',
+            'name' => 'Search　Sake',
             'display_name' => 'Search Sake 720ml',
             'base_unit_id' => $unit->id,
             'sales_unit_id' => $unit->id,
             'inventory_unit_id' => $unit->id,
             'is_alcohol' => true,
             'is_inventory_managed' => true,
-            'search_key' => 'SEARCH PRODUCT',
         ]);
 
         $lot = ProductionLot::create([
@@ -261,7 +259,6 @@ class SearchApiTest extends TestCase
             'status' => 'confirmed',
             'movement_type' => 'shipment',
             'movement_date' => '2026-06-05',
-            'product_id' => $product->id,
             'stock_location_id' => $location->id,
             'unit_id' => $unit->id,
             'quantity' => '-3.0000',

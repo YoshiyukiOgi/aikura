@@ -18,7 +18,7 @@ class IndexSalesOrderRequest extends FormRequest
         return [
             'q' => ['nullable', 'string', 'max:120'],
             'customer_id' => ['nullable', 'integer', 'exists:customers,id'],
-            'status' => ['nullable', Rule::in(['received', 'shipment_returned'])],
+            'status' => ['nullable', Rule::in(['received', 'shipment_returned', 'cancelled'])],
             'awaiting_shipment_instruction' => ['nullable', 'boolean'],
             'order_date_from' => ['nullable', 'date'],
             'order_date_to' => ['nullable', 'date', 'after_or_equal:order_date_from'],

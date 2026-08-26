@@ -34,6 +34,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->api(append: [
             AssignRequestId::class,
         ]);
+        $middleware->redirectGuestsTo(fn (Request $request): string => $request->is('retail/*') ? '/retail-login' : '/login');
         $middleware->alias([
             'permission' => RequirePermission::class,
             'web.permission' => RequireWebPermission::class,

@@ -9,7 +9,9 @@ use Throwable;
 
 class ImportAccessInventoryHistoryCommand extends Command
 {
-    protected $signature = 'aikura:access-import-inventory-history {batch : 出荷履歴移行済みAccess移行バッチID}';
+    protected $signature = 'aikura:access-import-inventory-history
+        {batch : 出荷履歴移行済みAccess移行バッチID}
+        {--cutover= : この日以降の販売外出入だけを業務テーブルへ移行する}';
 
     protected $description = 'Import Access non-sales inventory history without affecting current stock.';
 
@@ -23,7 +25,7 @@ class ImportAccessInventoryHistoryCommand extends Command
         }
 
         try {
-            $summary = $importer->import($batch);
+            $summary = $importer->import($batch, cutoverDate: $this->option('cutover'));
         } catch (Throwable $exception) {
             $this->error($exception->getMessage());
 

@@ -79,7 +79,7 @@ class ConfirmInvoiceTest extends TestCase
             'status' => 'draft',
             'customer_id' => $customer->id,
             'billing_cycle_id' => $customer->billing_cycle_id,
-            'invoice_date' => '2026-05-31',
+            'invoice_date' => '2026-07-31',
         ]);
 
         $this->expectException(InvoiceConfirmationException::class);
@@ -120,8 +120,8 @@ class ConfirmInvoiceTest extends TestCase
 
         $shipment = app(CreateDraftShipmentService::class)->create(new CreateDraftShipmentData(
             customerId: $customer->id,
-            documentDate: '2026-05-23',
-            billingTargetDate: '2026-05-23',
+            documentDate: '2026-07-23',
+            billingTargetDate: '2026-07-23',
             lines: [
                 new CreateDraftShipmentLineData($product->id, $quantity, $unit->id),
             ],
@@ -131,7 +131,7 @@ class ConfirmInvoiceTest extends TestCase
 
         $invoice = app(CreateInvoiceDraftService::class)->create(new CreateInvoiceDraftData(
             customerId: $customer->id,
-            invoiceDate: '2026-05-31',
+            invoiceDate: '2026-07-31',
             shipmentHeaderIds: [$shipment->id],
         ));
 

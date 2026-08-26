@@ -15,8 +15,8 @@ use App\Models\SettlementReceivableCategory;
 use App\Models\TransactionCategory;
 use App\Models\Unit;
 use App\Models\User;
-use App\Services\Pricing\ResolvePriceService;
 use App\Services\Pricing\CreatePriceReviewTasksService;
+use App\Services\Pricing\ResolvePriceService;
 use Database\Seeders\CustomerMasterSeeder;
 use Database\Seeders\FoundationPermissionSeeder;
 use Database\Seeders\PriceMasterSeeder;
@@ -78,6 +78,28 @@ class PriceMasterTest extends TestCase
         $this->assertSame($customerList->id, $resolved->priceListId);
     }
 
+    public function test_price_scope_precedence_does_not_depend_on_priority_number(): void
+    {
+        [$customer, $product, $unit] = $this->prepareCustomerProduct();
+
+        $common = PriceList::where('code', 'common')->firstOrFail();
+        $group = PriceList::where('code', 'transaction_category')->firstOrFail();
+        $customerList = PriceList::where('code', 'customer')->firstOrFail();
+
+        $this->createRule($common, $product, $unit, '1400.0000', 1, []);
+        $this->createRule($group, $product, $unit, '1300.0000', 5000, [
+            'transaction_category_id' => $customer->transaction_category_id,
+        ]);
+        $this->createRule($customerList, $product, $unit, '1200.0000', 9999, [
+            'customer_id' => $customer->id,
+        ]);
+
+        $resolved = app(ResolvePriceService::class)->resolve($customer, $product, '2026-05-23', $unit->id);
+
+        $this->assertSame('1200.0000', $resolved->unitPrice);
+        $this->assertSame('customer', $resolved->source);
+    }
+
     public function test_transaction_category_price_is_used_before_common_price(): void
     {
         [$customer, $product, $unit] = $this->prepareCustomerProduct();
@@ -113,6 +135,26 @@ class PriceMasterTest extends TestCase
         $resolved = app(ResolvePriceService::class)->resolve($customer, $product, '2026-05-23');
 
         $this->assertSame('1100.0000', $resolved->unitPrice);
+    }
+
+    public function test_resolved_price_describes_the_applied_revision(): void
+    {
+        [$customer, $product, $unit] = $this->prepareCustomerProduct();
+        $common = PriceList::where('code', 'common')->firstOrFail();
+
+        $this->createRule($common, $product, $unit, '1000.0000', 300, [
+            'effective_from' => '2026-01-01',
+            'effective_to' => '2026-08-09',
+        ]);
+        $this->createRule($common, $product, $unit, '1100.0000', 300, [
+            'effective_from' => '2026-08-10',
+        ]);
+
+        $resolved = app(ResolvePriceService::class)->resolve($customer, $product, '2026-08-10', $unit->id);
+
+        $this->assertSame('2026-08-10', $resolved->effectiveFrom);
+        $this->assertSame('1000.0000', $resolved->previousUnitPrice);
+        $this->assertSame('8月10日改定価格を適用（旧価格 1,000円 → 新価格 1,100円）', $resolved->changeNotice);
     }
 
     public function test_missing_price_throws_exception(): void
@@ -287,7 +329,7 @@ class PriceMasterTest extends TestCase
     }
 
     /**
-     * @param array<string, mixed> $overrides
+     * @param  array<string, mixed>  $overrides
      */
     private function createRule(PriceList $priceList, Product $product, Unit $unit, string $unitPrice, int $priority, array $overrides): PriceRule
     {
@@ -323,4 +365,3 @@ class PriceMasterTest extends TestCase
         return $user;
     }
 }
-

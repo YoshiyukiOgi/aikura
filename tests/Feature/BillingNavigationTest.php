@@ -15,6 +15,7 @@ class BillingNavigationTest extends TestCase
     public function test_billing_pages_share_workflow_tabs_in_business_order(): void
     {
         $this->seed(FoundationPermissionSeeder::class);
+
         $user = User::create([
             'name' => 'Billing Administrator',
             'email' => 'billing-navigation@example.test',
@@ -25,36 +26,37 @@ class BillingNavigationTest extends TestCase
         $this->actingAs($user);
 
         $tabs = [
-            '月次請求',
-            '都度請求',
-            '請求一覧・確定',
-            '請求書印刷',
-            '入金確認',
-            '要確認入金',
-            '売掛残高',
-        ];
-        $pages = [
-            'billing.index' => 'billing.monthly-invoices',
-            'billing.monthly-invoices' => 'billing.monthly-invoices',
-            'billing.spot-invoices' => 'billing.spot-invoices',
-            'billing.invoices' => 'billing.invoices',
-            'billing.invoice-print' => 'billing.invoice-print',
-            'billing.payment-confirmation' => 'billing.payment-confirmation',
-            'billing.payment-reviews' => 'billing.payment-reviews',
-            'billing.receivables' => 'billing.receivables',
+            '/billing',
+            '/billing/spot-invoices',
+            '/billing/invoices',
+            '/billing/invoice-print',
+            '/billing/payment-entry',
+            '/billing/payment-reviews',
+            '/billing/receivables',
         ];
 
-        foreach ($pages as $pageRoute => $activeRoute) {
+        $pages = [
+            'billing.index' => '/billing',
+            'billing.monthly-invoices' => '/billing',
+            'billing.spot-invoices' => '/billing/spot-invoices',
+            'billing.invoices' => '/billing/invoices',
+            'billing.invoice-print' => '/billing/invoice-print',
+            'billing.payment-confirmation' => '/billing/payment-entry',
+            'billing.payment-reviews' => '/billing/payment-reviews',
+            'billing.receivables' => '/billing/receivables',
+        ];
+
+        foreach ($pages as $pageRoute => $activeHref) {
             $response = $this->get(route($pageRoute));
 
             $response
                 ->assertOk()
                 ->assertSee('請求・入金業務')
                 ->assertSeeInOrder($tabs)
-                ->assertSee('aria-label="請求・入金の作業順"', false);
+                ->assertSee('workflow-tabs');
 
             $this->assertMatchesRegularExpression(
-                '/href="'.preg_quote(route($activeRoute), '/').'" class="tab active"\s+aria-current="page"/',
+                '/href="'.preg_quote($activeHref, '/').'"[^>]*class="[^"]*\bactive\b[^"]*"/s',
                 $response->getContent(),
             );
         }

@@ -35,8 +35,8 @@ class CreatePaymentScheduleTest extends TestCase
     public function test_it_creates_payment_schedule_from_confirmed_invoice(): void
     {
         $invoice = $this->prepareConfirmedInvoice(
-            invoiceDate: '2026-05-31',
-            dueDate: '2026-06-25',
+            invoiceDate: '2026-07-31',
+            dueDate: '2026-08-25',
         );
 
         $schedule = app(CreatePaymentScheduleService::class)->create(
@@ -47,7 +47,7 @@ class CreatePaymentScheduleTest extends TestCase
         $this->assertSame($invoice->id, $schedule->invoice_header_id);
         $this->assertSame($invoice->customer_id, $schedule->customer_id);
         $this->assertSame('open', $schedule->status);
-        $this->assertSame('2026-06-25', $schedule->expected_payment_date->toDateString());
+        $this->assertSame('2026-08-25', $schedule->expected_payment_date->toDateString());
         $this->assertSame('3300.00', $schedule->scheduled_amount);
         $this->assertSame('0.00', $schedule->received_amount);
         $this->assertSame('3300.00', $schedule->outstanding_amount);
@@ -56,20 +56,20 @@ class CreatePaymentScheduleTest extends TestCase
             'event' => 'payment_schedule.created',
             'target_table' => 'payment_schedules',
             'target_id' => (string) $schedule->id,
-            'reason' => 'monthly receivable schedule',
+            'reason' => '請求書発行時に入金予定を自動作成',
         ]);
     }
 
     public function test_it_calculates_expected_payment_date_from_billing_cycle_when_due_date_is_empty(): void
     {
         $invoice = $this->prepareConfirmedInvoice(
-            invoiceDate: '2026-05-31',
+            invoiceDate: '2026-07-31',
             dueDate: null,
         );
 
         $schedule = app(CreatePaymentScheduleService::class)->create($invoice);
 
-        $this->assertSame('2026-06-30', $schedule->expected_payment_date->toDateString());
+        $this->assertSame('2026-08-31', $schedule->expected_payment_date->toDateString());
     }
 
     public function test_it_rejects_unconfirmed_invoice(): void
@@ -85,28 +85,28 @@ class CreatePaymentScheduleTest extends TestCase
     {
         $invoice = $this->prepareConfirmedInvoice();
 
-        app(CreatePaymentScheduleService::class)->create($invoice);
+        $first = app(CreatePaymentScheduleService::class)->create($invoice);
+        $second = app(CreatePaymentScheduleService::class)->create($invoice);
 
-        $this->expectException(PaymentScheduleException::class);
-
-        app(CreatePaymentScheduleService::class)->create($invoice);
+        $this->assertSame($first->id, $second->id);
+        $this->assertSame('open', $second->status);
     }
 
-    private function prepareConfirmedInvoice(string $invoiceDate = '2026-05-31', ?string $dueDate = null): InvoiceHeader
+    private function prepareConfirmedInvoice(string $invoiceDate = '2026-07-31', ?string $dueDate = null): InvoiceHeader
     {
         return app(ConfirmInvoiceService::class)->confirm(
             $this->prepareInvoiceDraft($invoiceDate, $dueDate),
         );
     }
 
-    private function prepareInvoiceDraft(string $invoiceDate = '2026-05-31', ?string $dueDate = null): InvoiceHeader
+    private function prepareInvoiceDraft(string $invoiceDate = '2026-07-31', ?string $dueDate = null): InvoiceHeader
     {
         [$customer, $product, $unit] = $this->prepareBaseData();
 
         $shipment = app(CreateDraftShipmentService::class)->create(new CreateDraftShipmentData(
             customerId: $customer->id,
-            documentDate: '2026-05-23',
-            billingTargetDate: '2026-05-23',
+            documentDate: '2026-07-23',
+            billingTargetDate: '2026-07-23',
             lines: [
                 new CreateDraftShipmentLineData($product->id, '2.0000', $unit->id),
             ],

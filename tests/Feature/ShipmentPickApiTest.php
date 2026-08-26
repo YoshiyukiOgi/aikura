@@ -34,10 +34,35 @@ class ShipmentPickApiTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_picking_page_does_not_use_undefined_escape_helper_for_unavailable_lots(): void
+    {
+        [$user] = $this->prepareData();
+
+        $this->actingAs($user)
+            ->get('/shipment-picks')
+            ->assertOk()
+            ->assertSee("item.textContent=lotText(candidate)+' / '", false)
+            ->assertDontSee('esc(lotText(candidate))', false);
+    }
+
     public function test_user_with_permission_can_create_show_list_and_cancel_shipment_pick(): void
     {
-        [$user, $instruction, $location] = $this->prepareData();
+        [$user, $instruction, $location, $lot] = $this->prepareData();
         $instructionLine = $instruction->lines->first();
+
+        $this->actingAs($user)
+            ->putJson("/api/v1/shipment-instructions/{$instruction->id}/lines/{$instructionLine->id}/lots", [
+                'allocations' => [
+                    [
+                        'production_lot_id' => $lot->id,
+                        'quantity' => '4.0000',
+                    ],
+                ],
+                'reason' => 'api lot allocation',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.allocations.0.production_lot_id', $lot->id)
+            ->assertJsonPath('data.allocations.0.quantity', '4.0000');
 
         $createResponse = $this->actingAs($user)
             ->postJson('/api/v1/shipment-picks', [
@@ -78,12 +103,10 @@ class ShipmentPickApiTest extends TestCase
             ->postJson("/api/v1/shipment-picks/{$pickId}/cancel", [
                 'reason' => 'wrong pick by api',
             ])
-            ->assertOk()
-            ->assertJsonPath('data.shipment_pick.status', 'cancelled')
-            ->assertJsonPath('data.shipment_pick.cancelled_reason', 'wrong pick by api');
+            ->assertStatus(409);
 
-        $this->assertSame('0.0000', $instructionLine->refresh()->picked_quantity);
-        $this->assertSame('instructed', $instruction->refresh()->status);
+        $this->assertSame('4.0000', $instructionLine->refresh()->picked_quantity);
+        $this->assertSame('partially_picked', $instruction->refresh()->status);
     }
 
     public function test_user_without_shipment_pick_create_permission_cannot_create_pick(): void
@@ -157,6 +180,49 @@ class ShipmentPickApiTest extends TestCase
             ]);
     }
 
+    public function test_archived_lot_with_operational_start_stock_can_be_selected_for_shipment(): void
+    {
+        [$user, $instruction, $location, $lot] = $this->prepareData();
+        $instructionLine = $instruction->lines->firstOrFail();
+        $lot->update(['is_active' => false, 'status' => 'archived']);
+
+        StockMovement::query()->where('production_lot_id', $lot->id)->delete();
+        StockMovement::create([
+            'status' => 'confirmed',
+            'movement_type' => 'opening_stock',
+            'movement_date' => '2026-07-01',
+            'stock_location_id' => $location->id,
+            'unit_id' => $instructionLine->unit_id,
+            'quantity' => '6.0000',
+            'production_lot_id' => $lot->id,
+            'lot_code' => $lot->lot_code,
+            'confirmed_at' => now(),
+        ]);
+
+        $this->actingAs($user)
+            ->getJson("/api/v1/shipment-instructions/{$instruction->id}/lines/{$instructionLine->id}/lots")
+            ->assertOk()
+            ->assertJsonFragment([
+                'production_lot_id' => $lot->id,
+                'selectable' => true,
+                'available_quantity' => '6.0000',
+            ]);
+
+        $this->actingAs($user)
+            ->putJson("/api/v1/shipment-instructions/{$instruction->id}/lines/{$instructionLine->id}/lots", [
+                'allocations' => [
+                    [
+                        'production_lot_id' => $lot->id,
+                        'quantity' => '4.0000',
+                    ],
+                ],
+                'reason' => 'archived lot allocation',
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.allocations.0.production_lot_id', $lot->id)
+            ->assertJsonPath('data.allocations.0.quantity', '4.0000');
+    }
+
     /**
      * @return array{0: User, 1: ShipmentInstruction, 2: StockLocation}
      */
@@ -177,6 +243,7 @@ class ShipmentPickApiTest extends TestCase
         $settlementCategory = SettlementReceivableCategory::where('code', 'accounts_receivable_1')->firstOrFail();
         $billingCycle = BillingCycle::where('code', 'monthly_end_next_month_end')->firstOrFail();
         $unit = Unit::where('code', 'bottle')->firstOrFail();
+        $milliliter = Unit::where('code', 'milliliter')->firstOrFail();
         $location = StockLocation::where('code', 'main_brewery')->firstOrFail();
 
         $customer = Customer::create([
@@ -195,6 +262,7 @@ class ShipmentPickApiTest extends TestCase
             'base_unit_id' => $unit->id,
             'sales_unit_id' => $unit->id,
             'inventory_unit_id' => $unit->id,
+            'alcohol_percentage' => '15.50',
             'is_alcohol' => true,
         ]);
 
@@ -208,7 +276,21 @@ class ShipmentPickApiTest extends TestCase
 
         $instruction = $this->createInstruction($salesOrder, $location);
 
-        return [$user, $instruction, $location];
+        $lot = ProductionLot::create([
+            'lot_code' => 'API-SP-LOT-001',
+            'display_name' => 'API Shipment Pick Lot 001',
+            'stock_location_id' => $location->id,
+            'unit_id' => $unit->id,
+            'capacity_value' => '720.0000',
+            'capacity_unit_id' => $milliliter->id,
+            'alcohol_percentage' => '15.50',
+            'analysis_status' => 'confirmed',
+            'production_date' => '2026-06-01',
+        ]);
+
+        $this->createLotMovement($lot, $location, $unit->id, '6.0000');
+
+        return [$user, $instruction, $location, $lot];
     }
 
     private function createInstruction(SalesOrder $salesOrder, StockLocation $location): ShipmentInstruction
@@ -228,7 +310,7 @@ class ShipmentPickApiTest extends TestCase
         StockMovement::create([
             'status' => 'confirmed',
             'movement_type' => 'inventory_adjustment',
-            'movement_date' => '2026-06-20',
+            'movement_date' => '2026-07-20',
             'stock_location_id' => $location->id,
             'unit_id' => $unitId,
             'quantity' => $quantity,

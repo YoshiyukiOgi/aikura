@@ -190,7 +190,22 @@ class AggregateMonthlyLiquorTaxTransfersService
                     shipmentCount: $group->pluck('source.sourceHeaderId')->unique()->count(), lineCount: $group->count(),
                     sources: $group->pluck('source')->all(),
                 );
-            })->sortBy(fn (MonthlyLiquorTaxTransferSummary $s): string => implode('|', [$s->liquorTaxCategoryCode, $s->taxTreatment, $s->sourceType, $s->reportingAlcoholPercentage ?? '']))->values();
+            })->sort(function (MonthlyLiquorTaxTransferSummary $left, MonthlyLiquorTaxTransferSummary $right): int {
+                $comparisons = [
+                    strcmp($left->liquorTaxCategoryCode, $right->liquorTaxCategoryCode),
+                    strcmp($left->taxTreatment, $right->taxTreatment),
+                    strcmp($left->sourceType, $right->sourceType),
+                    ((int) ($right->reportingAlcoholPercentage ?? -1)) <=> ((int) ($left->reportingAlcoholPercentage ?? -1)),
+                ];
+
+                foreach ($comparisons as $comparison) {
+                    if ($comparison !== 0) {
+                        return $comparison;
+                    }
+                }
+
+                return 0;
+            })->values();
     }
 
     /** @return array<string, mixed> */

@@ -8,12 +8,12 @@ class PermissionDeniedException extends DomainException
 {
     public static function forPermission(string $permissionCode): self
     {
-        return new self("Permission [{$permissionCode}] is required.");
+        return new self("権限 [{$permissionCode}] が必要です。");
     }
 
     public static function forInactiveUser(): self
     {
-        return new self('The user is inactive.');
+        return new self('ユーザーが無効です。');
     }
 }
 

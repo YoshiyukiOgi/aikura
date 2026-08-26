@@ -33,9 +33,9 @@ class InventoryOperationsWorkflowTest extends TestCase
     public function test_monthly_count_creates_lot_adjustment_on_target_month_end(): void
     {
         [$product, $unit, $location, $lot] = $this->masters();
-        $this->movement($product, $unit, $location, $lot, '2026-06-10', '10.0000');
+        $this->movement($product, $unit, $location, $lot, '2026-07-10', '10.0000');
 
-        $count = app(CreateInventoryCountDraftService::class)->create(2026, 6);
+        $count = app(CreateInventoryCountDraftService::class)->create(2026, 7);
         $line = $count->lines->firstOrFail();
         $this->assertSame('10.0000', $line->book_quantity);
 
@@ -46,8 +46,8 @@ class InventoryOperationsWorkflowTest extends TestCase
 
         $this->assertSame('confirmed', $count->status);
         $this->assertDatabaseHas('stock_movements', [
-            'movement_type' => 'inventory_adjustment', 'movement_date' => '2026-06-30',
-            'production_lot_id' => $lot->id, 'quantity' => '-2.0000', 'source_document_number' => 'COUNT-202606',
+            'movement_type' => 'inventory_adjustment', 'movement_date' => '2026-07-31',
+            'production_lot_id' => $lot->id, 'quantity' => '-2.0000', 'source_document_number' => 'COUNT-202607',
         ]);
         $this->assertSame('8.0000', app(CurrentStockBalanceService::class)->forProductLocationUnit($product->id, $location->id, $unit->id)->physicalQuantity);
     }
@@ -55,13 +55,13 @@ class InventoryOperationsWorkflowTest extends TestCase
     public function test_current_stock_uses_confirmed_monthly_product_and_lot_balances_plus_later_movements(): void
     {
         [$product, $unit, $location, $lot] = $this->masters();
-        $this->movement($product, $unit, $location, $lot, '2026-05-10', '10.0000');
-        app(CreateStockMonthlyBalanceDraftService::class)->create(2026, 5, 'May close');
-        app(ConfirmStockMonthlyBalanceService::class)->confirm(2026, 5, 'May close');
-        $this->movement($product, $unit, $location, $lot, '2026-06-02', '-3.0000', 'shipment');
+        $this->movement($product, $unit, $location, $lot, '2026-06-10', '10.0000');
+        app(CreateStockMonthlyBalanceDraftService::class)->create(2026, 6, 'June close');
+        app(ConfirmStockMonthlyBalanceService::class)->confirm(2026, 6, 'June close');
+        $this->movement($product, $unit, $location, $lot, '2026-07-02', '-3.0000', 'shipment');
 
         $stock = app(CurrentStockBalanceService::class)->forProductLocationUnit($product->id, $location->id, $unit->id);
-        $lotStock = app(LotStockBalanceService::class)->forLotProductLocationUnit($lot->id, $product->id, $location->id, $unit->id);
+        $lotStock = app(LotStockBalanceService::class)->forLotLocationUnit($lot->id, $location->id, $unit->id);
         $this->assertSame('7.0000', $stock->physicalQuantity);
         $this->assertSame('7.0000', $lotStock->physicalQuantity);
     }
@@ -71,13 +71,21 @@ class InventoryOperationsWorkflowTest extends TestCase
         [$product, $unit, $location, $lot] = $this->masters();
         $this->movement($product, $unit, $location, $lot, '2026-07-01', '5.0000');
         $operation = app(CreateNonSalesStockOperationService::class)->create(new CreateNonSalesStockOperationData(
-            operationType: 'self_consumption', operationDate: '2026-07-15', reason: '社内試飲',
-            lines: [new CreateNonSalesStockOperationLineData(productId: $product->id, stockLocationId: $location->id, unitId: $unit->id, quantity: '-1.0000', productionLotId: $lot->id, lotCode: $lot->lot_code)],
-            consumptionTaxTreatment: 'non_taxable', liquorTaxTreatment: 'taxable_transfer',
+            operationType: 'self_consumption',
+            operationDate: '2026-07-15',
+            reason: '社内試飲',
+            lines: [
+                new CreateNonSalesStockOperationLineData(
+                    productionLotId: $lot->id,
+                    stockLocationId: $location->id,
+                    quantity: '-1.0000',
+                    productId: $product->id,
+                    lotCode: $lot->lot_code,
+                ),
+            ],
         ));
 
-        $this->assertSame('non_taxable', $operation->consumption_tax_treatment);
-        $this->assertSame('taxable_transfer', $operation->liquor_tax_treatment);
+        $this->assertSame('taxable', $operation->liquor_tax_treatment);
         $this->assertDatabaseHas('stock_movements', ['movement_type' => 'non_sales_self_consumption', 'quantity' => '-1.0000']);
         $summary = app(AggregateMonthlyLiquorTaxTransfersService::class)->aggregate(2026, 7)->firstOrFail();
         $this->assertSame('0.000720', $summary->taxableKl);
@@ -102,9 +110,18 @@ class InventoryOperationsWorkflowTest extends TestCase
         [$product, $unit, $location, $lot] = $this->masters();
         $this->movement($product, $unit, $location, $lot, '2026-07-01', '5.0000');
         $operation = app(CreateNonSalesStockOperationService::class)->create(new CreateNonSalesStockOperationData(
-            operationType: 'self_consumption', operationDate: '2026-07-15', reason: 'Internal tasting',
-            lines: [new CreateNonSalesStockOperationLineData(productId: $product->id, stockLocationId: $location->id, unitId: $unit->id, quantity: '-1.0000', productionLotId: $lot->id, lotCode: $lot->lot_code)],
-            consumptionTaxTreatment: 'non_taxable', liquorTaxTreatment: 'taxable_transfer',
+            operationType: 'self_consumption',
+            operationDate: '2026-07-15',
+            reason: 'Internal tasting',
+            lines: [
+                new CreateNonSalesStockOperationLineData(
+                    productionLotId: $lot->id,
+                    stockLocationId: $location->id,
+                    quantity: '-1.0000',
+                    productId: $product->id,
+                    lotCode: $lot->lot_code,
+                ),
+            ],
         ));
 
         $cancelled = app(CancelNonSalesStockOperationService::class)->cancel($operation, '2026-07-16', 'Entered in error');
@@ -125,12 +142,22 @@ class InventoryOperationsWorkflowTest extends TestCase
         $capacityUnit = Unit::where('code', 'milliliter')->firstOrFail();
         $location = StockLocation::where('code', 'main_brewery')->firstOrFail();
         $product = Product::create(['product_code' => 'INV-WORK-001', 'product_type' => 'sake', 'name' => 'Inventory Workflow Sake', 'display_name' => 'Inventory Workflow Sake', 'base_unit_id' => $unit->id, 'sales_unit_id' => $unit->id, 'inventory_unit_id' => $unit->id, 'capacity_value' => '720.0000', 'capacity_unit_id' => $capacityUnit->id, 'alcohol_percentage' => '15.00', 'is_alcohol' => true, 'is_inventory_managed' => true]);
-        $lot = ProductionLot::create(['lot_code' => 'INV-WORK-LOT-001', 'display_name' => 'Inventory Workflow Lot', 'product_id' => $product->id, 'stock_location_id' => $location->id, 'production_date' => '2026-05-01']);
+        $lot = ProductionLot::create([
+            'lot_code' => 'INV-WORK-LOT-001',
+            'display_name' => 'Inventory Workflow Lot',
+            'product_id' => $product->id,
+            'stock_location_id' => $location->id,
+            'unit_id' => $unit->id,
+            'capacity_value' => '720.0000',
+            'capacity_unit_id' => $capacityUnit->id,
+            'alcohol_percentage' => '15.00',
+            'production_date' => '2026-06-01',
+        ]);
         return [$product, $unit, $location, $lot];
     }
 
     private function movement(Product $product, Unit $unit, StockLocation $location, ProductionLot $lot, string $date, string $quantity, string $type = 'inventory_adjustment'): StockMovement
     {
-        return StockMovement::create(['status' => 'confirmed', 'movement_type' => $type, 'movement_date' => $date, 'product_id' => $product->id, 'stock_location_id' => $location->id, 'unit_id' => $unit->id, 'quantity' => $quantity, 'production_lot_id' => $lot->id, 'lot_code' => $lot->lot_code, 'confirmed_at' => now()]);
+        return StockMovement::create(['status' => 'confirmed', 'movement_type' => $type, 'movement_date' => $date, 'stock_location_id' => $location->id, 'unit_id' => $unit->id, 'quantity' => $quantity, 'production_lot_id' => $lot->id, 'lot_code' => $lot->lot_code, 'confirmed_at' => now()]);
     }
 }

@@ -41,7 +41,7 @@ class ClosedReceivableMonthlyBalancePeriodTest extends TestCase
     public function test_it_rejects_invoice_confirmation_in_confirmed_receivable_month(): void
     {
         [$customer, $product, $unit] = $this->prepareBaseData('AR-CLOSED-INVOICE-CONFIRM');
-        $invoice = $this->createDraftInvoice($customer, $product, $unit, '2026-06-20');
+        $invoice = $this->createDraftInvoice($customer, $product, $unit, '2026-07-20');
         $this->confirmReceivableMonth($customer);
 
         $this->expectException(ClosedReceivableMonthlyBalancePeriodException::class);
@@ -53,7 +53,7 @@ class ClosedReceivableMonthlyBalancePeriodTest extends TestCase
     {
         [$customer, $product, $unit] = $this->prepareBaseData('AR-CLOSED-INVOICE-CANCEL');
         $invoice = app(ConfirmInvoiceService::class)->confirm(
-            $this->createDraftInvoice($customer, $product, $unit, '2026-06-20'),
+            $this->createDraftInvoice($customer, $product, $unit, '2026-07-20'),
         );
         $this->confirmReceivableMonth($customer);
 
@@ -66,31 +66,32 @@ class ClosedReceivableMonthlyBalancePeriodTest extends TestCase
     {
         [$customer, $product, $unit] = $this->prepareBaseData('AR-CLOSED-SCHEDULE-CREATE');
         $invoice = app(ConfirmInvoiceService::class)->confirm(
-            $this->createDraftInvoice($customer, $product, $unit, '2026-06-20'),
+            $this->createDraftInvoice($customer, $product, $unit, '2026-07-20'),
         );
         $this->confirmReceivableMonth($customer);
 
-        $this->expectException(ClosedReceivableMonthlyBalancePeriodException::class);
+        $schedule = app(CreatePaymentScheduleService::class)->create($invoice);
 
-        app(CreatePaymentScheduleService::class)->create($invoice);
+        $this->assertSame($invoice->id, $schedule->invoice_header_id);
+        $this->assertSame('open', $schedule->status);
     }
 
     public function test_it_rejects_payment_registration_in_confirmed_receivable_month(): void
     {
         [$customer, $product, $unit] = $this->prepareBaseData('AR-CLOSED-PAYMENT-REGISTER');
-        $schedule = $this->createPaymentSchedule($customer, $product, $unit, '2026-06-20');
+        $schedule = $this->createPaymentSchedule($customer, $product, $unit, '2026-07-20');
         $this->confirmReceivableMonth($customer);
 
         $this->expectException(ClosedReceivableMonthlyBalancePeriodException::class);
 
-        app(RegisterPaymentService::class)->register($schedule, '1000.00', '2026-06-25');
+        app(RegisterPaymentService::class)->register($schedule, '1000.00', '2026-07-25');
     }
 
     public function test_it_rejects_payment_cancellation_in_confirmed_receivable_month(): void
     {
         [$customer, $product, $unit] = $this->prepareBaseData('AR-CLOSED-PAYMENT-CANCEL');
-        $schedule = $this->createPaymentSchedule($customer, $product, $unit, '2026-06-20');
-        $payment = app(RegisterPaymentService::class)->register($schedule, '1000.00', '2026-06-25');
+        $schedule = $this->createPaymentSchedule($customer, $product, $unit, '2026-07-20');
+        $payment = app(RegisterPaymentService::class)->register($schedule, '1000.00', '2026-07-25');
         $this->confirmReceivableMonth($customer);
 
         $this->expectException(ClosedReceivableMonthlyBalancePeriodException::class);
@@ -186,9 +187,9 @@ class ClosedReceivableMonthlyBalancePeriodTest extends TestCase
         ReceivableMonthlyBalance::create([
             'status' => 'draft',
             'year' => 2026,
-            'month' => 6,
-            'period_start' => '2026-06-01',
-            'period_end' => '2026-06-30',
+            'month' => 7,
+            'period_start' => '2026-07-01',
+            'period_end' => '2026-07-31',
             'customer_id' => $customer->id,
             'customer_code' => $customer->customer_code,
             'customer_name' => $customer->name,
@@ -201,6 +202,6 @@ class ClosedReceivableMonthlyBalancePeriodTest extends TestCase
             'calculated_at' => now(),
         ]);
 
-        app(ConfirmReceivableMonthlyBalanceService::class)->confirm(2026, 6, 'monthly receivable close');
+        app(ConfirmReceivableMonthlyBalanceService::class)->confirm(2026, 7, 'monthly receivable close');
     }
 }

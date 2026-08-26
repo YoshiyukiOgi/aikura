@@ -8,23 +8,24 @@ use App\Http\Requests\Api\V1\OverrideSalesOrderLinePriceRequest;
 use App\Http\Requests\Api\V1\SalesOrderPricingRequest;
 use App\Http\Requests\Api\V1\StoreSalesOrderRequest;
 use App\Http\Requests\Api\V1\UpdateSalesOrderRequest;
+use App\Models\PriceReviewTask;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderLine;
-use App\Models\PriceReviewTask;
-use App\Services\SalesOrder\CancelSalesOrderService;
 use App\Services\SalesOrder\ApplySalesOrderPricingService;
+use App\Services\SalesOrder\CancelSalesOrderService;
 use App\Services\SalesOrder\CreateSalesOrderData;
 use App\Services\SalesOrder\CreateSalesOrderLineData;
 use App\Services\SalesOrder\CreateSalesOrderService;
+use App\Services\SalesOrder\MarkSalesOrderAwaitingShipmentInstructionService;
 use App\Services\SalesOrder\OverrideSalesOrderLinePriceService;
 use App\Services\SalesOrder\ReapplySalesOrderLinePricingService;
 use App\Services\SalesOrder\UpdateSalesOrderService;
-use App\Services\SalesOrder\MarkSalesOrderAwaitingShipmentInstructionService;
 use App\Services\ShipmentInstruction\CreateShipmentInstructionData;
 use App\Services\ShipmentInstruction\CreateShipmentInstructionLineData;
 use App\Services\ShipmentInstruction\CreateShipmentInstructionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class SalesOrderController extends ApiController
 {
@@ -37,6 +38,7 @@ class SalesOrderController extends ApiController
             ->when(isset($validated['customer_id']), fn ($query) => $query->where('customer_id', $validated['customer_id']))
             ->when($status === 'received', fn ($query) => $query->where('status', 'received')->whereNull('shipment_returned_at'))
             ->when($status === 'shipment_returned', fn ($query) => $query->where('status', 'received')->whereNotNull('shipment_returned_at'))
+            ->when($status === 'cancelled', fn ($query) => $query->where('status', 'cancelled'))
             ->when(! $status, fn ($query) => $query->where('status', 'received'))
             ->when(isset($validated['awaiting_shipment_instruction']), fn ($query) => $query->where('awaiting_shipment_instruction', $validated['awaiting_shipment_instruction']))
             ->when(isset($validated['order_date_from']), fn ($query) => $query->whereDate('order_date', '>=', $validated['order_date_from']))
@@ -80,51 +82,52 @@ class SalesOrderController extends ApiController
         $validated = $request->validated();
 
         $result = DB::transaction(function () use ($validated, $service, $instructionService): array {
-        $salesOrder = $service->create(new CreateSalesOrderData(
-            customerId: (int) $validated['customer_id'],
-            orderDate: $validated['order_date'],
-            requestedShipmentDate: $validated['requested_shipment_date'] ?? null,
-            requestedDeliveryDate: $validated['requested_delivery_date'] ?? null,
-            billingTargetDate: $validated['billing_target_date'] ?? null,
-            customerOrderNumber: $validated['customer_order_number'] ?? null,
-            sourceType: $validated['source_type'] ?? null,
-            sourceReference: $validated['source_reference'] ?? null,
-            note: $validated['note'] ?? null,
-            workNote: $validated['work_note'] ?? null,
-            reason: $validated['reason'] ?? null,
-            applyPricing: true,
-            awaitingShipmentInstruction: (bool) ($validated['awaiting_shipment_instruction'] ?? false),
-            lines: array_map(
-                fn (array $line): CreateSalesOrderLineData => new CreateSalesOrderLineData(
-                    productId: (int) $line['product_id'],
-                    quantity: $line['quantity'],
-                    unitId: (int) $line['unit_id'],
-                    note: $line['note'] ?? null,
-                ),
-                $validated['lines'],
-            ),
-        ));
-
-        $instruction = null;
-        if ((bool) ($validated['auto_release_to_shipping'] ?? false)) {
-            $instruction = $instructionService->create(new CreateShipmentInstructionData(
-                instructionDate: now()->toDateString(),
-                scheduledShipmentDate: $salesOrder->requested_shipment_date?->toDateString()
-                    ?? $salesOrder->requested_delivery_date?->toDateString()
-                    ?? $salesOrder->order_date?->toDateString(),
-                note: '受注登録時に自動作成',
-                reason: '受注登録と同時に出荷作業へ送付',
-                lines: $salesOrder->lines->map(
-                    fn (SalesOrderLine $line): CreateShipmentInstructionLineData => new CreateShipmentInstructionLineData(
-                        salesOrderLineId: $line->id,
-                        quantity: (string) $line->remaining_quantity,
-                        note: $line->note,
+            $salesOrder = $service->create(new CreateSalesOrderData(
+                customerId: (int) $validated['customer_id'],
+                orderDate: $validated['order_date'],
+                requestedShipmentDate: $validated['requested_shipment_date'] ?? null,
+                requestedDeliveryDate: $validated['requested_delivery_date'] ?? null,
+                billingTargetDate: $validated['billing_target_date'] ?? null,
+                customerOrderNumber: $validated['customer_order_number'] ?? null,
+                sourceType: $validated['source_type'] ?? null,
+                sourceReference: $validated['source_reference'] ?? null,
+                note: $validated['note'] ?? null,
+                workNote: $validated['work_note'] ?? null,
+                reason: $validated['reason'] ?? null,
+                applyPricing: true,
+                awaitingShipmentInstruction: (bool) ($validated['awaiting_shipment_instruction'] ?? false),
+                allowNegativeLines: in_array(($validated['source_type'] ?? null), ['retail_sale_correction', 'retail_sale_credit_note', 'retail_purchase_order_cancellation'], true),
+                lines: array_map(
+                    fn (array $line): CreateSalesOrderLineData => new CreateSalesOrderLineData(
+                        productId: (int) $line['product_id'],
+                        quantity: $line['quantity'],
+                        unitId: (int) $line['unit_id'],
+                        note: $line['note'] ?? null,
                     ),
-                )->all(),
+                    $validated['lines'],
+                ),
             ));
-        }
 
-        return [$salesOrder->refresh()->load(['customer', 'lines.product', 'lines.unit']), $instruction];
+            $instruction = null;
+            if ((bool) ($validated['auto_release_to_shipping'] ?? false)) {
+                $instruction = $instructionService->create(new CreateShipmentInstructionData(
+                    instructionDate: now()->toDateString(),
+                    scheduledShipmentDate: $salesOrder->requested_shipment_date?->toDateString()
+                        ?? $salesOrder->requested_delivery_date?->toDateString()
+                        ?? $salesOrder->order_date?->toDateString(),
+                    note: '受注登録時に自動作成',
+                    reason: '受注登録と同時に出荷作業へ送付',
+                    lines: $salesOrder->lines->map(
+                        fn (SalesOrderLine $line): CreateShipmentInstructionLineData => new CreateShipmentInstructionLineData(
+                            salesOrderLineId: $line->id,
+                            quantity: (string) $line->remaining_quantity,
+                            note: $line->note,
+                        ),
+                    )->all(),
+                ));
+            }
+
+            return [$salesOrder->refresh()->load(['customer', 'lines.product', 'lines.unit']), $instruction];
         });
 
         return $this->created([
@@ -165,6 +168,12 @@ class SalesOrderController extends ApiController
 
     public function releaseToShipping(SalesOrder $salesOrder, CreateShipmentInstructionService $service): JsonResponse
     {
+        if ($salesOrder->source_type === 'retail_purchase_order_cancellation') {
+            throw ValidationException::withMessages([
+                'sales_order' => '小売発注取消のマイナス訂正受注は出荷指示できません。全量取消の訂正伝票として扱ってください。',
+            ]);
+        }
+
         $salesOrder->load('lines');
         $lines = $salesOrder->lines
             ->filter(fn (SalesOrderLine $line): bool => bccomp((string) $line->remaining_quantity, '0.0000', 4) > 0)
@@ -265,7 +274,8 @@ class SalesOrderController extends ApiController
             'id' => $salesOrder->id,
             'order_number' => $salesOrder->order_number,
             'status' => $salesOrder->status,
-            'display_status' => $salesOrder->shipment_returned_at ? 'shipment_returned' : $salesOrder->status,
+            'display_status' => $this->displayStatus($salesOrder),
+            'correction_notice' => $this->correctionNotice($salesOrder),
             'shipment_returned_at' => $salesOrder->shipment_returned_at?->toISOString(),
             'shipment_returned_reason' => $salesOrder->shipment_returned_reason,
             'awaiting_shipment_instruction' => $salesOrder->awaiting_shipment_instruction,
@@ -276,6 +286,8 @@ class SalesOrderController extends ApiController
             'requested_delivery_date' => $salesOrder->requested_delivery_date?->toDateString(),
             'billing_target_date' => $salesOrder->billing_target_date?->toDateString(),
             'customer_order_number' => $salesOrder->customer_order_number,
+            'source_type' => $salesOrder->source_type,
+            'source_reference' => $salesOrder->source_reference,
             'note' => $salesOrder->note,
             'work_note' => $salesOrder->work_note,
             'cancelled_reason' => $salesOrder->cancelled_reason,
@@ -296,6 +308,9 @@ class SalesOrderController extends ApiController
                     'price_rule_id' => $line->price_rule_id,
                     'price_source' => $line->price_source,
                     'price_reason' => $line->price_reason,
+                    'price_effective_from' => $line->price_effective_from?->toDateString(),
+                    'previous_unit_price' => $line->previous_unit_price,
+                    'price_change_notice' => $line->price_change_notice,
                     'price_review_task' => $this->pendingPriceReviewTask($salesOrder, $line),
                     'priced_at' => $line->priced_at?->toISOString(),
                     'note' => $line->note,
@@ -303,6 +318,31 @@ class SalesOrderController extends ApiController
                 ->values()
                 ->all(),
         ];
+    }
+
+    private function displayStatus(SalesOrder $salesOrder): string
+    {
+        if (
+            str_ends_with((string) $salesOrder->source_reference, ':cancel')
+            && in_array($salesOrder->source_type, ['retail_sale_correction', 'retail_purchase_order_cancellation'], true)
+        ) {
+            return 'cancellation_correction';
+        }
+
+        return $salesOrder->shipment_returned_at ? 'shipment_returned' : $salesOrder->status;
+    }
+
+    private function correctionNotice(SalesOrder $salesOrder): ?string
+    {
+        if ($salesOrder->source_type === 'retail_sale_correction' && str_ends_with((string) $salesOrder->source_reference, ':cancel')) {
+            return '訂正のためのマイナス伝票です。元の小売販売取消に連動しています。';
+        }
+
+        if ($salesOrder->source_type === 'retail_purchase_order_cancellation' && str_ends_with((string) $salesOrder->source_reference, ':cancel')) {
+            return '訂正のためのマイナス伝票です。元の小売発注取消に連動しています。';
+        }
+
+        return null;
     }
 
     /**

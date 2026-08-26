@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Services\Approvals\ApprovalService;
 use App\Services\Audit\AuditLogService;
 use App\Services\Inventory\EvaluateLotProductCompatibilityService;
+use App\Services\Inventory\OperationalStartStockLotEligibilityService;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 
@@ -21,6 +22,7 @@ class AllocateShipmentLineLotService
         private readonly AuditLogService $auditLogService,
         private readonly EvaluateLotProductCompatibilityService $compatibility,
         private readonly ApprovalService $approvalService,
+        private readonly OperationalStartStockLotEligibilityService $lotEligibility,
     ) {
     }
 
@@ -59,7 +61,8 @@ class AllocateShipmentLineLotService
                 throw ShipmentLotAllocationException::invalidQuantity($quantity);
             }
 
-            if (! $productionLot->is_active || $productionLot->status !== 'active') {
+            if ((! $productionLot->is_active || $productionLot->status !== 'active')
+                && ! $this->lotEligibility->isEligibleLot($productionLot)) {
                 throw ShipmentLotAllocationException::inactiveLot($productionLot->id);
             }
 
@@ -85,12 +88,12 @@ class AllocateShipmentLineLotService
 
             $compatibility = $this->compatibility->evaluate($shipmentLine->product, $productionLot, $shipmentLine->unit_id);
             if (! $compatibility['selectable']) {
-                throw new DomainException('The selected lot does not meet the product package or analysis requirements: '.$compatibility['status']);
+                throw new DomainException('選択したロットは商品容量または分析条件を満たしていません: '.$compatibility['status']);
             }
             $alcohol = $compatibility['alcohol'];
 
             if ($alcohol['status'] === 'out_of_range' && $this->lineAllocatedQuantity($shipmentLine) !== '0.0000') {
-                throw new DomainException('An out-of-range lot must be placed on a separate shipment line.');
+                throw new DomainException('許容範囲外ロットは別の出荷明細に分けて割り当ててください。');
             }
 
             $allocation = ShipmentLotAllocation::create([
@@ -113,7 +116,7 @@ class AllocateShipmentLineLotService
 
             if ($alcohol['approval_required']) {
                 if (! $requester || trim((string) $reason) === '') {
-                    throw new DomainException('An exception reason is required to request approval for an out-of-range lot.');
+                    throw new DomainException('許容範囲外ロットの承認申請には例外理由が必要です。');
                 }
                 $approval = $this->approvalService->request(
                     requester: $requester,

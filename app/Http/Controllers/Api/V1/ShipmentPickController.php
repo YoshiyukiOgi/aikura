@@ -16,6 +16,7 @@ use App\Models\StockLocation;
 use App\Models\StockMovement;
 use App\Services\Inventory\EvaluateLotProductCompatibilityService;
 use App\Services\Inventory\LotVisibilityPolicy;
+use App\Services\Inventory\OperationalStartStockLotEligibilityService;
 use App\Services\Operations\OperationalPeriod;
 use App\Services\Shipment\CreateDraftShipmentFromInstructionService;
 use App\Services\ShipmentPicking\CancelShipmentPickService;
@@ -99,6 +100,7 @@ class ShipmentPickController extends ApiController
         CreateDraftShipmentFromInstructionService $draftService,
         EvaluateLotProductCompatibilityService $compatibilityService,
         LotVisibilityPolicy $visibility,
+        OperationalStartStockLotEligibilityService $lotEligibility,
         OperationalPeriod $operationalPeriod,
     ): JsonResponse {
         $this->abortIfLineDoesNotBelongToInstruction($shipmentInstruction, $shipmentInstructionLine);
@@ -168,7 +170,7 @@ class ShipmentPickController extends ApiController
             ->keyBy('id');
 
         $candidates = $balances
-            ->map(function ($balance) use ($lots, $currentByLot, $currentAllocationByLot, $recentByLot, $shipmentLine, $compatibilityService, $visibility): ?array {
+            ->map(function ($balance) use ($lots, $currentByLot, $currentAllocationByLot, $recentByLot, $shipmentLine, $compatibilityService, $visibility, $lotEligibility): ?array {
                 $lot = $lots->get($balance->productionLotId);
                 if (! $lot) {
                     return null;
@@ -179,13 +181,15 @@ class ShipmentPickController extends ApiController
                 $stockComparison = bccomp($available, '0.0000', 4);
                 $stockStatus = $stockComparison < 0 ? 'negative' : ($stockComparison === 0 ? 'zero' : 'available');
                 $isActive = $lot->is_active && $lot->status === 'active';
+                $isHistoricallyEligible = $lotEligibility->isEligibleLot($lot);
+                $isSelectableLot = $isActive || $isHistoricallyEligible;
 
                 if ($stockStatus === 'zero' && ! $hasCurrentAllocation && $visibility->hideZeroStockLots()) {
                     return null;
                 }
 
                 $compatibility = $compatibilityService->evaluate($shipmentLine->product, $lot, $shipmentLine->unit_id);
-                $selectable = $isActive
+                $selectable = $isSelectableLot
                     && $compatibility['selectable']
                     && ($stockStatus === 'available' || $hasCurrentAllocation);
                 if ($stockStatus === 'available' && ! $selectable && ! $hasCurrentAllocation) {
@@ -221,7 +225,7 @@ class ShipmentPickController extends ApiController
                     'non_selectable_reason' => match (true) {
                         $stockStatus === 'negative' => '在庫がマイナスのため選択できません。',
                         $stockStatus === 'zero' && ! $hasCurrentAllocation => '在庫が0のため選択できません。',
-                        ! $isActive => '無効なロットのため新規選択できません。',
+                        ! $isSelectableLot => '基準日在庫対象外のロットのため新規選択できません。',
                         ! $compatibility['selectable'] => '商品条件に適合しないため選択できません。',
                         default => null,
                     },

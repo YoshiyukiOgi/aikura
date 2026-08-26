@@ -4,8 +4,9 @@ namespace Tests\Feature;
 
 use App\Exceptions\Inventory\InventoryAdjustmentException;
 use App\Models\Product;
+use App\Models\ProductionLot;
 use App\Models\StockLocation;
-use App\Models\StockMonthlyBalance;
+use App\Models\StockLotMonthlyBalance;
 use App\Models\StockMovement;
 use App\Models\Unit;
 use App\Services\Inventory\CreateInventoryAdjustmentData;
@@ -22,14 +23,13 @@ class CreateInventoryAdjustmentTest extends TestCase
 
     public function test_it_creates_confirmed_inventory_adjustment_movement(): void
     {
-        [$product, $unit, $location] = $this->prepareMasterData();
+        [$product, $unit, $location, $lot] = $this->prepareMasterData();
 
         $movement = app(CreateInventoryAdjustmentService::class)->create(new CreateInventoryAdjustmentData(
-            productId: $product->id,
+            productionLotId: $lot->id,
             stockLocationId: $location->id,
-            unitId: $unit->id,
             quantity: '2.5000',
-            movementDate: '2026-05-23',
+            movementDate: '2026-07-23',
             reason: 'opening inventory',
             lotCode: 'LOT-001',
             sourceDocumentNumber: 'ADJ-001',
@@ -50,23 +50,21 @@ class CreateInventoryAdjustmentTest extends TestCase
 
     public function test_inventory_adjustment_updates_current_stock_by_movement_history(): void
     {
-        [$product, $unit, $location] = $this->prepareMasterData();
+        [$product, $unit, $location, $lot] = $this->prepareMasterData();
 
         app(CreateInventoryAdjustmentService::class)->create(new CreateInventoryAdjustmentData(
-            productId: $product->id,
+            productionLotId: $lot->id,
             stockLocationId: $location->id,
-            unitId: $unit->id,
             quantity: '10.0000',
-            movementDate: '2026-05-23',
+            movementDate: '2026-07-23',
             reason: 'opening inventory',
         ));
 
         app(CreateInventoryAdjustmentService::class)->create(new CreateInventoryAdjustmentData(
-            productId: $product->id,
+            productionLotId: $lot->id,
             stockLocationId: $location->id,
-            unitId: $unit->id,
             quantity: '-1.5000',
-            movementDate: '2026-05-24',
+            movementDate: '2026-07-24',
             reason: 'inventory count difference',
         ));
 
@@ -79,14 +77,13 @@ class CreateInventoryAdjustmentTest extends TestCase
 
     public function test_it_rejects_zero_quantity_adjustment(): void
     {
-        [$product, $unit, $location] = $this->prepareMasterData();
+        [$product, $unit, $location, $lot] = $this->prepareMasterData();
 
-        $this->expectException(InventoryAdjustmentException::class);
+        $this->expectException(\DomainException::class);
 
         app(CreateInventoryAdjustmentService::class)->create(new CreateInventoryAdjustmentData(
-            productId: $product->id,
+            productionLotId: $lot->id,
             stockLocationId: $location->id,
-            unitId: $unit->id,
             quantity: '0.0000',
             movementDate: '2026-05-23',
             reason: 'zero adjustment',
@@ -95,14 +92,13 @@ class CreateInventoryAdjustmentTest extends TestCase
 
     public function test_it_rejects_empty_reason(): void
     {
-        [$product, $unit, $location] = $this->prepareMasterData();
+        [$product, $unit, $location, $lot] = $this->prepareMasterData();
 
-        $this->expectException(InventoryAdjustmentException::class);
+        $this->expectException(\DomainException::class);
 
         app(CreateInventoryAdjustmentService::class)->create(new CreateInventoryAdjustmentData(
-            productId: $product->id,
+            productionLotId: $lot->id,
             stockLocationId: $location->id,
-            unitId: $unit->id,
             quantity: '1.0000',
             movementDate: '2026-05-23',
             reason: ' ',
@@ -111,50 +107,49 @@ class CreateInventoryAdjustmentTest extends TestCase
 
     public function test_it_rejects_non_inventory_managed_product(): void
     {
-        [$product, $unit, $location] = $this->prepareMasterData();
-        $product->update(['is_inventory_managed' => false]);
+        [$product, $unit, $location, $lot] = $this->prepareMasterData();
+        $lot->update(['is_active' => false, 'status' => 'inactive']);
 
-        $this->expectException(InventoryAdjustmentException::class);
+        $this->expectException(\DomainException::class);
 
         app(CreateInventoryAdjustmentService::class)->create(new CreateInventoryAdjustmentData(
-            productId: $product->id,
+            productionLotId: $lot->id,
             stockLocationId: $location->id,
-            unitId: $unit->id,
             quantity: '1.0000',
-            movementDate: '2026-05-23',
+            movementDate: '2026-07-23',
             reason: 'adjustment',
         ));
     }
 
     public function test_it_rejects_adjustment_in_confirmed_stock_month(): void
     {
-        [$product, $unit, $location] = $this->prepareMasterData();
-        StockMonthlyBalance::create([
+        [$product, $unit, $location, $lot] = $this->prepareMasterData();
+        StockLotMonthlyBalance::create([
             'status' => 'confirmed',
             'year' => 2026,
-            'month' => 5,
-            'period_start' => '2026-05-01',
-            'period_end' => '2026-05-31',
-            'product_id' => $product->id,
+            'month' => 7,
+            'period_start' => '2026-07-01',
+            'period_end' => '2026-07-31',
+            'production_lot_id' => $lot->id,
             'stock_location_id' => $location->id,
-            'unit_id' => $unit->id,
+            'unit_id' => $lot->unit_id,
+            'closing_quantity' => '0.0000',
             'confirmed_at' => now(),
         ]);
 
         $this->expectException(\App\Exceptions\Inventory\ClosedStockPeriodException::class);
 
         app(CreateInventoryAdjustmentService::class)->create(new CreateInventoryAdjustmentData(
-            productId: $product->id,
+            productionLotId: $lot->id,
             stockLocationId: $location->id,
-            unitId: $unit->id,
             quantity: '1.0000',
-            movementDate: '2026-05-23',
+            movementDate: '2026-07-23',
             reason: 'closed period adjustment',
         ));
     }
 
     /**
-     * @return array{0: Product, 1: Unit, 2: StockLocation}
+     * @return array{0: Product, 1: Unit, 2: StockLocation, 3: ProductionLot}
      */
     private function prepareMasterData(): array
     {
@@ -177,6 +172,15 @@ class CreateInventoryAdjustmentTest extends TestCase
             'is_inventory_managed' => true,
         ]);
 
-        return [$product, $unit, $location];
+        $lot = ProductionLot::create([
+            'lot_code' => 'ADJ-LOT-001',
+            'display_name' => 'Adjustment Lot',
+            'status' => 'active',
+            'stock_location_id' => $location->id,
+            'unit_id' => $unit->id,
+            'is_active' => true,
+        ]);
+
+        return [$product, $unit, $location, $lot];
     }
 }

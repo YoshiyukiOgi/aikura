@@ -19,8 +19,14 @@ class NonSalesStockOperationController extends ApiController
 {
     public function __construct(private readonly EnsureStockPeriodIsOpenService $ensureStockPeriodIsOpenService) {}
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
+        $validated = $request->validate([
+            'id' => ['nullable', 'string', 'max:100'],
+            'operation_date' => ['nullable', 'date'],
+            'operation_type' => ['nullable', 'string', 'max:100'],
+        ]);
+
         $operations = NonSalesStockOperationHeader::query()
             ->with(['lines.productionLot', 'lines.stockLocation', 'revisions.createdBy'])
             ->whereNotExists(function ($query): void {
@@ -30,6 +36,17 @@ class NonSalesStockOperationController extends ApiController
                     ->whereColumn('closed_periods.period_start', '<=', 'non_sales_stock_operation_headers.operation_date')
                     ->whereColumn('closed_periods.period_end', '>=', 'non_sales_stock_operation_headers.operation_date');
             })
+            ->when($validated['id'] ?? null, function ($query, string $id): void {
+                $query->where(function ($inner) use ($id): void {
+                    if (ctype_digit($id)) {
+                        $inner->orWhere('non_sales_stock_operation_headers.id', (int) $id);
+                    }
+
+                    $inner->orWhere('non_sales_stock_operation_headers.operation_number', 'like', '%'.$id.'%');
+                });
+            })
+            ->when($validated['operation_date'] ?? null, fn ($query, string $date) => $query->whereDate('non_sales_stock_operation_headers.operation_date', $date))
+            ->when($validated['operation_type'] ?? null, fn ($query, string $type) => $query->where('non_sales_stock_operation_headers.operation_type', $type))
             ->orderByDesc('id')
             ->limit(50)
             ->get()

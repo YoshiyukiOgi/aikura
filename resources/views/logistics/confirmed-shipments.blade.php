@@ -129,12 +129,13 @@
     new MutationObserver(mutations => mutations.forEach(mutation => mutation.addedNodes.forEach(node => {
       if (node.nodeType === 1) addOverflowTitles(node);
     }))).observe(document.body, { childList: true, subtree: true });
+    const normalizeSearchText = value => String(value ?? '').normalize('NFKC').toLowerCase().replace(/[\s\u3000]+/g, '');
     function draw() {
-      const term = q.value.toLowerCase();
+      const term = normalizeSearchText(q.value);
       const status = statusFilter.value;
       const pick = pickFilter.value;
       const visible = rows.filter(row => {
-        const text = [row.shipment.document_number, row.shipment.sales_order_number, row.shipment.customer_name].join(' ').toLowerCase();
+        const text = normalizeSearchText([row.shipment.document_number, row.shipment.sales_order_number, row.shipment.customer_name].join(' '));
         return (!term || text.includes(term))
           && (!status || row.shipment.status === status)
           && (!pick || (pick === 'picked' ? row.pickStatus === 'picked' : row.pickStatus !== 'picked'));

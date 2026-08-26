@@ -21,10 +21,28 @@ class AuthorizationFoundationTest extends TestCase
         $this->seed(FoundationPermissionSeeder::class);
 
         $adminRole = Role::where('code', 'admin')->firstOrFail();
+        $foundationMasterPermissionCodes = [
+            'tax_master.view',
+            'tax_master.edit',
+            'unit_master.view',
+            'unit_master.edit',
+            'liquor_tax_master.view',
+            'liquor_tax_master.edit',
+            'stock_location_master.view',
+            'stock_location_master.edit',
+            'transaction_category_master.view',
+            'transaction_category_master.edit',
+            'settlement_category_master.view',
+            'settlement_category_master.edit',
+            'number_sequence_master.view',
+            'number_sequence_master.edit',
+            'role_master.view',
+            'role_master.edit',
+        ];
 
         $this->assertTrue($adminRole->is_system);
         $this->assertTrue($adminRole->is_active);
-        $this->assertSame(count(config('permissions.permissions')), Permission::count());
+        $this->assertSame(count(config('permissions.permissions')) + count($foundationMasterPermissionCodes), Permission::count());
         $this->assertSame(Permission::count(), $adminRole->permissions()->count());
     }
 

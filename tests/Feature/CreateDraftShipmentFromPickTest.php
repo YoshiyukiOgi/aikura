@@ -79,11 +79,11 @@ class CreateDraftShipmentFromPickTest extends TestCase
         $pick = $this->preparePick('8.0000', '3.0000');
         $service = app(CreateDraftShipmentFromPickService::class);
 
-        $service->create(new CreateDraftShipmentFromPickData($pick->id));
+        $first = $service->create(new CreateDraftShipmentFromPickData($pick->id));
+        $second = $service->create(new CreateDraftShipmentFromPickData($pick->id));
 
-        $this->expectException(ShipmentDraftException::class);
-
-        $service->create(new CreateDraftShipmentFromPickData($pick->id));
+        $this->assertSame($first->id, $second->id);
+        $this->assertSame('draft', $second->status);
     }
 
     public function test_it_rejects_cancelled_pick(): void
@@ -160,6 +160,7 @@ class CreateDraftShipmentFromPickTest extends TestCase
             'sales_unit_id' => $unit->id,
             'inventory_unit_id' => $unit->id,
             'is_alcohol' => true,
+            'is_inventory_managed' => false,
         ]);
 
         $salesOrder = app(CreateSalesOrderService::class)->create(new CreateSalesOrderData(

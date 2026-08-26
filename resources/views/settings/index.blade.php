@@ -36,6 +36,7 @@
     .bank-account textarea{width:100%;min-height:50px;resize:vertical;font:inherit;border:1px solid #cad6e6;border-radius:4px;background:#fff;color:#172033;padding:8px 10px}
     .bank-account .visibility{display:flex;grid-template-columns:auto 1fr;align-items:center;gap:7px;margin:0}
     .bank-account .visibility input{width:auto;min-height:auto}
+    .secondary{background:#fff;border-color:#cbd5e1;color:#334155;font-weight:800}
     @media(max-width:680px){.bank-account{grid-template-columns:34px minmax(0,1fr)}.bank-account .visibility{grid-column:2}}
   </style>
 </head>

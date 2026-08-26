@@ -48,7 +48,7 @@ class GenerateInventoryReportTest extends TestCase
         $this->assertStringContainsString('Stock Balance Report', $content);
         $this->assertStringContainsString('Total Physical Quantity: 7.0000', $content);
         $this->assertStringContainsString('Total Available Quantity: 7.0000', $content);
-        $this->assertStringContainsString((string) $product->id, $content);
+        $this->assertStringContainsString((string) $location->id, $content);
         $this->assertSame(strlen($content), $export->file_size);
         $this->assertSame(hash('sha256', $content), $export->checksum_sha256);
 
@@ -219,7 +219,6 @@ class GenerateInventoryReportTest extends TestCase
             'status' => $status,
             'movement_type' => 'inventory_adjustment',
             'movement_date' => '2026-06-15',
-            'product_id' => $product->id,
             'stock_location_id' => $location->id,
             'unit_id' => $unit->id,
             'quantity' => $quantity,

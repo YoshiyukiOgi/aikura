@@ -1,0 +1,30 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::connection(config('retail.database.connection', 'retail'))
+            ->table('retail_customers', function (Blueprint $table): void {
+                $table->foreignId('retail_company_id')
+                    ->nullable()
+                    ->after('id')
+                    ->constrained('retail_companies')
+                    ->nullOnDelete();
+                $table->string('fax', 50)->nullable()->after('phone');
+            });
+    }
+
+    public function down(): void
+    {
+        Schema::connection(config('retail.database.connection', 'retail'))
+            ->table('retail_customers', function (Blueprint $table): void {
+                $table->dropConstrainedForeignId('retail_company_id');
+                $table->dropColumn('fax');
+            });
+    }
+};

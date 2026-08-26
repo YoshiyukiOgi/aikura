@@ -7,6 +7,7 @@ use App\Models\ConsumptionTaxRate;
 use App\Models\LiquorTaxCategory;
 use App\Models\NumberSequence;
 use App\Models\Permission;
+use App\Models\ProductionLot;
 use App\Models\Role;
 use App\Models\SettlementReceivableCategory;
 use App\Models\StockLocation;
@@ -127,6 +128,42 @@ class FoundationMasterRegistry
                     ['name' => 'is_sellable', 'label' => '販売可能', 'type' => 'boolean'],
                     ['name' => 'is_tax_relevant', 'label' => '税務関連', 'type' => 'boolean'],
                     ['name' => 'description', 'label' => '説明', 'type' => 'textarea', 'full' => true, 'max' => 2000],
+                    ['name' => 'is_active', 'label' => '有効', 'type' => 'boolean'],
+                ],
+            ],
+            'lots' => [
+                'title' => 'ロットマスタ',
+                'short_title' => 'ロット',
+                'model' => ProductionLot::class,
+                'permission' => 'product_master',
+                'order' => ['lot_code'],
+                'search' => ['lot_code', 'display_name', 'tank_code', 'rice_variety', 'production_method', 'external_system_code', 'legacy_lot_text', 'note'],
+                'list_columns' => ['lot_code', 'display_name', 'production_date', 'is_active'],
+                'fields' => [
+                    ['name' => 'lot_code', 'label' => 'ロットコード', 'type' => 'text', 'required' => true, 'max' => 80, 'unique' => true],
+                    ['name' => 'display_name', 'label' => '表示名', 'type' => 'text', 'required' => true, 'max' => 160],
+                    ['name' => 'stock_location_id', 'label' => '在庫場所', 'type' => 'relation', 'source' => 'stock-locations'],
+                    ['name' => 'unit_id', 'label' => '在庫単位', 'type' => 'relation', 'source' => 'units'],
+                    ['name' => 'capacity_value', 'label' => '容量', 'type' => 'decimal', 'min' => 0],
+                    ['name' => 'capacity_unit_id', 'label' => '容量単位', 'type' => 'relation', 'source' => 'units'],
+                    ['name' => 'alcohol_percentage', 'label' => 'アルコール度数', 'type' => 'decimal', 'min' => 0, 'max_value' => 100],
+                    ['name' => 'sake_meter_value', 'label' => '日本酒度', 'type' => 'decimal', 'min' => -100, 'max_value' => 100],
+                    ['name' => 'acidity', 'label' => '酸度', 'type' => 'decimal', 'min' => 0, 'max_value' => 100],
+                    ['name' => 'amino_acidity', 'label' => 'アミノ酸度', 'type' => 'decimal', 'min' => 0, 'max_value' => 100],
+                    ['name' => 'analysis_date', 'label' => '分析日', 'type' => 'date'],
+                    ['name' => 'analysis_status', 'label' => '分析状態', 'type' => 'select', 'options' => ['provisional' => '仮値', 'confirmed' => '確定']],
+                    ['name' => 'production_date', 'label' => '製造日', 'type' => 'date'],
+                    ['name' => 'bottling_date', 'label' => '瓶詰日', 'type' => 'date'],
+                    ['name' => 'best_before_date', 'label' => '賞味期限', 'type' => 'date'],
+                    ['name' => 'tank_code', 'label' => 'タンクコード', 'type' => 'text', 'max' => 80],
+                    ['name' => 'rice_variety', 'label' => '米品種', 'type' => 'text', 'max' => 120],
+                    ['name' => 'rice_polishing_ratio', 'label' => '精米歩合', 'type' => 'decimal', 'min' => 0, 'max_value' => 100],
+                    ['name' => 'production_method', 'label' => '製造方法', 'type' => 'text', 'max' => 120],
+                    ['name' => 'storage_condition', 'label' => '保管条件', 'type' => 'text', 'max' => 120],
+                    ['name' => 'external_system_code', 'label' => '外部連携コード', 'type' => 'text', 'max' => 120],
+                    ['name' => 'legacy_lot_text', 'label' => '旧ロット表記', 'type' => 'text', 'max' => 160],
+                    ['name' => 'search_key', 'label' => '検索キー', 'type' => 'textarea', 'full' => true, 'max' => 2000],
+                    ['name' => 'note', 'label' => '備考', 'type' => 'textarea', 'full' => true, 'max' => 2000],
                     ['name' => 'is_active', 'label' => '有効', 'type' => 'boolean'],
                 ],
             ],

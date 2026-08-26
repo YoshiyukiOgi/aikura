@@ -29,6 +29,10 @@ class ResolvePriceService
                             ->whereNull('transaction_category_id');
                     });
             })
+            ->orderByRaw(
+                'case when customer_id = ? then 0 when customer_id is null and transaction_category_id = ? then 1 else 2 end',
+                [$customer->id, $customer->transaction_category_id],
+            )
             ->orderBy('priority')
             ->orderByDesc('effective_from')
             ->orderByDesc('id')
@@ -88,6 +92,9 @@ class ResolvePriceService
 
     private function resolved(PriceRule $rule): ResolvedPrice
     {
+        $previousRule = $this->previousRule($rule);
+        $previousUnitPrice = $previousRule?->unit_price;
+
         return new ResolvedPrice(
             unitPrice: $rule->unit_price,
             priceListId: $rule->price_list_id,
@@ -95,9 +102,46 @@ class ResolvePriceService
             unitId: $rule->unit_id,
             source: $this->source($rule),
             reason: $this->reason($rule),
+            effectiveFrom: $rule->effective_from->toDateString(),
+            previousUnitPrice: $previousUnitPrice,
+            changeNotice: $this->changeNotice($rule, $previousUnitPrice),
             priceList: $rule->priceList,
             priceRule: $rule,
         );
+    }
+
+    private function previousRule(PriceRule $rule): ?PriceRule
+    {
+        return PriceRule::query()
+            ->where('product_id', $rule->product_id)
+            ->where('unit_id', $rule->unit_id)
+            ->whereKeyNot($rule->id)
+            ->whereDate('effective_from', '<', $rule->effective_from)
+            ->when(
+                $rule->customer_id !== null,
+                fn ($query) => $query->where('customer_id', $rule->customer_id),
+                fn ($query) => $query->whereNull('customer_id'),
+            )
+            ->when(
+                $rule->customer_id === null && $rule->transaction_category_id !== null,
+                fn ($query) => $query->where('transaction_category_id', $rule->transaction_category_id),
+                fn ($query) => $query->whereNull('transaction_category_id'),
+            )
+            ->orderByDesc('effective_from')
+            ->orderBy('priority')
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    private function changeNotice(PriceRule $rule, ?string $previousUnitPrice): ?string
+    {
+        if ($previousUnitPrice === null || bccomp($previousUnitPrice, (string) $rule->unit_price, 4) === 0) {
+            return null;
+        }
+
+        return $rule->effective_from->format('n月j日').'改定価格を適用（旧価格 '
+            .number_format((float) $previousUnitPrice).'円 → 新価格 '
+            .number_format((float) $rule->unit_price).'円）';
     }
 
     private function source(PriceRule $rule): string

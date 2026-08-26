@@ -26,7 +26,7 @@
   <section class="sheet">
     <header>
       <h1>在庫移動履歴</h1>
-      <div class="condition">対象：{{ $year }}年{{ $month }}月 ／ 区分：{{ $movementType ? ($typeLabels[$movementType] ?? $movementType) : 'すべて' }} ／ {{ $movements->count() }}件</div>
+      <div class="condition">対象：{{ $year }}年{{ $month }}月 ／ 区分：{{ $movementType ? ($typeLabels[$movementType] ?? $movementType) : 'すべて' }} ／ 検索：{{ $search !== '' ? $search : 'なし' }} ／ {{ $movements->count() }}件</div>
     </header>
     <table>
       <thead><tr><th>日付</th><th>区分</th><th>ロット</th><th>場所</th><th class="num">数量</th><th>元伝票</th></tr></thead>

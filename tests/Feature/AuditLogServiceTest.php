@@ -65,7 +65,7 @@ class AuditLogServiceTest extends TestCase
         $response = $this->withHeader('X-Request-Id', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb')
             ->get('/');
 
-        $response->assertOk();
+        $response->assertRedirect('/sales-orders');
         $response->assertHeader('X-Request-Id', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
     }
 }

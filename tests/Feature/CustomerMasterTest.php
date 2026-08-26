@@ -43,6 +43,7 @@ class CustomerMasterTest extends TestCase
             'amount_rounding_method',
             'invoice_required',
             'search_key',
+            'search_key_normalized',
             'legacy_code',
             'is_active',
             'disabled_at',
@@ -86,6 +87,7 @@ class CustomerMasterTest extends TestCase
             'search_key' => 'CUST001 山田酒店 ヤマダサケテン 山田',
         ]);
 
+        $this->assertSame('cust001山田酒店ヤマダサケテン山田', $customer->search_key_normalized);
         $this->assertSame('卸価格', $customer->transactionCategory->name);
         $this->assertSame('売掛金1', $customer->settlementReceivableCategory->name);
         $this->assertSame('月末締 翌月末入金', $customer->billingCycle->name);

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\SearchTextNormalizer;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -11,6 +12,29 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class Product extends Model
 {
     use HasFactory;
+
+    protected static function booted(): void
+    {
+        static::saving(function (Product $product): void {
+            if (blank($product->search_key)) {
+                $product->search_key = SearchTextNormalizer::searchKey(
+                    $product->name,
+                    $product->name_kana,
+                    $product->display_name,
+                    $product->brand_name,
+                    $product->series_name,
+                    $product->style_name,
+                    $product->category_name,
+                    $product->legacy_code,
+                    $product->legacy_name,
+                    $product->variant_label,
+                    $product->product_code,
+                );
+            }
+
+            $product->search_key_normalized = SearchTextNormalizer::normalize($product->search_key);
+        });
+    }
 
     protected $fillable = [
         'product_code',
@@ -35,6 +59,7 @@ class Product extends Model
         'is_sales_available',
         'is_inventory_managed',
         'search_key',
+        'search_key_normalized',
         'legacy_code',
         'legacy_name',
         'note',

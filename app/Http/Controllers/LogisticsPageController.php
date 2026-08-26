@@ -1,29 +1,125 @@
 <?php
+
 namespace App\Http\Controllers;
+
 use App\Models\AppSetting;
-use App\Models\Payment;
-use App\Models\User;
 use App\Models\InvoiceHeader;
-use App\Models\ShipmentInstruction;
+use App\Models\Payment;
 use App\Models\ShipmentHeader;
+use App\Models\ShipmentInstruction;
 use App\Models\StockLocation;
-use Illuminate\Support\Facades\DB;
 use App\Services\Authorization\AuthorizationService;
 use App\Services\Billing\CustomerMonthlyStatementService;
 use App\Services\Operations\OperationalPeriod;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
-class LogisticsPageController extends Controller {
- public function picks(Request $request, AuthorizationService $auth): View { $user=$request->user(); return view('logistics.picks',['user'=>$user,'canCreate'=>$auth->can($user,'shipment_pick.create'),'canCancel'=>$auth->can($user,'shipment_pick.cancel'),'canApprove'=>$auth->can($user,'approval.approve')]); }
- public function shipments(Request $request, AuthorizationService $auth): View { $user=$request->user(); return view('logistics.shipments',['user'=>$user,'canCreate'=>$auth->can($user,'shipment.create'),'canPrice'=>$auth->can($user,'shipment.price'),'canConfirm'=>$auth->can($user,'shipment.confirm'),'canCancel'=>$auth->can($user,'shipment.cancel')]); }
- public function shipmentHistory(Request $request): View { return view('logistics.shipment-history',['user'=>$request->user()]); }
- public function confirmedShipments(Request $request, AuthorizationService $auth): View { $user=$request->user(); return view('logistics.confirmed-shipments',['user'=>$user,'canCancel'=>$auth->can($user,'shipment.cancel'),'canConfirm'=>$auth->can($user,'shipment.confirm')]); }
- public function workSlip(ShipmentInstruction $shipmentInstruction): View { abort_if($shipmentInstruction->status === 'cancelled', 404); $shipmentInstruction->load(['customer','stockLocation','lines.product','lines.unit','lines.salesOrder']); $lineIds=$shipmentInstruction->lines->pluck('id'); $lotNamesByLine=DB::table('shipment_lot_allocations')->join('shipment_lines','shipment_lines.id','=','shipment_lot_allocations.shipment_line_id')->join('shipment_headers','shipment_headers.id','=','shipment_lines.shipment_header_id')->leftJoin('shipment_pick_lines','shipment_pick_lines.id','=','shipment_lines.source_shipment_pick_line_id')->leftJoin('shipment_instruction_lines as direct_instruction_lines',function($join){$join->on('direct_instruction_lines.shipment_instruction_id','=','shipment_headers.source_shipment_instruction_id')->on('direct_instruction_lines.line_no','=','shipment_lines.line_no');})->leftJoin('production_lots','production_lots.id','=','shipment_lot_allocations.production_lot_id')->where(function($query)use($shipmentInstruction,$lineIds):void{$query->where('shipment_headers.source_shipment_instruction_id',$shipmentInstruction->id)->orWhereIn('shipment_pick_lines.shipment_instruction_line_id',$lineIds);})->where('shipment_headers.status','!=','cancelled')->whereIn('shipment_lot_allocations.status',['allocated','confirmed'])->whereNull('shipment_lot_allocations.cancelled_at')->whereRaw('COALESCE(shipment_pick_lines.shipment_instruction_line_id, direct_instruction_lines.id) IS NOT NULL')->selectRaw('COALESCE(shipment_pick_lines.shipment_instruction_line_id, direct_instruction_lines.id) as instruction_line_id, COALESCE(production_lots.display_name, production_lots.lot_code) as lot_name, shipment_lot_allocations.quantity as quantity')->get()->groupBy('instruction_line_id')->map(fn($rows)=>$rows->map(fn($row)=>trim((string) $row->lot_name).($row->quantity !== null ? ' / '.rtrim(rtrim(number_format((float) $row->quantity, 4, '.', ''), '0'), '.') : ''))->filter()->implode('、')); return view('logistics.work-slip',['instruction'=>$shipmentInstruction,'lotNamesByLine'=>$lotNamesByLine]); }
- public function printShipment(ShipmentHeader $shipment): View { return view('logistics.shipment-print',['shipment'=>$shipment->load(['customer','lines.product.consumptionTaxCategory','lines.unit','lines.shipmentInstructionLine','lines.sourceShipmentPickLine','sourceShipmentInstruction.lines.salesOrder','sourceShipmentPick.shipmentInstruction.lines.salesOrder'])]); }
- public function billing(Request $request, AuthorizationService $auth): View { $user=$request->user(); $routeName=$request->route()?->getName(); $section=match($routeName){'billing.monthly-invoices'=>'monthly-invoices','billing.spot-invoices'=>'spot-invoices','billing.invoices'=>'invoices','billing.invoice-print'=>'invoice-print','billing.payment-entry'=>'payment-entry','billing.payment-confirmation'=>'payment-entry','billing.payment-reviews'=>'payment-reviews','billing.receivables'=>'receivables',default=>'monthly-invoices'}; return view('billing.index',['user'=>$user,'section'=>$section,'canInvoiceCreate'=>$auth->can($user,'billing.invoice.create'),'canInvoiceConfirm'=>$auth->can($user,'billing.invoice.confirm'),'canInvoiceCancel'=>$auth->can($user,'billing.invoice.cancel'),'canPaymentCreate'=>$auth->can($user,'billing.payment.create'),'canPaymentCancel'=>$auth->can($user,'billing.payment.cancel'),'canScheduleCreate'=>$auth->can($user,'billing.payment_schedule.create')]); }
- public function printInvoice(InvoiceHeader $invoice): View { abort_if($invoice->status !== 'confirmed', 404); return view('billing.invoice-print',['invoice'=>$invoice->load(['customer','billingCycle','lines.shipmentHeader','lines.shipmentLine.confirmedCapacityUnit']),'bankAccounts'=>AppSetting::visibleInvoiceBankAccounts(),'companyInformation'=>AppSetting::companyInformation()]); }
- public function printInvoices(Request $request): View { $ids=collect(explode(',', (string) $request->query('ids')))->map(fn($id)=>(int) trim($id))->filter()->unique()->values(); abort_if($ids->isEmpty(), 404); $invoices=InvoiceHeader::query()->with(['customer','billingCycle','lines.shipmentHeader','lines.shipmentLine.confirmedCapacityUnit'])->whereIn('id',$ids)->where('status','confirmed')->get()->sortBy(fn($invoice)=>$ids->search($invoice->id))->values(); abort_if($invoices->isEmpty(), 404); return view('billing.invoice-print-batch',['invoices'=>$invoices,'bankAccounts'=>AppSetting::visibleInvoiceBankAccounts(),'companyInformation'=>AppSetting::companyInformation()]); }
- public function printCustomerMonthlyStatements(Request $request, CustomerMonthlyStatementService $service): View { $validated=$request->validate(['year'=>['required','integer','min:2000','max:2100'],'month'=>['required','integer','min:1','max:12'],'include_zero_rows'=>['nullable','boolean']]); $isLegacyPeriod=(int)$validated['year']<2026 || ((int)$validated['year']===2026 && (int)$validated['month']<=6); if($isLegacyPeriod){ return view('billing.customer-monthly-statements-print',['year'=>(int)$validated['year'],'month'=>(int)$validated['month'],'rows'=>collect(),'totals'=>[],'categoryTotals'=>[],'warning'=>'2026年6月以前は移行前データのため、この帳票では正しい売掛残高を表示できません。2026年7月以降を指定してください。']); } $rows=$service->forMonth((int)$validated['year'],(int)$validated['month'],(bool)($validated['include_zero_rows']??false)); return view('billing.customer-monthly-statements-print',['year'=>(int)$validated['year'],'month'=>(int)$validated['month'],'rows'=>$rows,'totals'=>$service->totals($rows),'categoryTotals'=>$service->totalsBySettlementReceivableCategory($rows),'warning'=>null]); }
- public function printPayments(Request $request, OperationalPeriod $operationalPeriod): View { $validated=$request->validate(['customer'=>['nullable','string','max:120'],'status'=>['nullable','string','in:allocated,review_required,cancelled'],'payment_date_from'=>['nullable','date'],'payment_date_to'=>['nullable','date','after_or_equal:payment_date_from'],'has_unapplied'=>['nullable','boolean']]); $payments=Payment::query()->with('customer')->whereDate('payment_date','>=',$operationalPeriod->startDate())->when($validated['customer']??null,fn($query,string $customer)=>$query->whereHas('customer',fn($customerQuery)=>$customerQuery->where('name','like',"%{$customer}%")))->when($validated['status']??null,fn($query,string $status)=>$query->where('status',$status))->when($validated['payment_date_from']??null,fn($query,string $date)=>$query->whereDate('payment_date','>=',$date))->when($validated['payment_date_to']??null,fn($query,string $date)=>$query->whereDate('payment_date','<=',$date))->when((bool)($validated['has_unapplied']??false),fn($query)=>$query->where('unapplied_amount','>',0))->orderBy('payment_date')->orderBy('id')->get(); return view('billing.payment-list-print',['payments'=>$payments,'filters'=>$validated,'companyInformation'=>AppSetting::companyInformation()]); }
- public function salesReturns(Request $request, AuthorizationService $auth): View { $user=$request->user(); $canCreate=$auth->can($user,'sales_return.create'); $routeName=$request->route()?->getName(); $section=match($routeName){'sales-returns.history'=>'history',default=>'register'}; return view('sales-returns.index',['user'=>$user,'section'=>$section,'canCreate'=>$canCreate,'canCancel'=>$canCreate,'stockLocations'=>StockLocation::query()->where('is_active',true)->where('is_inventory_managed',true)->orderBy('sort_order')->orderBy('id')->get()]); }
+
+class LogisticsPageController extends Controller
+{
+    public function picks(Request $request, AuthorizationService $auth): View
+    {
+        $user = $request->user();
+
+        return view('logistics.picks', ['user' => $user, 'canCreate' => $auth->can($user, 'shipment_pick.create'), 'canCancel' => $auth->can($user, 'shipment_pick.cancel'), 'canApprove' => $auth->can($user, 'approval.approve')]);
+    }
+
+    public function shipments(Request $request, AuthorizationService $auth): View
+    {
+        $user = $request->user();
+
+        return view('logistics.shipments', ['user' => $user, 'canCreate' => $auth->can($user, 'shipment.create'), 'canPrice' => $auth->can($user, 'shipment.price'), 'canConfirm' => $auth->can($user, 'shipment.confirm'), 'canCancel' => $auth->can($user, 'shipment.cancel')]);
+    }
+
+    public function shipmentHistory(Request $request): View
+    {
+        return view('logistics.shipment-history', ['user' => $request->user()]);
+    }
+
+    public function confirmedShipments(Request $request, AuthorizationService $auth): View
+    {
+        $user = $request->user();
+
+        return view('logistics.confirmed-shipments', ['user' => $user, 'canCancel' => $auth->can($user, 'shipment.cancel'), 'canConfirm' => $auth->can($user, 'shipment.confirm')]);
+    }
+
+    public function workSlip(ShipmentInstruction $shipmentInstruction): View
+    {
+        abort_if($shipmentInstruction->status === 'cancelled', 404);
+        $shipmentInstruction->load(['customer', 'stockLocation', 'lines.product', 'lines.unit', 'lines.salesOrder']);
+        $lineIds = $shipmentInstruction->lines->pluck('id');
+        $lotNamesByLine = DB::table('shipment_lot_allocations')->join('shipment_lines', 'shipment_lines.id', '=', 'shipment_lot_allocations.shipment_line_id')->join('shipment_headers', 'shipment_headers.id', '=', 'shipment_lines.shipment_header_id')->leftJoin('shipment_pick_lines', 'shipment_pick_lines.id', '=', 'shipment_lines.source_shipment_pick_line_id')->leftJoin('shipment_instruction_lines as direct_instruction_lines', function ($join) {
+            $join->on('direct_instruction_lines.shipment_instruction_id', '=', 'shipment_headers.source_shipment_instruction_id')->on('direct_instruction_lines.line_no', '=', 'shipment_lines.line_no');
+        })->leftJoin('production_lots', 'production_lots.id', '=', 'shipment_lot_allocations.production_lot_id')->where(function ($query) use ($shipmentInstruction, $lineIds): void {
+            $query->where('shipment_headers.source_shipment_instruction_id', $shipmentInstruction->id)->orWhereIn('shipment_pick_lines.shipment_instruction_line_id', $lineIds);
+        })->where('shipment_headers.status', '!=', 'cancelled')->whereIn('shipment_lot_allocations.status', ['allocated', 'confirmed'])->whereNull('shipment_lot_allocations.cancelled_at')->whereRaw('COALESCE(shipment_pick_lines.shipment_instruction_line_id, direct_instruction_lines.id) IS NOT NULL')->selectRaw('COALESCE(shipment_pick_lines.shipment_instruction_line_id, direct_instruction_lines.id) as instruction_line_id, COALESCE(production_lots.display_name, production_lots.lot_code) as lot_name, shipment_lot_allocations.quantity as quantity')->get()->groupBy('instruction_line_id')->map(fn ($rows) => $rows->map(fn ($row) => trim((string) $row->lot_name).($row->quantity !== null ? ' / '.rtrim(rtrim(number_format((float) $row->quantity, 4, '.', ''), '0'), '.') : ''))->filter()->implode('、'));
+
+        return view('logistics.work-slip', ['instruction' => $shipmentInstruction, 'lotNamesByLine' => $lotNamesByLine]);
+    }
+
+    public function printShipment(ShipmentHeader $shipment): View
+    {
+        return view('logistics.shipment-print', ['shipment' => $shipment->load(['customer', 'lines.product.consumptionTaxCategory', 'lines.unit', 'lines.shipmentInstructionLine', 'lines.sourceShipmentPickLine', 'sourceShipmentInstruction.lines.salesOrder', 'sourceShipmentPick.shipmentInstruction.lines.salesOrder'])]);
+    }
+
+    public function billing(Request $request, AuthorizationService $auth): View
+    {
+        $user = $request->user();
+        $routeName = $request->route()?->getName();
+        $section = match ($routeName) {
+            'billing.monthly-invoices' => 'monthly-invoices','billing.spot-invoices' => 'spot-invoices','billing.invoices' => 'invoices','billing.invoice-print' => 'invoice-print','billing.payment-entry' => 'payment-entry','billing.payment-confirmation' => 'payment-entry','billing.payment-reviews' => 'payment-reviews','billing.receivables' => 'receivables',default => 'monthly-invoices'
+        };
+
+        return view('billing.index', ['user' => $user, 'section' => $section, 'canInvoiceCreate' => $auth->can($user, 'billing.invoice.create'), 'canInvoiceConfirm' => $auth->can($user, 'billing.invoice.confirm'), 'canInvoiceCancel' => $auth->can($user, 'billing.invoice.cancel'), 'canPaymentCreate' => $auth->can($user, 'billing.payment.create'), 'canPaymentCancel' => $auth->can($user, 'billing.payment.cancel'), 'canScheduleCreate' => $auth->can($user, 'billing.payment_schedule.create')]);
+    }
+
+    public function printInvoice(InvoiceHeader $invoice): View
+    {
+        abort_if($invoice->status !== 'confirmed', 404);
+
+        return view('billing.invoice-print', ['invoice' => $invoice->load(['customer', 'billingCycle', 'lines.shipmentHeader', 'lines.shipmentLine.confirmedCapacityUnit']), 'bankAccounts' => AppSetting::visibleInvoiceBankAccounts(), 'companyInformation' => AppSetting::companyInformation()]);
+    }
+
+    public function printInvoices(Request $request): View
+    {
+        $ids = collect(explode(',', (string) $request->query('ids')))->map(fn ($id) => (int) trim($id))->filter()->unique()->values();
+        abort_if($ids->isEmpty(), 404);
+        $invoices = InvoiceHeader::query()->with(['customer', 'billingCycle', 'lines.shipmentHeader', 'lines.shipmentLine.confirmedCapacityUnit'])->whereIn('id', $ids)->where('status', 'confirmed')->get()->sortBy(fn ($invoice) => $ids->search($invoice->id))->values();
+        abort_if($invoices->isEmpty(), 404);
+
+        return view('billing.invoice-print-batch', ['invoices' => $invoices, 'bankAccounts' => AppSetting::visibleInvoiceBankAccounts(), 'companyInformation' => AppSetting::companyInformation()]);
+    }
+
+    public function printCustomerMonthlyStatements(Request $request, CustomerMonthlyStatementService $service): View
+    {
+        $validated = $request->validate(['year' => ['required', 'integer', 'min:2000', 'max:2100'], 'month' => ['required', 'integer', 'min:1', 'max:12'], 'include_zero_rows' => ['nullable', 'boolean']]);
+        $isLegacyPeriod = (int) $validated['year'] < 2026 || ((int) $validated['year'] === 2026 && (int) $validated['month'] <= 6);
+        if ($isLegacyPeriod) {
+            return view('billing.customer-monthly-statements-print', ['year' => (int) $validated['year'], 'month' => (int) $validated['month'], 'rows' => collect(), 'totals' => [], 'categoryTotals' => [], 'warning' => '2026年6月以前は移行前データのため、この帳票では正しい売掛残高を表示できません。2026年7月以降を指定してください。']);
+        } $rows = $service->forMonth((int) $validated['year'], (int) $validated['month'], (bool) ($validated['include_zero_rows'] ?? false));
+
+        return view('billing.customer-monthly-statements-print', ['year' => (int) $validated['year'], 'month' => (int) $validated['month'], 'rows' => $rows, 'totals' => $service->totals($rows), 'categoryTotals' => $service->totalsBySettlementReceivableCategory($rows), 'warning' => null]);
+    }
+
+    public function printPayments(Request $request, OperationalPeriod $operationalPeriod): View
+    {
+        $validated = $request->validate(['customer' => ['nullable', 'string', 'max:120'], 'status' => ['nullable', 'string', 'in:allocated,review_required,cancelled'], 'payment_date_from' => ['nullable', 'date'], 'payment_date_to' => ['nullable', 'date', 'after_or_equal:payment_date_from'], 'has_unapplied' => ['nullable', 'boolean']]);
+        $query = Payment::query()->with('customer');
+        $operationalPeriod->applyVisiblePeriodOrImportedHistory($query, 'payment_date', fn ($imported) => $imported->where('is_legacy_history', true));
+        $payments = $query->when($validated['customer'] ?? null, fn ($query, string $customer) => $query->whereHas('customer', fn ($customerQuery) => $customerQuery->where('name', 'like', "%{$customer}%")))->when($validated['status'] ?? null, fn ($query, string $status) => $query->where('status', $status))->when($validated['payment_date_from'] ?? null, fn ($query, string $date) => $query->whereDate('payment_date', '>=', $date))->when($validated['payment_date_to'] ?? null, fn ($query, string $date) => $query->whereDate('payment_date', '<=', $date))->when((bool) ($validated['has_unapplied'] ?? false), fn ($query) => $query->where('unapplied_amount', '>', 0))->orderBy('payment_date')->orderBy('id')->get();
+
+        return view('billing.payment-list-print', ['payments' => $payments, 'filters' => $validated, 'companyInformation' => AppSetting::companyInformation()]);
+    }
+
+    public function salesReturns(Request $request, AuthorizationService $auth): View
+    {
+        $user = $request->user();
+        $canCreate = $auth->can($user, 'sales_return.create');
+        $routeName = $request->route()?->getName();
+        $section = match ($routeName) {
+            'sales-returns.history' => 'history',default => 'register'
+        };
+
+        return view('sales-returns.index',['user' => $user, 'section' => $section, 'canCreate' => $canCreate, 'canCancel' => $canCreate, 'stockLocations' => StockLocation::query()->where('is_active',true)->where('is_inventory_managed',true)->orderBy('sort_order')->orderBy('id')->get()]);
+    }
 }

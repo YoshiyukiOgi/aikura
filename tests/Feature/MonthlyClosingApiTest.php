@@ -151,7 +151,6 @@ class MonthlyClosingApiTest extends TestCase
             'status' => 'confirmed',
             'movement_type' => 'production_receipt',
             'movement_date' => '2026-06-10',
-            'product_id' => $stockProduct->id,
             'stock_location_id' => $location->id,
             'unit_id' => $bottle->id,
             'quantity' => '5.0000',

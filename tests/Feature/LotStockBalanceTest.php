@@ -4,10 +4,12 @@ namespace Tests\Feature;
 
 use App\Models\Product;
 use App\Models\ProductionLot;
+use App\Models\StockLotMonthlyBalance;
 use App\Models\StockLocation;
 use App\Models\StockMovement;
 use App\Models\Unit;
 use App\Services\Inventory\LotStockBalanceService;
+use Carbon\CarbonImmutable;
 use Database\Seeders\ProductUnitMasterSeeder;
 use Database\Seeders\StockLocationSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -71,14 +73,52 @@ class LotStockBalanceTest extends TestCase
     {
         [$product, $unit, $location, $lot] = $this->prepareBaseData();
 
-        $this->createMovement($product, $unit, $location, $lot, 'confirmed', '10.0000', null, '2026-06-10');
-        $this->createMovement($product, $unit, $location, $lot, 'confirmed', '-3.0000', null, '2026-06-20');
+        $this->createMovement($product, $unit, $location, $lot, 'confirmed', '10.0000', null, '2026-07-10');
+        $this->createMovement($product, $unit, $location, $lot, 'confirmed', '-3.0000', null, '2026-07-20');
 
-        $balances = app(LotStockBalanceService::class)->allAsOf('2026-06-15');
+        $balances = app(LotStockBalanceService::class)->allAsOf('2026-07-15');
 
         $this->assertCount(1, $balances);
         $this->assertSame($lot->id, $balances[0]->productionLotId);
         $this->assertSame('10.0000', $balances[0]->physicalQuantity);
+    }
+
+    public function test_as_of_date_never_includes_later_movements(): void
+    {
+        CarbonImmutable::setTestNow('2026-07-30 12:00:00');
+        [$product, $unit, $location, $lot] = $this->prepareBaseData();
+
+        $this->createMovement($product, $unit, $location, $lot, 'confirmed', '10.0000', null, '2026-07-29');
+        $this->createMovement($product, $unit, $location, $lot, 'confirmed', '10.0000', null, '2026-08-01');
+        $this->createMovement($product, $unit, $location, $lot, 'confirmed', '-3.0000', null, '2026-08-10');
+
+        $todayBalances = app(LotStockBalanceService::class)->allAsOf('2026-07-30');
+        $futureBalances = app(LotStockBalanceService::class)->allAsOf('2026-08-05');
+
+        $this->assertSame('10.0000', $todayBalances->sole()->physicalQuantity);
+        $this->assertSame('20.0000', $futureBalances->sole()->physicalQuantity);
+    }
+
+    public function test_as_of_date_ignores_pre_operational_closing_and_uses_opening_stock_plus_following_movements(): void
+    {
+        CarbonImmutable::setTestNow('2026-07-31 12:00:00');
+        [$product, $unit, $location, $lot] = $this->prepareBaseData();
+        $openingLot = $this->createLot('OPEN-20260701-DUP', $product, $location);
+
+        $this->createMonthlyBalance($unit, $location, $lot, '2026-06-01', '2026-06-30', '20.0000');
+        $this->createMovement($product, $unit, $location, $openingLot, 'confirmed', '20.0000', null, '2026-07-01', 'opening_stock');
+        $this->createMovement($product, $unit, $location, $openingLot, 'confirmed', '-3.0000', null, '2026-07-10', 'shipment');
+        $this->createMovement($product, $unit, $location, $openingLot, 'confirmed', '-2.0000', null, '2026-07-20', 'non_sales_breakage');
+        $this->createMovement($product, $unit, $location, $openingLot, 'confirmed', '1.0000', null, '2026-07-25', 'sales_return');
+        $this->createMovement($product, $unit, $location, $openingLot, 'confirmed', '-99.0000', null, '2026-08-01', 'shipment');
+
+        $julyFirst = app(LotStockBalanceService::class)->allAsOf('2026-07-01');
+        $julyEnd = app(LotStockBalanceService::class)->allAsOf('2026-07-31');
+
+        $this->assertSame('20.0000', $julyFirst->sole()->physicalQuantity);
+        $this->assertSame('16.0000', $julyEnd->sole()->physicalQuantity);
+        $this->assertSame($openingLot->id, $julyEnd->sole()->productionLotId);
+        $this->assertFalse($julyEnd->pluck('productionLotId')->contains($lot->id));
     }
 
     /**
@@ -130,11 +170,12 @@ class LotStockBalanceTest extends TestCase
         string $status,
         string $quantity,
         mixed $cancelledAt = null,
-        string $movementDate = '2026-06-15',
+        string $movementDate = '2026-07-15',
+        string $movementType = 'inventory_adjustment',
     ): StockMovement {
         return StockMovement::create([
             'status' => $status,
-            'movement_type' => 'inventory_adjustment',
+            'movement_type' => $movementType,
             'movement_date' => $movementDate,
             'product_id' => $product->id,
             'stock_location_id' => $location->id,
@@ -145,6 +186,29 @@ class LotStockBalanceTest extends TestCase
             'cancelled_at' => $cancelledAt,
             'confirmed_at' => $status === 'confirmed' ? now() : null,
             'closed_at' => $status === 'closed' ? now() : null,
+        ]);
+    }
+
+    private function createMonthlyBalance(
+        Unit $unit,
+        StockLocation $location,
+        ProductionLot $lot,
+        string $periodStart,
+        string $periodEnd,
+        string $quantity,
+    ): StockLotMonthlyBalance {
+        return StockLotMonthlyBalance::create([
+            'status' => 'confirmed',
+            'year' => (int) substr($periodStart, 0, 4),
+            'month' => (int) substr($periodStart, 5, 2),
+            'period_start' => $periodStart,
+            'period_end' => $periodEnd,
+            'production_lot_id' => $lot->id,
+            'stock_location_id' => $location->id,
+            'unit_id' => $unit->id,
+            'closing_quantity' => $quantity,
+            'calculated_at' => now(),
+            'confirmed_at' => now(),
         ]);
     }
 }

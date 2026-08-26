@@ -20,6 +20,18 @@ class AuthController extends Controller
         return view('auth.login');
     }
 
+    public function createRetail(): View|RedirectResponse
+    {
+        if (Auth::check()) {
+            return redirect()->to('/retail/companies');
+        }
+
+        return view('auth.login', [
+            'loginMode' => 'retail',
+            'redirectTo' => '/retail/companies',
+        ]);
+    }
+
     public function store(LoginRequest $request): RedirectResponse
     {
         $credentials = $request->validated();
@@ -37,6 +49,11 @@ class AuthController extends Controller
 
         $request->session()->regenerate();
         $user->forceFill(['last_login_at' => now()])->save();
+
+        $redirectTo = (string) $request->input('redirect_to', '');
+        if (str_starts_with($redirectTo, '/retail/')) {
+            return redirect()->to($redirectTo);
+        }
 
         return redirect()->intended('/sales-orders');
     }

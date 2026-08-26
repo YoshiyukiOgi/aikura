@@ -16,7 +16,7 @@ class CancelSalesOrderService
     ) {
     }
 
-    public function cancel(SalesOrder $salesOrder, string $reason): SalesOrder
+    public function cancel(SalesOrder $salesOrder, string $reason, bool $allowRetailManaged = false): SalesOrder
     {
         $reason = trim($reason);
 
@@ -24,7 +24,7 @@ class CancelSalesOrderService
             throw SalesOrderException::emptyCancellationReason();
         }
 
-        return DB::transaction(function () use ($salesOrder, $reason): SalesOrder {
+        return DB::transaction(function () use ($salesOrder, $reason, $allowRetailManaged): SalesOrder {
             $salesOrder = SalesOrder::query()
                 ->with('lines')
                 ->lockForUpdate()
@@ -32,6 +32,10 @@ class CancelSalesOrderService
 
             if ($salesOrder->status === 'cancelled' || $salesOrder->cancelled_at !== null) {
                 throw SalesOrderException::alreadyCancelled($salesOrder->id);
+            }
+
+            if ($salesOrder->isRetailManaged() && ! $allowRetailManaged) {
+                throw SalesOrderException::retailManagedOrderCannotBeChanged($salesOrder->id);
             }
 
             $hasInstructed = $salesOrder->lines->contains(

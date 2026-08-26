@@ -32,17 +32,18 @@
       ['key' => 'units', 'label' => '単位', 'permission' => 'unit_master.view'],
       ['key' => 'liquor-tax-categories', 'label' => '酒税区分', 'permission' => 'liquor_tax_master.view'],
       ['key' => 'stock-locations', 'label' => '在庫場所', 'permission' => 'stock_location_master.view'],
+      ['key' => 'lots', 'label' => 'ロット', 'permission' => 'product_master.view'],
       ['key' => 'transaction-categories', 'label' => '取引区分', 'permission' => 'transaction_category_master.view'],
       ['key' => 'settlement-receivable-categories', 'label' => '売掛精算区分', 'permission' => 'settlement_category_master.view'],
       ['key' => 'number-sequences', 'label' => '採番', 'permission' => 'number_sequence_master.view'],
       ['key' => 'roles', 'label' => '権限・ロール', 'permission' => 'role_master.view'],
   ];
   $firstFoundationMaster = collect($foundationMasters)->first(fn ($item) => $navigationUser?->hasPermission($item['permission']) || $navigationUser?->hasPermission('role.manage')) ?? ['key' => 'consumption-tax-categories'];
-  $canViewBasicMasterGroup = $navigationUser?->hasPermission('product_master.view')
+  $canViewMasterGroup = $navigationUser?->hasPermission('product_master.view')
       || $navigationUser?->hasPermission('customer_master.view')
       || $navigationUser?->hasPermission('billing_cycle_master.view')
       || $firstFoundationMaster;
-  $basicMasterHref = $navigationUser?->hasPermission('product_master.view')
+  $masterHref = $navigationUser?->hasPermission('product_master.view')
       ? '/masters/products'
       : ($navigationUser?->hasPermission('customer_master.view')
           ? '/masters/customers'
@@ -137,7 +138,11 @@
       <div class="app-sidebar__group {{ request()->routeIs('inventory.*') ? 'open' : '' }}" data-sidebar-group="inventory">
         <a href="/inventory" class="app-sidebar__parent {{ request()->routeIs('inventory.*') ? 'active' : '' }}" data-sidebar-toggle="inventory" aria-expanded="{{ request()->routeIs('inventory.*') ? 'true' : 'false' }}">在庫</a>
         <div class="app-sidebar__subnav" aria-label="在庫メニュー">
-          <a href="/inventory" class="{{ request()->routeIs('inventory.index') ? 'active' : '' }}">在庫業務</a>
+          <a href="/inventory#stock" data-inventory-tab-link="stock" class="{{ request()->routeIs('inventory.index') ? 'active' : '' }}">現在庫</a>
+          <a href="/inventory#non-sales" data-inventory-tab-link="non-sales">販売外出入</a>
+          <a href="/inventory#movements" data-inventory-tab-link="movements">移動履歴</a>
+          <a href="/inventory#count" data-inventory-tab-link="count">月次棚卸</a>
+          <a href="/inventory#closing" data-inventory-tab-link="closing">月次締め</a>
         </div>
       </div>
     @endif
@@ -171,22 +176,11 @@
     @endif
     @if($navigationUser?->hasPermission('tax.view'))<a href="/tax" class="{{ request()->routeIs('tax.*') ? 'active' : '' }}">税務</a>@endif
     <div class="app-sidebar__section">管理</div>
-    @if($navigationUser?->hasPermission('product_master.view'))<a href="/masters/products" class="{{ request()->routeIs('masters.products.*') ? 'active' : '' }}">商品マスタ</a>@endif
-    @if($navigationUser?->hasPermission('customer_master.view') || $navigationUser?->hasPermission('billing_cycle_master.view'))
-      @php($masterGroupActive = request()->routeIs('masters.customers.*') || request()->routeIs('masters.billing-cycles.*'))
+    @if($canViewMasterGroup)
+      @php($masterGroupActive = request()->routeIs('masters.products.*') || request()->routeIs('masters.customers.*') || request()->routeIs('masters.billing-cycles.*') || request()->routeIs('masters.foundation.*'))
       <div class="app-sidebar__group {{ $masterGroupActive ? 'open' : '' }}" data-sidebar-group="masters">
-        <a href="{{ $navigationUser?->hasPermission('customer_master.view') ? '/masters/customers' : '/masters/billing-cycles' }}" class="app-sidebar__parent {{ $masterGroupActive ? 'active' : '' }}" data-sidebar-toggle="masters" aria-expanded="{{ $masterGroupActive ? 'true' : 'false' }}">マスタ</a>
+        <a href="{{ $masterHref }}" class="app-sidebar__parent {{ $masterGroupActive ? 'active' : '' }}" data-sidebar-toggle="masters" aria-expanded="{{ $masterGroupActive ? 'true' : 'false' }}">マスタ</a>
         <div class="app-sidebar__subnav" aria-label="マスタメニュー">
-          @if($navigationUser?->hasPermission('customer_master.view'))<a href="/masters/customers" class="{{ request()->routeIs('masters.customers.*') ? 'active' : '' }}">取引先</a>@endif
-          @if($navigationUser?->hasPermission('billing_cycle_master.view'))<a href="/masters/billing-cycles" class="{{ request()->routeIs('masters.billing-cycles.*') ? 'active' : '' }}">締日条件</a>@endif
-        </div>
-      </div>
-    @endif
-    @if($navigationUser?->hasPermission('role.manage'))<a href="/settings" class="{{ request()->routeIs('settings.*') ? 'active' : '' }}">設定</a>@endif
-    @if($canViewBasicMasterGroup)
-      <div class="app-sidebar__group {{ request()->routeIs('masters.foundation.*') ? 'open' : '' }}" data-sidebar-group="foundation-masters">
-        <a href="{{ $basicMasterHref }}" class="app-sidebar__parent {{ request()->routeIs('masters.foundation.*') || request()->routeIs('masters.products.*') || request()->routeIs('masters.customers.*') || request()->routeIs('masters.billing-cycles.*') ? 'active' : '' }}" data-sidebar-toggle="foundation-masters" aria-expanded="{{ request()->routeIs('masters.foundation.*') ? 'true' : 'false' }}">基本マスタ</a>
-        <div class="app-sidebar__subnav" aria-label="基本マスタメニュー">
           @if($navigationUser?->hasPermission('product_master.view'))<a href="/masters/products" class="{{ request()->routeIs('masters.products.*') ? 'active' : '' }}">商品</a>@endif
           @if($navigationUser?->hasPermission('customer_master.view'))<a href="/masters/customers" class="{{ request()->routeIs('masters.customers.*') ? 'active' : '' }}">取引先</a>@endif
           @if($navigationUser?->hasPermission('billing_cycle_master.view'))<a href="/masters/billing-cycles" class="{{ request()->routeIs('masters.billing-cycles.*') ? 'active' : '' }}">締日条件</a>@endif
@@ -198,6 +192,7 @@
         </div>
       </div>
     @endif
+    @if($navigationUser?->hasPermission('role.manage'))<a href="/settings" class="{{ request()->routeIs('settings.*') ? 'active' : '' }}">設定</a>@endif
   </nav>
 </aside>
 <script>
@@ -229,6 +224,16 @@
         localStorage.setItem(storageKey, isOpen ? '1' : '0');
       });
     });
+
+    const syncInventoryTabLinks = () => {
+      if (!window.location.pathname.startsWith('/inventory')) return;
+      const currentTab = window.location.hash.replace(/^#/, '') || 'stock';
+      document.querySelectorAll('[data-inventory-tab-link]').forEach((link) => {
+        link.classList.toggle('active', link.dataset.inventoryTabLink === currentTab);
+      });
+    };
+    syncInventoryTabLinks();
+    window.addEventListener('hashchange', syncInventoryTabLinks);
 
     const unitNames = { bottle: '本', case: 'ケース', box: '箱', piece: '個', bag: '袋', liter: 'L', milliliter: 'mL', kilogram: 'kg', gram: 'g' };
     document.querySelectorAll('.app-sidebar__nav a[href^="/billing"]').forEach((link) => {

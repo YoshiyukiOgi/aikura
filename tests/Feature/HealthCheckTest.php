@@ -8,13 +8,11 @@ class HealthCheckTest extends TestCase
 {
     public function test_home_returns_ok(): void
     {
-        $response = $this->get('/');
+        $response = $this->getJson('/api/v1');
 
         $response->assertOk()
-            ->assertJson([
-                'name' => 'AI蔵',
-                'status' => 'ok',
-            ]);
+            ->assertJsonPath('data.name', 'aikura')
+            ->assertJsonPath('data.status', 'ok')
+            ->assertJsonPath('data.version', 'v1');
     }
 }
-

@@ -74,6 +74,10 @@ class ProductMasterApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.pagination.total', 1)
             ->assertJsonPath('data.product_families.0.id', $familyId);
+        $this->getJson('/api/v1/masters/product-families?q='.urlencode('山田 錦'))
+            ->assertOk()
+            ->assertJsonPath('data.pagination.total', 1)
+            ->assertJsonPath('data.product_families.0.id', $familyId);
         $this->getJson('/api/v1/masters/product-families?missing=unpasteurized_review')
             ->assertOk()
             ->assertJsonPath('data.pagination.total', 0);

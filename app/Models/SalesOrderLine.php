@@ -23,6 +23,9 @@ class SalesOrderLine extends Model
         'price_rule_id',
         'price_source',
         'price_reason',
+        'price_effective_from',
+        'previous_unit_price',
+        'price_change_notice',
         'priced_at',
         'note',
     ];
@@ -34,6 +37,8 @@ class SalesOrderLine extends Model
             'quantity' => 'decimal:4',
             'remaining_quantity' => 'decimal:4',
             'unit_price' => 'decimal:4',
+            'price_effective_from' => 'date',
+            'previous_unit_price' => 'decimal:4',
             'priced_at' => 'datetime',
         ];
     }

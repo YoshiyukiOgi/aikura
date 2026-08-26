@@ -14,8 +14,7 @@ class ApplySalesOrderPricingService
     public function __construct(
         private readonly ResolvePriceService $resolvePriceService,
         private readonly AuditLogService $auditLogService,
-    ) {
-    }
+    ) {}
 
     public function apply(SalesOrder $salesOrder, ?string $reason = null): SalesOrder
     {
@@ -29,6 +28,10 @@ class ApplySalesOrderPricingService
                 throw SalesOrderException::notPriceEditable($salesOrder->id, $salesOrder->status);
             }
 
+            if ($salesOrder->isRetailManaged()) {
+                throw SalesOrderException::retailManagedOrderCannotBeChanged($salesOrder->id);
+            }
+
             $pricedLineIds = [];
 
             foreach ($salesOrder->lines as $line) {
@@ -39,14 +42,7 @@ class ApplySalesOrderPricingService
                     unitId: $line->unit_id,
                 );
 
-                $line->update([
-                    'unit_price' => $resolved->unitPrice,
-                    'price_list_id' => $resolved->priceListId,
-                    'price_rule_id' => $resolved->priceRuleId,
-                    'price_source' => $resolved->source,
-                    'price_reason' => $resolved->reason,
-                    'priced_at' => now(),
-                ]);
+                $line->update($resolved->salesOrderLineAttributes());
                 $pricedLineIds[] = $line->id;
             }
 

@@ -14,7 +14,7 @@ class TaxRoundingService
             'floor' => $this->floor($amount, $scale),
             'ceil' => $this->ceil($amount, $scale),
             'round' => $this->roundHalfUp($amount, $scale),
-            default => throw new InvalidArgumentException("Unsupported rounding method: {$method}."),
+            default => throw new InvalidArgumentException("未対応の端数処理方式です: {$method}"),
         };
     }
 

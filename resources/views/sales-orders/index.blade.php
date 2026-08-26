@@ -12,12 +12,13 @@
     .card{border:1px solid #dce4ee;border-radius:6px;background:#fff;overflow:hidden}.head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 14px;border-bottom:1px solid #e7edf4}.head h2{font-size:15px}.muted{color:#64748b;font-size:11px}
     .filters{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:10px 12px;border-bottom:1px solid #e7edf4}.filters .wide{grid-column:1/-1}
     label{display:grid;gap:4px;color:#475569;font-size:10px;font-weight:700}input,select,textarea{width:100%;min-height:30px;border:1px solid #ced8e5;border-radius:4px;padding:5px 8px;background:#fff;color:#172033;font:inherit}textarea{min-height:48px;resize:vertical}
-    button{border:1px solid #cad6e6;border-radius:4px;background:#fff;color:#25344a;padding:6px 9px;font:inherit;font-size:11px;cursor:pointer}button:hover{border-color:#8ebcff}button:disabled{opacity:.45;cursor:not-allowed}.primary{border-color:#0b6ff6;background:#0b6ff6;color:#fff;font-weight:800}.secondary{color:#075ecf;border-color:#a9caff}.danger{color:#b42318}
+    button{border:1px solid #cad6e6;border-radius:4px;background:#fff;color:#25344a;padding:6px 9px;font:inherit;font-size:11px;cursor:pointer}button:hover{border-color:#8ebcff}button:disabled{opacity:.45;cursor:not-allowed}.primary{border-color:#0b6ff6;background:#0b6ff6;color:#fff;font-weight:800}.secondary{color:#075ecf;border-color:#a9caff}.danger{color:#b42318}@keyframes searchPulse{0%,100%{background:#fff7d6;border-color:#f0b429;box-shadow:0 0 0 0 rgba(240,180,41,.28)}50%{background:#ffe08a;border-color:#d89b00;box-shadow:0 0 0 5px rgba(240,180,41,.12)}}button.search-attention,button.primary.search-attention{animation:searchPulse 1.8s ease-in-out infinite;color:#172033!important;font-weight:800}
     .filter-actions,.actions{display:flex;justify-content:flex-end;gap:7px;align-items:center}.order-actions{justify-content:flex-end}.order-actions .danger{margin-right:auto}.orders{width:100%;border-collapse:collapse;table-layout:fixed}.orders th,.orders td{padding:9px 9px;border-bottom:1px solid #edf1f6;text-align:left;font-size:11px;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.orders th{background:#f8faff;color:#64748b;font-size:10px}.orders th:nth-child(1),.orders td:nth-child(1){width:132px}.orders th:nth-child(3),.orders td:nth-child(3){width:58px}.orders th:nth-child(4),.orders td:nth-child(4){width:60px}.orders tbody tr{cursor:pointer;transition:background .12s ease,box-shadow .12s ease}.orders tbody tr:hover{background:#e7f0ff}.orders tbody tr.selected{background:#d9e9ff;box-shadow:inset 3px 0 0 #0b6ff6}.orders td.order-no{overflow:visible;text-overflow:clip}.order-no{color:#075ecf;font-weight:800;font-family:"Roboto Mono","SFMono-Regular",Consolas,monospace;font-size:10.5px;letter-spacing:-.02em}.status{display:inline-block;max-width:100%;padding:2px 5px;border-radius:3px;color:#075ecf;background:#eaf3ff;font-size:10px;font-weight:800;overflow:hidden;text-overflow:ellipsis;vertical-align:middle}.status.warn{color:#9a6700;background:#fff4dd}.status.success{color:#137333;background:#e7f7ed}.status.danger{color:#b42318;background:#fee4e2}.status.shipment-cancelled{color:#6b2e00;background:#ffe8cc;border:1px solid #ffb36b}
     .pager{display:flex;justify-content:space-between;align-items:center;padding:9px 12px}.empty{padding:22px;color:#64748b;text-align:center}
     .form{display:grid;gap:10px;padding:12px 14px}.form-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.form-grid.compact{grid-template-columns:minmax(180px,1.4fr) minmax(112px,.7fr) minmax(112px,.7fr) minmax(160px,1.2fr)}.form-grid .two{grid-column:span 2}.form-grid .full{grid-column:1/-1}.form-grid.compact .note-field{grid-column:span 2}
-    .lines-wrap{overflow:auto;border-top:1px solid #e7edf4;border-bottom:1px solid #e7edf4}.lines{min-width:680px;width:100%;border-collapse:collapse;table-layout:fixed}.lines th,.lines td{padding:7px 8px;border-bottom:1px solid #edf1f6;text-align:left;vertical-align:top;font-size:11px}.lines th{background:#f8faff;color:#64748b;font-size:10px;white-space:nowrap}.lines th:nth-child(1),.lines td:nth-child(1){width:46%}.lines th:nth-child(2),.lines td:nth-child(2){width:180px}.lines th:nth-child(3),.lines td:nth-child(3){width:168px}.lines input,.lines select{min-height:34px;padding:5px 8px}.line-entry,.line-head-grid{display:grid;grid-template-columns:86px 86px minmax(96px,1fr);gap:6px;align-items:start}.line-head-grid span{display:block}.product-picker,.customer-picker{width:100%;min-height:36px;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.line-product{grid-column:1/-1}.line-field{display:grid}.quantity-with-unit{display:grid;grid-template-columns:minmax(0,1fr);align-items:center}.unit-inline{display:none}.line-readonly{display:block;min-height:34px;padding:7px 8px;border:1px solid #ced8e5;border-radius:4px;background:#fff;color:#172033;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.line-note{width:100%;min-width:0;min-height:76px;resize:vertical}.lines .number{text-align:left;white-space:nowrap}.price-review{margin-top:6px;padding:6px;border:1px solid #f6d365;border-radius:4px;background:#fff8e1;color:#7a4b00;text-align:left}.price-review .actions{justify-content:flex-start;margin-top:5px;gap:4px}.price-review button{padding:4px 6px;font-size:10px}.line-actions{display:flex;justify-content:flex-start;align-items:flex-start;gap:8px;flex-wrap:nowrap;padding-top:26px}.line-actions button{min-width:72px;min-height:36px}
+    .lines-wrap{overflow:auto;border-top:1px solid #e7edf4;border-bottom:1px solid #e7edf4}.lines{min-width:680px;width:100%;border-collapse:collapse;table-layout:fixed}.lines th,.lines td{padding:7px 8px;border-bottom:1px solid #edf1f6;text-align:left;vertical-align:top;font-size:11px}.lines th{background:#f8faff;color:#64748b;font-size:10px;white-space:nowrap}.lines th:nth-child(1),.lines td:nth-child(1){width:46%}.lines th:nth-child(2),.lines td:nth-child(2){width:180px}.lines th:nth-child(3),.lines td:nth-child(3){width:168px}.lines input,.lines select{min-height:34px;padding:5px 8px}.line-entry,.line-head-grid{display:grid;grid-template-columns:86px 86px minmax(96px,1fr);gap:6px;align-items:start}.line-head-grid span{display:block}.product-picker,.customer-picker{width:100%;min-height:36px;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.line-product{grid-column:1/-1}.line-field{display:grid}.quantity-with-unit{display:grid;grid-template-columns:minmax(0,1fr);align-items:center}.unit-inline{display:none}.line-readonly{display:block;min-height:34px;padding:7px 8px;border:1px solid #ced8e5;border-radius:4px;background:#fff;color:#172033;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.line-note{width:100%;min-width:0;min-height:76px;resize:vertical}.lines .number{text-align:left;white-space:nowrap}.price-application{margin-top:4px;color:#475569;font-size:10px;line-height:1.5}.price-change-notice{grid-column:1/-1;margin-top:4px;padding:4px 6px;border:1px solid #f6d365;border-radius:4px;background:#fff8e1;color:#7a4b00;font-size:10px;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.price-review{margin-top:6px;padding:6px;border:1px solid #f6d365;border-radius:4px;background:#fff8e1;color:#7a4b00;text-align:left}.price-review .actions{justify-content:flex-start;margin-top:5px;gap:4px}.price-review button{padding:4px 6px;font-size:10px}.line-actions{display:flex;justify-content:flex-start;align-items:flex-start;gap:8px;flex-wrap:nowrap;padding-top:26px}.line-actions button{min-width:72px;min-height:36px}
     .notice{min-height:17px;color:#64748b;font-size:11px}.error{color:#b42318}
+    .orders tbody tr.correction{background:#fff1f1;box-shadow:inset 3px 0 0 #dc2626}.orders tbody tr.correction:hover,.orders tbody tr.correction.selected{background:#ffe4e6;box-shadow:inset 3px 0 0 #dc2626}.status.correction{color:#b42318;background:#fee4e2;border:1px solid #fda29b}.negative{color:#b42318;font-weight:800}
     .summary{position:fixed;right:0;bottom:0;left:0;display:flex;align-items:center;justify-content:flex-end;gap:28px;min-height:64px;padding:9px 20px;border-top:1px solid #dce4ee;background:rgba(255,255,255,.97);box-shadow:0 -5px 18px rgba(30,48,74,.06)}.summary:not(.is-visible){display:none}.summary .amount{font-size:20px;font-weight:800;color:#075ecf}.summary-label{color:#64748b;font-size:10px}
     .price-panel{position:fixed;z-index:2;right:18px;bottom:76px;width:310px;display:none;gap:9px;padding:14px;border:1px solid #d6e0ed;border-radius:6px;background:#fff;box-shadow:0 16px 40px rgba(20,42,70,.18)}.price-panel.open{display:grid}.price-panel .check-row{display:flex;align-items:center;gap:7px;font-size:12px;color:#1e293b}.price-panel .check-row input{width:auto}
     .modal-backdrop{position:fixed;inset:0;z-index:5;display:none;align-items:center;justify-content:center;background:rgba(15,23,42,.36);padding:18px}.modal-backdrop.open{display:flex}.product-modal{width:min(760px,100%);max-height:min(720px,92vh);display:grid;grid-template-rows:auto auto 1fr auto;background:#fff;border:1px solid #d6e0ed;border-radius:8px;box-shadow:0 24px 70px rgba(15,23,42,.25);overflow:hidden}.product-modal .modal-head{padding:12px 14px;border-bottom:1px solid #e7edf4;display:flex;align-items:center;justify-content:space-between}.product-modal .modal-search{padding:12px 14px;border-bottom:1px solid #e7edf4;display:grid;gap:6px}.product-results{overflow:auto}.product-result{width:100%;display:grid;grid-template-columns:1fr auto;gap:8px;padding:10px 14px;border:0;border-bottom:1px solid #edf1f6;border-radius:0;text-align:left;background:#fff}.product-result:hover,.product-result.active{background:#e7f0ff}.product-result strong{display:block;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.product-result span{color:#64748b;font-size:10px}.modal-foot{padding:10px 14px;border-top:1px solid #e7edf4;display:flex;justify-content:space-between;align-items:center;gap:8px}
@@ -37,9 +38,9 @@
         <form id="filter-form" class="filters">
           <label class="wide">検索<input id="filter-q" placeholder="受注番号・取引先・取引先注文番号"></label>
           <label>取引先<select id="filter-customer"><option value="">すべて</option></select></label>
-          <label>ステータス<select id="filter-status"><option value="">すべて</option><option value="received">受注</option><option value="shipment_returned">出取消</option></select></label>
+          <label>ステータス<select id="filter-status"><option value="">すべて</option><option value="received">受注</option><option value="shipment_returned">出取消</option><option value="cancelled">取消</option></select></label>
           <label>受注日（開始）<input id="filter-from" type="date"></label><label>受注日（終了）<input id="filter-to" type="date"></label>
-          <div class="filter-actions wide"><button id="reset-filter" type="button">リセット</button></div>
+          <div class="filter-actions wide"><button id="reset-filter" type="button">リセット</button><button id="search-orders" class="primary" type="submit">検索</button></div>
         </form>
         <table class="orders"><thead><tr><th>受注番号</th><th>取引先</th><th>受注日</th><th>状態</th></tr></thead><tbody id="orders"></tbody></table>
         <div id="empty-orders" class="empty" hidden>該当する受注はありません。</div>
@@ -100,8 +101,8 @@
     const autoRefreshEnabled = refreshSettings.auto_refresh_enabled === '1';
     const autoRefreshMs = Math.max(5, Number(refreshSettings.auto_refresh_interval_seconds || 30)) * 1000;
     const permissions = { create:@json($canCreate), update:@json($canUpdate), price:@json($canChangePrice) };
-    const labels = {received:'受注', shipment_returned:'出取消', partially_instructed:'出荷指示', instructed:'出荷指示', cancelled:'取消'};
-    const statusClass = status => status === 'shipment_returned' ? 'warn' : status === 'cancelled' ? 'danger' : status === 'partially_instructed' ? 'success' : status === 'instructed' ? 'success' : '';
+    const labels = {received:'受注', shipment_returned:'出取消', partially_instructed:'出荷指示', instructed:'出荷指示', cancelled:'取消', cancellation_correction:'取消訂正'};
+    const statusClass = status => status === 'shipment_returned' ? 'warn' : status === 'cancelled' ? 'danger' : status === 'cancellation_correction' ? 'correction' : status === 'partially_instructed' ? 'success' : status === 'instructed' ? 'success' : '';
     const customerSelect = document.querySelector('#customer'), customerPicker = document.querySelector('#customer-picker'), filterCustomer = document.querySelector('#filter-customer'), lineList = document.querySelector('#line-list'), orderForm = document.querySelector('#order-form');
     const orderDetailCard = document.querySelector('#order-detail-card'), orderSummaryFooter = document.querySelector('.summary');
     const state = { page:1, pagination:null, selected:null, editing:false, dirty:false, saving:false };
@@ -131,6 +132,8 @@
       return body.data;
     };
     const option = (value,label) => { const el=document.createElement('option'); el.value=value; el.textContent=label; return el; };
+    const priceSourceLabels = {customer:'取引先別価格',transaction_category:'取引区分別価格',manual:'手動価格'};
+    const priceSourceLabel = source => priceSourceLabels[source] || '基準価格';
     customers.forEach(item => { filterCustomer.appendChild(option(item.id,item.label)); });
     const customerFor = id => customers.find(item => String(item.id) === String(id));
     const setCustomer = (customerId, dirty=true) => {
@@ -155,11 +158,18 @@
       document.querySelector('#customer-modal').classList.remove('open');
       document.querySelector('#customer-modal').hidden = true;
     };
+    const normalizeSearchText = value => String(value ?? '').normalize('NFKC').toLowerCase().replace(/[\s\u3000]+/g, '');
+    const normalizeSearchTerms = value => String(value ?? '').normalize('NFKC').toLowerCase().trim().split(/[\s\u3000]+/).map(word => word.replace(/[\s\u3000]+/g, '')).filter(Boolean);
+    const matchesSearchText = (haystack, query) => {
+      const terms = normalizeSearchTerms(query);
+      if (!terms.length) return true;
+      const normalizedHaystack = normalizeSearchText(haystack);
+      return terms.every(term => normalizedHaystack.includes(term));
+    };
     const renderCustomerResults = () => {
-      const term = document.querySelector('#customer-search').value.trim().toLowerCase();
-      const words = term.split(/\s+/).filter(Boolean);
+      const term = document.querySelector('#customer-search').value;
       const results = customers
-        .filter(customer => words.every(word => customer.label.toLowerCase().includes(word)))
+        .filter(customer => matchesSearchText(customer.label, term))
         .slice(0, 80);
       document.querySelector('#customer-result-count').textContent = `${results.length}件表示`;
       document.querySelector('#customer-results').replaceChildren(...results.map(customer => {
@@ -174,7 +184,7 @@
       }));
     };
     const yen = value => `¥${Number(value||0).toLocaleString('ja-JP',{maximumFractionDigits:2})}`;
-    const priceInputValue = value => {
+      const priceInputValue = value => {
       if (value === null || value === undefined || value === '') return '';
       const text = String(value);
       return text.includes('.') ? text.replace(/\.?0+$/, '') : text;
@@ -183,7 +193,9 @@
     const longDate = value => { if(!value) return ''; const [year,month,day]=value.split('-').map(Number); return `${year}年${month}月${day}日`; };
     const productFor = id => products.find(item => String(item.id) === String(id));
     const productLabel = id => productFor(id)?.label || '商品を検索・選択';
-    const productSearchText = product => [product.label, product.unit_name, product.unit_code].filter(Boolean).join(' ').toLowerCase();
+    const productSearchText = product => normalizeSearchText([product.label, product.unit_name, product.unit_code].filter(Boolean).join(' '));
+    const isRetailPurchaseOrderCancellation = order => order?.source_type === 'retail_purchase_order_cancellation';
+    const correctionNote = order => [order.correction_notice, order.note].filter(Boolean).join('\n');
     const notifiedPriceReviewSelections = new Set();
     const priceReviewWarningText = task => {
       const parts = [
@@ -223,6 +235,8 @@
       row.dataset.price='';
       row.dataset.source='';
       row.dataset.reason='';
+      row.dataset.priceEffectiveFrom='';
+      row.dataset.priceChangeNotice='';
       row._sync?.();
       if(dirty) {
         markDirty();
@@ -243,10 +257,9 @@
       productTargetRow = null;
     };
     const renderProductResults = () => {
-      const term = document.querySelector('#product-search').value.trim().toLowerCase();
-      const words = term.split(/\s+/).filter(Boolean);
+      const term = document.querySelector('#product-search').value;
       const results = products
-        .filter(product => words.every(word => productSearchText(product).includes(word)))
+        .filter(product => matchesSearchText(productSearchText(product), term))
         .slice(0, 80);
       document.querySelector('#product-result-count').textContent = `${results.length}件表示`;
       document.querySelector('#product-results').replaceChildren(...results.map(product => {
@@ -264,6 +277,7 @@
       const rows = [...lineList.children];
       const total = rows.reduce((sum,row) => sum + (Number(row.dataset.price||0) * Number(row.querySelector('[data-quantity]').value||0)), 0);
       document.querySelector('#subtotal').textContent = yen(total);
+      document.querySelector('#subtotal').classList.toggle('negative', total < 0);
       document.querySelector('#line-count').textContent = String(rows.length);
     };
     const addLine = (line={}) => {
@@ -272,9 +286,12 @@
       row.dataset.price = line.unit_price || '';
       row.dataset.source = line.price_source || '';
       row.dataset.reason = line.price_reason || '';
+      row.dataset.priceEffectiveFrom = line.price_effective_from || '';
+      row.dataset.priceChangeNotice = line.price_change_notice || '';
       row.dataset.reviewTaskId = line.price_review_task?.id || '';
       const instructedQuantity = Math.max(0, Math.round(Number(line.quantity||0) - Number(line.remaining_quantity ?? line.quantity ?? 0)));
       const hasInstruction = instructedQuantity > 0;
+      const isNegativeCorrection = Number(line.quantity || 0) < 0;
       row.dataset.productId = line.product_id || '';
       const detailCell = document.createElement('td');
       const detailLine = document.createElement('div');
@@ -292,7 +309,7 @@
       const quantityWrap = document.createElement('div');
       quantityWrap.className = 'quantity-with-unit';
       const quantity = document.createElement('input');
-      quantity.type = 'number'; quantity.min = String(Math.max(1,instructedQuantity)); quantity.step = '1'; quantity.required = true; quantity.value = String(Math.max(1, Math.round(Number(line.quantity||'1')))); quantity.dataset.quantity = '';
+      quantity.type = 'number'; quantity.min = isNegativeCorrection ? '' : String(Math.max(1,instructedQuantity)); quantity.step = '1'; quantity.required = true; quantity.value = String(isNegativeCorrection ? Math.round(Number(line.quantity)) : Math.max(1, Math.round(Number(line.quantity||'1')))); quantity.dataset.quantity = '';
       const unitLabel = document.createElement('span');
       unitLabel.className = 'unit-inline';
       const unit = document.createElement('input'); unit.readOnly = true; unit.hidden = true;
@@ -302,13 +319,17 @@
       priceField.className = 'line-field';
       const price = document.createElement('span');
       price.className = 'line-readonly';
-      priceField.appendChild(price);
+      const priceApplication = document.createElement('span');
+      priceApplication.className = 'price-application';
+      const priceChangeNotice = document.createElement('span');
+      priceChangeNotice.className = 'price-change-notice';
+      priceField.append(price, priceApplication);
       const amountField = document.createElement('label');
       amountField.className = 'line-field';
       const amount = document.createElement('span');
       amount.className = 'line-readonly';
       amountField.appendChild(amount);
-      detailLine.append(product, quantityField, priceField, amountField);
+      detailLine.append(product, quantityField, priceField, amountField, priceChangeNotice);
       detailCell.appendChild(detailLine);
       const noteCell = document.createElement('td');
       const note = document.createElement('textarea');
@@ -364,8 +385,18 @@
         unit.dataset.unitId = current?.unit_id || '';
         unitLabel.textContent = current?.unit_name || current?.unit_code || '';
         const unitPrice = Number(row.dataset.price||0);
+        quantity.classList.toggle('negative', Number(quantity.value || 0) < 0);
         price.textContent = unitPrice ? yen(unitPrice) : '登録時に適用';
+        const effectiveFrom = row.dataset.priceEffectiveFrom;
+        priceApplication.textContent = unitPrice
+          ? [priceSourceLabel(row.dataset.source), effectiveFrom ? `適用開始 ${effectiveFrom.replaceAll('-', '/')}` : null].filter(Boolean).join(' / ')
+          : '';
+        priceChangeNotice.textContent = row.dataset.priceChangeNotice;
+        priceApplication.textContent = '';
+        priceApplication.hidden = true;
+        priceChangeNotice.hidden = !row.dataset.priceChangeNotice;
         amount.textContent = unitPrice ? yen(unitPrice * Number(quantity.value||0)) : '—';
+        amount.classList.toggle('negative', unitPrice * Number(quantity.value||0) < 0);
         updateSummary();
       };
       row._sync = sync;
@@ -394,9 +425,16 @@
         document.querySelector('#order-date').value = order.order_date;
         document.querySelector('#shipment-date').value = order.requested_shipment_date || order.requested_delivery_date || '';
         document.querySelector('#customer-order-number').value = order.customer_order_number || '';
-        document.querySelector('#note').value = order.note || '';
+        document.querySelector('#note').value = correctionNote(order);
         document.querySelector('#work-note').value = order.work_note || '';
         order.lines.forEach(addLine);
+        if(isRetailPurchaseOrderCancellation(order)){
+          releaseButton.hidden = true;
+          document.querySelector('#release-to-shipping-footer').hidden = true;
+          document.querySelector('#save-changes').hidden = true;
+          document.querySelector('#save-changes-footer').hidden = true;
+          document.querySelector('#form-message').textContent = '小売発注取消の全量マイナス訂正受注です。蔵側では出荷指示・変更せず、取消調整用の伝票として確認してください。';
+        }
       } else {
         setCustomer('', false);
         const today = new Date().toISOString().slice(0,10);
@@ -420,9 +458,10 @@
       tbody.replaceChildren(...orders.map(order => {
         const row = document.createElement('tr');
         row.dataset.orderId = order.id;
-        if(state.selected?.id === order.id) row.className='selected';
-        row.addEventListener('click',()=>selectOrder(order.id));
         const displayStatus = order.display_status || order.status;
+        row.classList.toggle('correction', displayStatus === 'cancellation_correction');
+        if(state.selected?.id === order.id) row.classList.add('selected');
+        row.addEventListener('click',()=>selectOrder(order.id));
         [order.order_number,order.customer_name||'',shortDate(order.order_date),labels[displayStatus]||displayStatus].forEach((value,index)=>{
           const cell=document.createElement('td'); cell.title=index===2?longDate(order.order_date):value;
           if(index===0) cell.className='order-no';
@@ -435,6 +474,7 @@
       document.querySelector('#empty-orders').hidden = orders.length > 0;
     };
     const loadOrders = async () => {
+      setOrderSearchDirty(false);
       const message = listMessage();
       setMessage(message,'読み込み中');
       try{
@@ -562,12 +602,13 @@
         loadOrders();
       }, delay);
     };
+    const setOrderSearchDirty=dirty=>{state.searchDirty=dirty;document.querySelector('#search-orders')?.classList.toggle('search-attention',dirty)};
     document.querySelector('#filter-form').addEventListener('submit',event=>{event.preventDefault();applyFilters();});
-    document.querySelector('#filter-q').addEventListener('input',()=>applyFilters(350));
-    document.querySelector('#filter-customer').addEventListener('change',()=>applyFilters());
-    document.querySelector('#filter-status').addEventListener('change',()=>applyFilters());
-    document.querySelector('#filter-from').addEventListener('change',()=>applyFilters());
-    document.querySelector('#filter-to').addEventListener('change',()=>applyFilters());
+    document.querySelector('#filter-q').addEventListener('input',()=>setOrderSearchDirty(true));
+    document.querySelector('#filter-customer').addEventListener('change',()=>setOrderSearchDirty(true));
+    document.querySelector('#filter-status').addEventListener('change',()=>setOrderSearchDirty(true));
+    document.querySelector('#filter-from').addEventListener('change',()=>setOrderSearchDirty(true));
+    document.querySelector('#filter-to').addEventListener('change',()=>setOrderSearchDirty(true));
     document.querySelector('#reset-filter').addEventListener('click',()=>{if(!confirmDiscardIfDirty())return;document.querySelector('#filter-form').reset();state.page=1;loadOrders();});
     document.querySelector('#refresh-orders')?.addEventListener('click',()=>{ if(confirmDiscardIfDirty()) loadOrders(); });
     document.querySelector('#prev-page').addEventListener('click',()=>{if(!confirmDiscardIfDirty())return;state.page--;loadOrders();});
@@ -628,7 +669,7 @@
     orderForm.addEventListener('change', markDirty);
     window.addEventListener('beforeunload',event=>{ if(!state.dirty)return; event.preventDefault(); event.returnValue=''; });
     loadOrders();
-    if(autoRefreshEnabled) setInterval(()=>{ if(orderDetailCard.hidden){ loadOrders(); } },autoRefreshMs);
+    if(autoRefreshEnabled) setInterval(()=>{ if(orderDetailCard.hidden&&!state.searchDirty){ loadOrders(); } },autoRefreshMs);
   </script>
 </body>
 </html>

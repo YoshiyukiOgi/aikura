@@ -8,9 +8,10 @@ use App\Models\Customer;
 use App\Models\PriceList;
 use App\Models\PriceRule;
 use App\Models\Product;
+use App\Models\ProductionLot;
 use App\Models\SettlementReceivableCategory;
 use App\Models\StockLocation;
-use App\Models\StockMonthlyBalance;
+use App\Models\StockLotMonthlyBalance;
 use App\Models\StockMovement;
 use App\Models\TransactionCategory;
 use App\Models\Unit;
@@ -135,8 +136,7 @@ class ConfirmShipmentTest extends TestCase
         $this->assertDatabaseHas('stock_movements', [
             'status' => 'confirmed',
             'movement_type' => 'shipment',
-            'movement_date' => '2026-05-23',
-            'product_id' => $line->product_id,
+            'movement_date' => '2026-07-23',
             'stock_location_id' => $location->id,
             'unit_id' => $line->unit_id,
             'quantity' => '-3.0000',
@@ -164,16 +164,25 @@ class ConfirmShipmentTest extends TestCase
     {
         [$shipment, $product] = $this->preparePricedShipment();
         $location = StockLocation::where('code', 'main_brewery')->firstOrFail();
+        $lot = ProductionLot::create([
+            'lot_code' => 'CONFIRM-SH-LOT-001',
+            'display_name' => 'Confirm shipment lot',
+            'status' => 'active',
+            'stock_location_id' => $location->id,
+            'unit_id' => $product->inventoryUnit->id,
+            'is_active' => true,
+        ]);
 
-        StockMonthlyBalance::create([
+        StockLotMonthlyBalance::create([
             'status' => 'confirmed',
             'year' => 2026,
-            'month' => 5,
-            'period_start' => '2026-05-01',
-            'period_end' => '2026-05-31',
-            'product_id' => $product->id,
+            'month' => 7,
+            'period_start' => '2026-07-01',
+            'period_end' => '2026-07-31',
+            'production_lot_id' => $lot->id,
             'stock_location_id' => $location->id,
             'unit_id' => $product->inventory_unit_id,
+            'closing_quantity' => '0.0000',
             'confirmed_at' => now(),
         ]);
 
@@ -229,7 +238,7 @@ class ConfirmShipmentTest extends TestCase
         $seishu = LiquorTaxCategory::where('code', 'seishu')->firstOrFail();
 
         LiquorTaxRule::where('liquor_tax_category_id', $seishu->id)->update([
-            'effective_to' => '2026-05-31',
+            'effective_to' => '2026-07-31',
         ]);
         $rule = LiquorTaxRule::create([
             'liquor_tax_category_id' => $seishu->id,
@@ -255,7 +264,7 @@ class ConfirmShipmentTest extends TestCase
 
         $shipment = app(CreateDraftShipmentService::class)->create(new CreateDraftShipmentData(
             customerId: $customer->id,
-            documentDate: '2026-05-31',
+            documentDate: '2026-07-31',
             liquorTaxTransferDate: '2026-06-01',
             lines: [
                 new CreateDraftShipmentLineData($product->id, '3.0000', $unit->id),
@@ -352,7 +361,7 @@ class ConfirmShipmentTest extends TestCase
     {
         return app(CreateDraftShipmentService::class)->create(new CreateDraftShipmentData(
             customerId: $customer->id,
-            documentDate: '2026-05-23',
+            documentDate: '2026-07-23',
             lines: [
                 new CreateDraftShipmentLineData($product->id, '3.0000', $unit->id),
             ],

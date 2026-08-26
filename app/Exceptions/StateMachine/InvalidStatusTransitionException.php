@@ -8,17 +8,17 @@ class InvalidStatusTransitionException extends DomainException
 {
     public static function forTransition(string $machine, string $from, string $to): self
     {
-        return new self("Status transition [{$machine}: {$from} -> {$to}] is not allowed.");
+        return new self("状態遷移 [{$machine}: {$from} -> {$to}] は許可されていません。");
     }
 
     public static function forUnknownMachine(string $machine): self
     {
-        return new self("State machine [{$machine}] is not defined.");
+        return new self("状態管理 [{$machine}] が定義されていません。");
     }
 
     public static function forMissingStatus(string $modelClass): self
     {
-        return new self("Model [{$modelClass}] does not have a status value.");
+        return new self("モデル [{$modelClass}] に状態値がありません。");
     }
 }
 

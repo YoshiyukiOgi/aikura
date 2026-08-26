@@ -11,25 +11,35 @@ class ImportAccessReceivables
 {
     private const SOURCE_TABLE = '入金';
 
-    public function import(AccessMigrationBatch $batch, bool $deltaOnly = false): array
+    public function import(
+        AccessMigrationBatch $batch,
+        bool $deltaOnly = false,
+        ?string $cutoverDate = null,
+        ?string $openingDate = null,
+    ): array
     {
         if (! in_array($batch->status, ['inventory_history_imported', 'receivables_imported'], true)) {
             throw new RuntimeException("入金・開始売掛を移行できないバッチ状態です: {$batch->status}");
         }
 
-        return DB::transaction(function () use ($batch, $deltaOnly): array {
+        $cutoverDate = $cutoverDate === null ? null : CarbonImmutable::parse($cutoverDate)->toDateString();
+        $openingDate = $openingDate === null ? null : CarbonImmutable::parse($openingDate)->toDateString();
+
+        return DB::transaction(function () use ($batch, $deltaOnly, $cutoverDate, $openingDate): array {
             $customerIds = DB::table('access_migration_mappings')
                 ->where('batch_id', $batch->id)
                 ->where('source_table', '取引先マスター')
                 ->where('target_table', 'customers')
                 ->pluck('target_id', 'source_key');
-            $ledgerCount = $this->importLedgerEntries($batch, $customerIds, $deltaOnly);
+            $ledgerCount = $this->importLedgerEntries($batch, $customerIds, $deltaOnly, $cutoverDate);
             $paymentCount = $this->importPayments($batch);
-            $asOfDate = $deltaOnly ? null : $this->asOfDate($batch);
+            $asOfDate = $deltaOnly ? null : ($openingDate ?? $this->asOfDate($batch));
             $openingResult = $deltaOnly
                 ? ['count' => 0, 'non_zero_count' => 0, 'total' => '0.00']
-                : $this->calculateOpeningBalances($batch, $asOfDate);
-            $this->recordMappings($batch, $deltaOnly);
+                : ($openingDate === null
+                    ? $this->calculateOpeningBalances($batch, $asOfDate)
+                    : $this->calculateOpeningBalancesFromStaging($batch, $asOfDate, $customerIds));
+            $this->recordMappings($batch, $deltaOnly, $cutoverDate);
 
             $summary = [
                 'ledger_entries' => $ledgerCount,
@@ -38,6 +48,7 @@ class ImportAccessReceivables
                 'non_zero_opening_balances' => $openingResult['non_zero_count'],
                 'opening_balance_total' => $openingResult['total'],
                 'as_of_date' => $asOfDate,
+                'cutover_date' => $cutoverDate,
                 'imported_at' => now()->toIso8601String(),
             ];
             $validationSummary = $batch->validation_summary ?? [];
@@ -52,11 +63,11 @@ class ImportAccessReceivables
         });
     }
 
-    private function importLedgerEntries(AccessMigrationBatch $batch, $customerIds, bool $deltaOnly): int
+    private function importLedgerEntries(AccessMigrationBatch $batch, $customerIds, bool $deltaOnly, ?string $cutoverDate): int
     {
         $count = 0;
 
-        $this->sourceQuery($batch, $deltaOnly)->chunkById(500, function ($rows) use ($batch, $customerIds, &$count): void {
+        $this->sourceQuery($batch, $deltaOnly, $cutoverDate)->chunkById(500, function ($rows) use ($batch, $customerIds, &$count): void {
             $records = [];
             $now = now();
             foreach ($rows as $row) {
@@ -171,7 +182,8 @@ class ImportAccessReceivables
             ->selectRaw('customer_id, COUNT(*) as source_count, COALESCE(SUM(signed_amount), 0) as amount')
             ->get()
             ->keyBy('customer_id');
-        $customerIds = $sales->keys()->merge($ledger->keys())->unique()->values();
+        $containers = $this->containerBalancesByCustomer($batch, $asOfDate);
+        $customerIds = $sales->keys()->merge($ledger->keys())->merge($containers->keys())->unique()->values();
         $records = [];
         $total = '0.00';
         $nonZeroCount = 0;
@@ -180,9 +192,11 @@ class ImportAccessReceivables
         foreach ($customerIds as $customerId) {
             $salesRow = $sales->get($customerId);
             $ledgerRow = $ledger->get($customerId);
+            $containerRow = $containers->get($customerId);
             $salesAmount = bcadd((string) ($salesRow->amount ?? 0), '0', 2);
             $ledgerAmount = bcadd((string) ($ledgerRow->amount ?? 0), '0', 2);
-            $balance = bcadd($salesAmount, $ledgerAmount, 2);
+            $containerAmount = bcadd((string) ($containerRow->amount ?? 0), '0', 2);
+            $balance = bcsub(bcadd($salesAmount, $ledgerAmount, 2), $containerAmount, 2);
             $total = bcadd($total, $balance, 2);
             $nonZeroCount += bccomp($balance, '0.00', 2) === 0 ? 0 : 1;
             $records[] = [
@@ -192,15 +206,17 @@ class ImportAccessReceivables
                 'as_of_date' => $asOfDate,
                 'source_sales_count' => (int) ($salesRow->source_count ?? 0),
                 'source_ledger_entry_count' => (int) ($ledgerRow->source_count ?? 0),
+                'source_container_entry_count' => (int) ($containerRow->source_count ?? 0),
                 'source_sales_amount' => $salesAmount,
                 'source_ledger_amount' => $ledgerAmount,
+                'source_container_amount' => $containerAmount,
                 'calculated_balance_amount' => $balance,
                 'statement_balance_amount' => null,
                 'adjustment_amount' => 0,
                 'opening_balance_amount' => $balance,
                 'calculated_at' => $now,
                 'reconciled_at' => null,
-                'reconciliation_note' => '紙帳票との照合前。Access出荷合計＋符号付き入金台帳で算出。',
+                'reconciliation_note' => '紙帳票との照合前。Access出荷合計＋符号付き入金台帳－空容器取引で算出。',
                 'created_at' => $now,
                 'updated_at' => $now,
             ];
@@ -221,9 +237,124 @@ class ImportAccessReceivables
         return ['count' => count($records), 'non_zero_count' => $nonZeroCount, 'total' => $total];
     }
 
-    private function recordMappings(AccessMigrationBatch $batch, bool $deltaOnly): void
+    private function calculateOpeningBalancesFromStaging(
+        AccessMigrationBatch $batch,
+        string $asOfDate,
+        $customerIds,
+    ): array {
+        $eligibleCustomerIds = DB::table('customers')
+            ->join('settlement_receivable_categories', 'settlement_receivable_categories.id', '=', 'customers.settlement_receivable_category_id')
+            ->where('settlement_receivable_categories.receivable_method', 'accounts_receivable')
+            ->pluck('customers.id')
+            ->map(fn ($id): int => (int) $id)
+            ->flip();
+
+        $salesBySourceCustomer = DB::table('access_migration_staging_rows')
+            ->where('batch_id', $batch->id)
+            ->where('source_table', '出荷伝票・取引先')
+            ->whereRaw("CAST(payload->>'年月日' AS date) <= ?", [$asOfDate])
+            ->selectRaw("payload->>'取引先ID' AS source_customer_id, COUNT(*) AS source_count, COALESCE(SUM(COALESCE(NULLIF(payload->>'合計', ''), '0')::numeric), 0) AS amount")
+            ->groupByRaw("payload->>'取引先ID'")
+            ->get()
+            ->keyBy('source_customer_id');
+
+        $ledgerBySourceCustomer = DB::table('access_migration_staging_rows')
+            ->where('batch_id', $batch->id)
+            ->where('source_table', self::SOURCE_TABLE)
+            ->whereRaw("CAST(payload->>'年月日' AS date) <= ?", [$asOfDate])
+            ->selectRaw("payload->>'取引先ID' AS source_customer_id, COUNT(*) AS source_count, COALESCE(SUM(COALESCE(NULLIF(payload->>'金額', ''), '0')::numeric), 0) AS amount")
+            ->groupByRaw("payload->>'取引先ID'")
+            ->get()
+            ->keyBy('source_customer_id');
+        $containersBySourceCustomer = DB::table('access_migration_staging_rows')
+            ->where('batch_id', $batch->id)
+            ->where('source_table', '空容器伝票-取引先')
+            ->whereRaw("CAST(payload->>'年月日' AS date) <= ?", [$asOfDate])
+            ->selectRaw("payload->>'取引先ID' AS source_customer_id, COUNT(*) AS source_count, COALESCE(SUM(COALESCE(NULLIF(payload->>'合計', ''), '0')::numeric), 0) AS amount")
+            ->groupByRaw("payload->>'取引先ID'")
+            ->get()
+            ->keyBy('source_customer_id');
+
+        $records = [];
+        $total = '0.00';
+        $nonZeroCount = 0;
+        $now = now();
+
+        foreach ($customerIds as $sourceCustomerId => $targetCustomerId) {
+            $targetCustomerId = (int) $targetCustomerId;
+            if (! $eligibleCustomerIds->has($targetCustomerId)) {
+                continue;
+            }
+
+            $sales = $salesBySourceCustomer->get((string) $sourceCustomerId);
+            $ledger = $ledgerBySourceCustomer->get((string) $sourceCustomerId);
+            $containers = $containersBySourceCustomer->get((string) $sourceCustomerId);
+            if ($sales === null && $ledger === null && $containers === null) {
+                continue;
+            }
+
+            $salesAmount = bcadd((string) ($sales->amount ?? 0), '0', 2);
+            $ledgerAmount = bcadd((string) ($ledger->amount ?? 0), '0', 2);
+            $containerAmount = bcadd((string) ($containers->amount ?? 0), '0', 2);
+            $balance = bcsub(bcadd($salesAmount, $ledgerAmount, 2), $containerAmount, 2);
+            $total = bcadd($total, $balance, 2);
+            $nonZeroCount += bccomp($balance, '0.00', 2) === 0 ? 0 : 1;
+            $records[] = [
+                'access_migration_batch_id' => $batch->id,
+                'customer_id' => $targetCustomerId,
+                'status' => 'calculated',
+                'as_of_date' => $asOfDate,
+                'source_sales_count' => (int) ($sales->source_count ?? 0),
+                'source_ledger_entry_count' => (int) ($ledger->source_count ?? 0),
+                'source_container_entry_count' => (int) ($containers->source_count ?? 0),
+                'source_sales_amount' => $salesAmount,
+                'source_ledger_amount' => $ledgerAmount,
+                'source_container_amount' => $containerAmount,
+                'calculated_balance_amount' => $balance,
+                'statement_balance_amount' => null,
+                'adjustment_amount' => 0,
+                'opening_balance_amount' => $balance,
+                'calculated_at' => $now,
+                'reconciled_at' => null,
+                'reconciliation_note' => '移行開始日前のItaro出荷・符号付き入金台帳・空容器取引から算出。',
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+
+        if ($records !== []) {
+            DB::table('opening_receivable_balances')->upsert(
+                $records,
+                ['access_migration_batch_id', 'customer_id'],
+                array_diff(array_keys($records[0]), ['created_at', 'access_migration_batch_id', 'customer_id']),
+            );
+        }
+
+        return ['count' => count($records), 'non_zero_count' => $nonZeroCount, 'total' => $total];
+    }
+
+    private function containerBalancesByCustomer(AccessMigrationBatch $batch, string $asOfDate)
     {
-        $this->sourceQuery($batch, $deltaOnly)->chunkById(500, function ($rows) use ($batch): void {
+        return DB::table('access_migration_staging_rows as s')
+            ->join('access_migration_mappings as m', function ($join) use ($batch): void {
+                $join->where('m.batch_id', $batch->id)
+                    ->where('m.source_table', '取引先マスター')
+                    ->where('m.target_table', 'customers')
+                    ->whereColumn('m.source_key', DB::raw("s.payload->>'取引先ID'"));
+            })
+            ->where('s.batch_id', $batch->id)
+            ->where('s.source_table', '空容器伝票-取引先')
+            ->whereRaw("CAST(s.payload->>'年月日' AS date) <= ?", [$asOfDate])
+            ->groupBy('m.target_id')
+            ->selectRaw('CAST(m.target_id AS bigint) AS customer_id, COUNT(*) AS source_count')
+            ->selectRaw("COALESCE(SUM(COALESCE(NULLIF(s.payload->>'合計', ''), '0')::numeric), 0) AS amount")
+            ->get()
+            ->keyBy('customer_id');
+    }
+
+    private function recordMappings(AccessMigrationBatch $batch, bool $deltaOnly, ?string $cutoverDate): void
+    {
+        $this->sourceQuery($batch, $deltaOnly, $cutoverDate)->chunkById(500, function ($rows) use ($batch): void {
             $sourceKeys = $rows->pluck('source_key')->map(fn ($value) => (string) $value);
             $targets = DB::table('access_receivable_ledger_entries')
                 ->where('access_migration_batch_id', $batch->id)
@@ -254,15 +385,17 @@ class ImportAccessReceivables
                 ['target_table', 'target_id', 'action', 'source_payload_sha256', 'updated_at'],
             );
         });
-        $this->sourceQuery($batch, $deltaOnly)
+        $this->sourceQuery($batch, $deltaOnly, $cutoverDate)
             ->update(['status' => 'imported', 'target_table' => 'access_receivable_ledger_entries', 'updated_at' => now()]);
     }
 
-    private function sourceQuery(AccessMigrationBatch $batch, bool $deltaOnly = false)
+    private function sourceQuery(AccessMigrationBatch $batch, bool $deltaOnly = false, ?string $cutoverDate = null)
     {
         return DB::table('access_migration_staging_rows')
             ->where('batch_id', $batch->id)
             ->where('source_table', self::SOURCE_TABLE)
+            ->when($cutoverDate !== null, fn ($query) => $query
+                ->whereRaw("CAST(payload->>'年月日' AS date) >= ?", [$cutoverDate]))
             ->when($deltaOnly, fn ($query) => $query->whereExists(function ($delta) use ($batch): void {
                 $delta->selectRaw('1')
                     ->from('access_migration_deltas')

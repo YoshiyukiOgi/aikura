@@ -75,7 +75,6 @@ class ProductionLotTest extends TestCase
             'status' => 'confirmed',
             'movement_type' => 'production_receipt',
             'movement_date' => '2026-06-15',
-            'product_id' => $product->id,
             'stock_location_id' => $location->id,
             'unit_id' => $unit->id,
             'quantity' => '120.0000',

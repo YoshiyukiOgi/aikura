@@ -169,6 +169,59 @@ class NonSalesStockOperationApiTest extends TestCase
             ->assertJsonPath('data.non_sales_stock_operation.operation_type', 'repackaging');
     }
 
+    public function test_archived_lot_with_operational_start_stock_can_be_used_for_non_sales_operation(): void
+    {
+        [$user, $lot, $location] = $this->prepareData();
+        $lot->update(['is_active' => false, 'status' => 'archived']);
+        StockMovement::create([
+            'status' => 'confirmed',
+            'movement_type' => 'opening_stock',
+            'movement_date' => '2026-07-01',
+            'stock_location_id' => $location->id,
+            'unit_id' => $lot->unit_id,
+            'quantity' => '5.0000',
+            'production_lot_id' => $lot->id,
+            'lot_code' => $lot->lot_code,
+            'confirmed_at' => now(),
+        ]);
+
+        $this->actingAs($user)->postJson('/api/v1/non-sales-stock-operations', $this->payload($lot, $location, 'disposal', '2026-07-10', '-2'))
+            ->assertCreated()
+            ->assertJsonPath('data.non_sales_stock_operation.lines.0.production_lot_id', $lot->id);
+    }
+
+    public function test_index_can_filter_non_sales_operations_by_id_date_and_type(): void
+    {
+        [$user, $lot, $location] = $this->prepareData();
+
+        $first = $this->actingAs($user)->postJson('/api/v1/non-sales-stock-operations', $this->payload($lot, $location, 'disposal', '2026-07-10', '-2'))
+            ->assertCreated()
+            ->json('data.non_sales_stock_operation');
+        $second = $this->actingAs($user)->postJson('/api/v1/non-sales-stock-operations', $this->payload($lot, $location, 'breakage', '2026-07-11', '-1'))
+            ->assertCreated()
+            ->json('data.non_sales_stock_operation');
+
+        $this->actingAs($user)->getJson('/api/v1/non-sales-stock-operations?id='.$first['id'])
+            ->assertOk()
+            ->assertJsonCount(1, 'data.non_sales_stock_operations')
+            ->assertJsonPath('data.non_sales_stock_operations.0.id', $first['id']);
+
+        $this->actingAs($user)->getJson('/api/v1/non-sales-stock-operations?operation_date=2026-07-11')
+            ->assertOk()
+            ->assertJsonCount(1, 'data.non_sales_stock_operations')
+            ->assertJsonPath('data.non_sales_stock_operations.0.id', $second['id']);
+
+        $this->actingAs($user)->getJson('/api/v1/non-sales-stock-operations?operation_type=disposal')
+            ->assertOk()
+            ->assertJsonCount(1, 'data.non_sales_stock_operations')
+            ->assertJsonPath('data.non_sales_stock_operations.0.id', $first['id']);
+
+        $this->actingAs($user)->getJson('/api/v1/non-sales-stock-operations?id='.$second['operation_number'])
+            ->assertOk()
+            ->assertJsonCount(1, 'data.non_sales_stock_operations')
+            ->assertJsonPath('data.non_sales_stock_operations.0.id', $second['id']);
+    }
+
     /** @return array{0: User, 1: ProductionLot, 2: StockLocation} */
     private function prepareData(): array
     {

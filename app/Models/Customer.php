@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\SearchTextNormalizer;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -10,6 +11,27 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Customer extends Model
 {
     use HasFactory;
+
+    protected static function booted(): void
+    {
+        static::saving(function (Customer $customer): void {
+            if (blank($customer->search_key)) {
+                $customer->search_key = SearchTextNormalizer::searchKey(
+                    $customer->name,
+                    $customer->name_kana,
+                    $customer->short_name,
+                    $customer->billing_name,
+                    $customer->legacy_code,
+                    $customer->legacy_name,
+                    $customer->phone,
+                    $customer->address1,
+                    $customer->customer_code,
+                );
+            }
+
+            $customer->search_key_normalized = SearchTextNormalizer::normalize($customer->search_key);
+        });
+    }
 
     protected $fillable = [
         'customer_code',
@@ -32,6 +54,7 @@ class Customer extends Model
         'amount_rounding_method',
         'invoice_required',
         'search_key',
+        'search_key_normalized',
         'legacy_code',
         'legacy_name',
         'note',

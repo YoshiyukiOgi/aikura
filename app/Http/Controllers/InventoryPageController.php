@@ -7,17 +7,29 @@ use App\Models\ProductionLot;
 use App\Models\StockLocation;
 use App\Models\StockMovement;
 use App\Services\Authorization\AuthorizationService;
+use App\Services\Inventory\OperationalStartStockLotEligibilityService;
 use App\Services\Operations\OperationalPeriod;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class InventoryPageController extends Controller
 {
-    public function index(Request $request, AuthorizationService $auth): View
+    public function index(Request $request, AuthorizationService $auth, OperationalStartStockLotEligibilityService $lotEligibility): View
     {
         $user = $request->user();
         $locations = StockLocation::query()->where('is_active', true)->where('is_inventory_managed', true)->orderBy('sort_order')->orderBy('code')->get();
-        $lots = ProductionLot::query()->with(['stockLocation', 'unit'])->where('is_active', true)->orderByDesc('production_date')->orderBy('lot_code')->get();
+        $eligibleLotIds = $lotEligibility->eligibleLotIds();
+        $lots = ProductionLot::query()
+            ->with(['stockLocation', 'unit'])
+            ->where(function ($query) use ($eligibleLotIds): void {
+                $query->where('is_active', true);
+                if ($eligibleLotIds !== []) {
+                    $query->orWhereIn('id', $eligibleLotIds);
+                }
+            })
+            ->orderByDesc('production_date')
+            ->orderBy('lot_code')
+            ->get();
         $inventorySettings = AppSetting::values(['hide_zero_stock_lots' => '1']);
 
         return view('inventory.index', [
@@ -81,14 +93,15 @@ class InventoryPageController extends Controller
             'year' => ['nullable', 'integer', 'between:2000,2100'],
             'month' => ['nullable', 'integer', 'between:1,12'],
             'movement_type' => ['nullable', 'string', 'max:80'],
+            'q' => ['nullable', 'string', 'max:100'],
         ]);
         $year = (int) ($validated['year'] ?? now()->year);
         $month = (int) ($validated['month'] ?? now()->month);
         $movementType = $validated['movement_type'] ?? null;
+        $search = trim((string) ($validated['q'] ?? ''));
 
         $query = StockMovement::query()
             ->with(['stockLocation', 'unit', 'productionLot'])
-            ->whereDate('movement_date', '>=', $operationalPeriod->startDate())
             ->whereYear('movement_date', $year)
             ->whereMonth('movement_date', $month)
             ->orderBy('movement_date')
@@ -96,11 +109,22 @@ class InventoryPageController extends Controller
         if ($movementType) {
             $query->where('movement_type', $movementType);
         }
+        if ($search !== '') {
+            $query->where(function ($inner) use ($search): void {
+                $inner->where('source_document_number', 'like', '%'.$search.'%')
+                    ->orWhere('lot_code', 'like', '%'.$search.'%')
+                    ->orWhereHas('productionLot', function ($lotQuery) use ($search): void {
+                        $lotQuery->where('lot_code', 'like', '%'.$search.'%')
+                            ->orWhere('display_name', 'like', '%'.$search.'%');
+                    });
+            });
+        }
 
         return view('inventory.movement-print', [
             'year' => $year,
             'month' => $month,
             'movementType' => $movementType,
+            'search' => $search,
             'movements' => $query->get(),
         ]);
     }

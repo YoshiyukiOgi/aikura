@@ -4,6 +4,7 @@ namespace App\Services\Operations;
 
 use App\Models\AppSetting;
 use Carbon\CarbonImmutable;
+use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Schema;
 
@@ -49,5 +50,17 @@ class OperationalPeriod
     public function applyVisiblePeriod(Builder $query, string $column): Builder
     {
         return $query->whereDate($column, '>=', $this->startDate());
+    }
+
+    public function applyVisiblePeriodOrImportedHistory(
+        Builder $query,
+        string $column,
+        Closure $importedHistory,
+    ): Builder {
+        return $query->where(function (Builder $visible) use ($column, $importedHistory): void {
+            $visible
+                ->whereDate($column, '>=', $this->startDate())
+                ->orWhere($importedHistory);
+        });
     }
 }

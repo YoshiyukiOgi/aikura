@@ -10,26 +10,26 @@ class OperationJobException extends DomainException
     {
         $target = trim(($targetType ?? 'none').' '.($targetId ?? 'none'));
 
-        return new self("Operation job [{$jobType}] for [{$target}] is already running.");
+        return new self("処理ジョブ [{$jobType}] は対象 [{$target}] で既に実行中です。");
     }
 
     public static function retryRequiresFailedJob(int $operationJobId, string $status): self
     {
-        return new self("Operation job [{$operationJobId}] cannot be retried from status [{$status}].");
+        return new self("処理ジョブ [{$operationJobId}] は現在の状態 {$status} から再実行できません。");
     }
 
     public static function unsupportedReportType(string $reportType): self
     {
-        return new self("Unsupported report generation job type [{$reportType}].");
+        return new self("未対応の帳票生成ジョブ種別です: {$reportType}");
     }
 
     public static function unsupportedAggregationType(string $aggregationType): self
     {
-        return new self("Unsupported monthly aggregation job type [{$aggregationType}].");
+        return new self("未対応の月次集計ジョブ種別です: {$aggregationType}");
     }
 
     public static function unsupportedClosingType(string $closingType): self
     {
-        return new self("Unsupported monthly closing job type [{$closingType}].");
+        return new self("未対応の月次締めジョブ種別です: {$closingType}");
     }
 }

@@ -171,7 +171,7 @@ class InventoryApiTest extends TestCase
             'transaction_category_id' => $customer->transaction_category_id,
             'settlement_receivable_category_id' => $customer->settlement_receivable_category_id,
             'billing_cycle_id' => $customer->billing_cycle_id,
-            'document_date' => '2026-06-20',
+            'document_date' => '2026-07-20',
         ]);
 
         $shipmentLine = ShipmentLine::create([
@@ -209,7 +209,7 @@ class InventoryApiTest extends TestCase
         StockMovement::create([
             'status' => 'confirmed',
             'movement_type' => 'inventory_adjustment',
-            'movement_date' => '2026-06-10',
+            'movement_date' => '2026-07-10',
             'stock_location_id' => $location->id,
             'unit_id' => $unit->id,
             'quantity' => $quantity,

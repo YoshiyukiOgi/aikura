@@ -70,15 +70,15 @@ class InvoiceBaseTest extends TestCase
     {
         [$customer, $product, $unit] = $this->prepareBaseData();
 
-        $confirmed = $this->createConfirmedShipment($customer, $product, $unit, '2026-05-10');
-        $draft = $this->createDraftShipment($customer, $product, $unit, '2026-05-11');
+        $confirmed = $this->createConfirmedShipment($customer, $product, $unit, '2026-07-10');
+        $draft = $this->createDraftShipment($customer, $product, $unit, '2026-07-11');
         $cancelled = app(CancelShipmentService::class)->cancel(
-            $this->createConfirmedShipment($customer, $product, $unit, '2026-05-12'),
+            $this->createConfirmedShipment($customer, $product, $unit, '2026-07-12'),
             '請求対象外確認',
         );
 
         $billableIds = app(BillableShipmentQuery::class)
-            ->query(customerId: $customer->id, billingTargetFrom: '2026-05-01', billingTargetTo: '2026-05-31')
+            ->query(customerId: $customer->id, billingTargetFrom: '2026-07-01', billingTargetTo: '2026-07-31')
             ->pluck('id')
             ->all();
 
@@ -90,14 +90,14 @@ class InvoiceBaseTest extends TestCase
     public function test_billable_query_excludes_already_invoiced_shipment(): void
     {
         [$customer, $product, $unit] = $this->prepareBaseData();
-        $shipment = $this->createConfirmedShipment($customer, $product, $unit, '2026-05-10');
+        $shipment = $this->createConfirmedShipment($customer, $product, $unit, '2026-07-10');
         $shipmentLine = $shipment->lines->first();
 
         $invoice = InvoiceHeader::create([
             'status' => 'draft',
             'customer_id' => $customer->id,
             'billing_cycle_id' => $customer->billing_cycle_id,
-            'invoice_date' => '2026-05-31',
+            'invoice_date' => '2026-07-31',
         ]);
 
         InvoiceLine::create([
@@ -128,9 +128,9 @@ class InvoiceBaseTest extends TestCase
             'status' => 'draft',
             'customer_id' => $customer->id,
             'billing_cycle_id' => $customer->billing_cycle_id,
-            'invoice_date' => '2026-05-31',
-            'billing_period_start' => '2026-05-01',
-            'billing_period_end' => '2026-05-31',
+            'invoice_date' => '2026-07-31',
+            'billing_period_start' => '2026-07-01',
+            'billing_period_end' => '2026-07-31',
         ]);
 
         $this->assertSame($customer->id, $invoice->customer->id);

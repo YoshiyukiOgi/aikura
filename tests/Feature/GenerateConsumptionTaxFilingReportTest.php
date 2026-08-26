@@ -62,7 +62,7 @@ class GenerateConsumptionTaxFilingReportTest extends TestCase
         $this->assertFileExists($absolutePath);
         $this->assertSame(hash('sha256', $content), $export->checksum_sha256);
         $this->assertStringContainsString('Consumption Tax Monthly Filing Report', $content);
-        $this->assertStringContainsString('Period: 2026-06-01 - 2026-06-30', $content);
+        $this->assertStringContainsString('Period: 2026-07-01 - 2026-07-31', $content);
         $this->assertStringContainsString('Total Confirmed Tax Amount: 450.00', $content);
         $this->assertStringContainsString('taxable_standard', $content);
 
@@ -138,8 +138,8 @@ class GenerateConsumptionTaxFilingReportTest extends TestCase
 
         $shipment = app(CreateDraftShipmentService::class)->create(new CreateDraftShipmentData(
             customerId: $customer->id,
-            documentDate: '2026-06-01',
-            billingTargetDate: '2026-06-01',
+            documentDate: '2026-07-01',
+            billingTargetDate: '2026-07-01',
             lines: [
                 new CreateDraftShipmentLineData($product->id, '3.0000', $unit->id),
             ],
@@ -149,12 +149,12 @@ class GenerateConsumptionTaxFilingReportTest extends TestCase
 
         $invoice = app(CreateInvoiceDraftService::class)->create(new CreateInvoiceDraftData(
             customerId: $customer->id,
-            invoiceDate: '2026-06-01',
+            invoiceDate: '2026-07-31',
             shipmentHeaderIds: [$shipment->id],
         ));
         app(ConfirmInvoiceService::class)->confirm($invoice);
 
-        return app(CreateConsumptionTaxMonthlyFilingDraftService::class)->create(2026, 6);
+        return app(CreateConsumptionTaxMonthlyFilingDraftService::class)->create(2026, 7);
     }
 
     /**

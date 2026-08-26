@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Product;
+use App\Models\ProductionLot;
 use App\Models\StockLocation;
 use App\Models\StockMovement;
 use App\Models\Unit;
@@ -18,12 +19,12 @@ class CurrentStockBalanceTest extends TestCase
 
     public function test_it_calculates_current_stock_from_confirmed_movements(): void
     {
-        [$product, $unit, $location] = $this->prepareMasterData();
+        [$product, $unit, $location, $lot] = $this->prepareMasterData();
 
-        $this->createMovement($product, $unit, $location, 'confirmed', '10.0000');
-        $this->createMovement($product, $unit, $location, 'confirmed', '-3.0000');
-        $this->createMovement($product, $unit, $location, 'draft', '99.0000');
-        $this->createMovement($product, $unit, $location, 'cancelled', '50.0000', now());
+        $this->createMovement($lot, $location, 'confirmed', '10.0000', '2026-07-23');
+        $this->createMovement($lot, $location, 'confirmed', '-3.0000', '2026-07-24');
+        $this->createMovement($lot, $location, 'draft', '99.0000', '2026-07-25');
+        $this->createMovement($lot, $location, 'cancelled', '50.0000', '2026-07-26', now());
 
         $balance = app(CurrentStockBalanceService::class)
             ->forProductLocationUnit($product->id, $location->id, $unit->id);
@@ -36,9 +37,9 @@ class CurrentStockBalanceTest extends TestCase
 
     public function test_closed_movements_are_included_in_current_stock(): void
     {
-        [$product, $unit, $location] = $this->prepareMasterData();
+        [$product, $unit, $location, $lot] = $this->prepareMasterData();
 
-        $this->createMovement($product, $unit, $location, 'closed', '4.0000');
+        $this->createMovement($lot, $location, 'closed', '4.0000', '2026-07-23');
 
         $balance = app(CurrentStockBalanceService::class)
             ->forProductLocationUnit($product->id, $location->id, $unit->id);
@@ -48,11 +49,19 @@ class CurrentStockBalanceTest extends TestCase
 
     public function test_it_lists_balances_by_product_location_and_unit(): void
     {
-        [$product, $unit, $location] = $this->prepareMasterData();
+        [$product, $unit, $location, $lot] = $this->prepareMasterData();
         $secondLocation = StockLocation::where('code', 'cold_storage')->firstOrFail();
+        $secondLot = ProductionLot::create([
+            'lot_code' => 'BALANCE-LOT-002',
+            'display_name' => 'Balance Lot 002',
+            'status' => 'active',
+            'stock_location_id' => $secondLocation->id,
+            'unit_id' => $unit->id,
+            'is_active' => true,
+        ]);
 
-        $this->createMovement($product, $unit, $location, 'confirmed', '10.0000');
-        $this->createMovement($product, $unit, $secondLocation, 'confirmed', '2.5000');
+        $this->createMovement($lot, $location, 'confirmed', '10.0000', '2026-07-23');
+        $this->createMovement($secondLot, $secondLocation, 'confirmed', '2.5000', '2026-07-23');
 
         $balances = app(CurrentStockBalanceService::class)->all();
 
@@ -62,7 +71,7 @@ class CurrentStockBalanceTest extends TestCase
     }
 
     /**
-     * @return array{0: Product, 1: Unit, 2: StockLocation}
+     * @return array{0: Product, 1: Unit, 2: StockLocation, 3: ProductionLot}
      */
     private function prepareMasterData(): array
     {
@@ -85,24 +94,34 @@ class CurrentStockBalanceTest extends TestCase
             'is_inventory_managed' => true,
         ]);
 
-        return [$product, $unit, $location];
+        $lot = ProductionLot::create([
+            'lot_code' => 'BALANCE-LOT-001',
+            'display_name' => 'Balance Lot 001',
+            'status' => 'active',
+            'stock_location_id' => $location->id,
+            'unit_id' => $unit->id,
+            'is_active' => true,
+        ]);
+
+        return [$product, $unit, $location, $lot];
     }
 
     private function createMovement(
-        Product $product,
-        Unit $unit,
+        ProductionLot $lot,
         StockLocation $location,
         string $status,
         string $quantity,
+        string $movementDate,
         mixed $cancelledAt = null,
     ): StockMovement {
         return StockMovement::create([
             'status' => $status,
             'movement_type' => 'inventory_adjustment',
-            'movement_date' => '2026-05-23',
-            'product_id' => $product->id,
+            'movement_date' => $movementDate,
+            'production_lot_id' => $lot->id,
+            'lot_code' => $lot->lot_code,
             'stock_location_id' => $location->id,
-            'unit_id' => $unit->id,
+            'unit_id' => $lot->unit_id,
             'quantity' => $quantity,
             'cancelled_at' => $cancelledAt,
             'confirmed_at' => $status === 'confirmed' ? now() : null,

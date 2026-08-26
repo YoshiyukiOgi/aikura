@@ -15,7 +15,11 @@ class InjectSidebar
         $response = $next($request);
         $user = $request->user();
 
-        if ($request->routeIs('shipment-instructions.work-slip', 'shipments.print', 'billing.invoices.print', 'billing.invoices.print-batch', 'inventory.lot-stock-as-of.print', 'inventory.movements.print')) {
+        if ($request->routeIs('retail.*', 'shipment-instructions.work-slip', 'shipments.print', 'billing.invoices.print', 'billing.invoices.print-batch', 'inventory.lot-stock-as-of.print', 'inventory.movements.print')) {
+            return $response;
+        }
+
+        if ($request->is('concept/retail*')) {
             return $response;
         }
 

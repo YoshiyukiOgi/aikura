@@ -39,11 +39,11 @@ class ConfirmConsumptionTaxMonthlyFilingTest extends TestCase
     {
         [$customer, $product, $unit] = $this->prepareBaseData();
 
-        $this->createConfirmedInvoice($customer, $product, $unit, '2026-06-01', '2026-06-01', '3.0000');
-        app(CreateConsumptionTaxMonthlyFilingDraftService::class)->create(2026, 6);
+        $this->createConfirmedInvoice($customer, $product, $unit, '2026-07-01', '2026-07-01', '3.0000');
+        app(CreateConsumptionTaxMonthlyFilingDraftService::class)->create(2026, 7);
 
         $filing = app(ConfirmConsumptionTaxMonthlyFilingService::class)
-            ->confirm(2026, 6, 'monthly consumption tax filing confirmation');
+            ->confirm(2026, 7, 'monthly consumption tax filing confirmation');
 
         $this->assertSame('confirmed', $filing->status);
         $this->assertSame('450.00', $filing->total_tax_amount);
@@ -68,43 +68,43 @@ class ConfirmConsumptionTaxMonthlyFilingTest extends TestCase
         $this->expectException(ConsumptionTaxMonthlyFilingConfirmationException::class);
 
         app(ConfirmConsumptionTaxMonthlyFilingService::class)
-            ->confirm(2026, 6, 'monthly consumption tax filing confirmation');
+            ->confirm(2026, 7, 'monthly consumption tax filing confirmation');
     }
 
     public function test_it_rejects_empty_reason(): void
     {
         [$customer, $product, $unit] = $this->prepareBaseData();
 
-        $this->createConfirmedInvoice($customer, $product, $unit, '2026-06-01', '2026-06-01', '3.0000');
-        app(CreateConsumptionTaxMonthlyFilingDraftService::class)->create(2026, 6);
+        $this->createConfirmedInvoice($customer, $product, $unit, '2026-07-01', '2026-07-01', '3.0000');
+        app(CreateConsumptionTaxMonthlyFilingDraftService::class)->create(2026, 7);
 
         $this->expectException(ConsumptionTaxMonthlyFilingConfirmationException::class);
 
-        app(ConfirmConsumptionTaxMonthlyFilingService::class)->confirm(2026, 6, ' ');
+        app(ConfirmConsumptionTaxMonthlyFilingService::class)->confirm(2026, 7, ' ');
     }
 
     public function test_it_rejects_already_confirmed_filing(): void
     {
         [$customer, $product, $unit] = $this->prepareBaseData();
 
-        $this->createConfirmedInvoice($customer, $product, $unit, '2026-06-01', '2026-06-01', '3.0000');
-        app(CreateConsumptionTaxMonthlyFilingDraftService::class)->create(2026, 6);
-        app(ConfirmConsumptionTaxMonthlyFilingService::class)->confirm(2026, 6, 'first confirmation');
+        $this->createConfirmedInvoice($customer, $product, $unit, '2026-07-01', '2026-07-01', '3.0000');
+        app(CreateConsumptionTaxMonthlyFilingDraftService::class)->create(2026, 7);
+        app(ConfirmConsumptionTaxMonthlyFilingService::class)->confirm(2026, 7, 'first confirmation');
 
         $this->expectException(ConsumptionTaxMonthlyFilingConfirmationException::class);
 
-        app(ConfirmConsumptionTaxMonthlyFilingService::class)->confirm(2026, 6, 'second confirmation');
+        app(ConfirmConsumptionTaxMonthlyFilingService::class)->confirm(2026, 7, 'second confirmation');
     }
 
     public function test_it_rejects_invoice_confirmation_in_confirmed_consumption_tax_period(): void
     {
         [$customer, $product, $unit] = $this->prepareBaseData();
 
-        $this->createConfirmedInvoice($customer, $product, $unit, '2026-06-01', '2026-06-01', '3.0000');
-        app(CreateConsumptionTaxMonthlyFilingDraftService::class)->create(2026, 6);
-        app(ConfirmConsumptionTaxMonthlyFilingService::class)->confirm(2026, 6, 'monthly consumption tax close');
+        $this->createConfirmedInvoice($customer, $product, $unit, '2026-07-01', '2026-07-01', '3.0000');
+        app(CreateConsumptionTaxMonthlyFilingDraftService::class)->create(2026, 7);
+        app(ConfirmConsumptionTaxMonthlyFilingService::class)->confirm(2026, 7, 'monthly consumption tax close');
 
-        $invoice = $this->createDraftInvoice($customer, $product, $unit, '2026-06-20', '2026-06-20', '1.0000');
+        $invoice = $this->createDraftInvoice($customer, $product, $unit, '2026-07-20', '2026-07-20', '1.0000');
 
         $this->expectException(ClosedConsumptionTaxFilingPeriodException::class);
 
@@ -115,9 +115,9 @@ class ConfirmConsumptionTaxMonthlyFilingTest extends TestCase
     {
         [$customer, $product, $unit] = $this->prepareBaseData();
 
-        $invoice = $this->createConfirmedInvoice($customer, $product, $unit, '2026-06-01', '2026-06-01', '3.0000');
-        app(CreateConsumptionTaxMonthlyFilingDraftService::class)->create(2026, 6);
-        app(ConfirmConsumptionTaxMonthlyFilingService::class)->confirm(2026, 6, 'monthly consumption tax close');
+        $invoice = $this->createConfirmedInvoice($customer, $product, $unit, '2026-07-01', '2026-07-01', '3.0000');
+        app(CreateConsumptionTaxMonthlyFilingDraftService::class)->create(2026, 7);
+        app(ConfirmConsumptionTaxMonthlyFilingService::class)->confirm(2026, 7, 'monthly consumption tax close');
 
         $this->expectException(ClosedConsumptionTaxFilingPeriodException::class);
 

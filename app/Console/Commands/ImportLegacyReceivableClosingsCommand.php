@@ -2,10 +2,12 @@
 
 namespace App\Console\Commands;
 
+use App\Models\AccessMigrationBatch;
 use App\Services\Billing\ImportLegacyReceivableClosings;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use RuntimeException;
 use Throwable;
 
 class ImportLegacyReceivableClosingsCommand extends Command
@@ -17,6 +19,7 @@ class ImportLegacyReceivableClosingsCommand extends Command
         {--month=5 : Statement month}
         {--through=2026-06 : Last month to project from Access history}
         {--expected-total= : Expected paper statement total}
+        {--carry-forward-opening-date= : Copy the final closed month to a reconciled opening balance on this date}
         {--statement-complete : Confirm that all receivable statement categories are included}
         {--apply : Persist closed monthly balances}';
 
@@ -54,6 +57,21 @@ class ImportLegacyReceivableClosingsCommand extends Command
                     apply: true,
                 );
                 $cursor = $cursor->addMonth();
+            }
+
+            $carryForward = null;
+            if ($this->option('carry-forward-opening-date')) {
+                if (! $apply) {
+                    throw new RuntimeException('--carry-forward-opening-date を使うには --apply が必要です。');
+                }
+                $finalSummary = $summaries[array_key_last($summaries)];
+                $carryForward = $importer->carryForwardOpening(
+                    batch: AccessMigrationBatch::query()->findOrFail((int) $this->argument('batch')),
+                    year: $through->year,
+                    month: $through->month,
+                    asOfDate: (string) $this->option('carry-forward-opening-date'),
+                    expectedTotal: $finalSummary['total'],
+                );
             }
 
             if ($apply) {
@@ -102,6 +120,14 @@ class ImportLegacyReceivableClosingsCommand extends Command
                     $row['outstanding'],
                 ])->all(),
             );
+        }
+        if ($carryForward !== null) {
+            $this->info(sprintf(
+                '開始残高へ繰越しました: %s / %d件 / %s円',
+                $carryForward['as_of_date'],
+                $carryForward['row_count'],
+                $carryForward['total'],
+            ));
         }
 
         return self::SUCCESS;

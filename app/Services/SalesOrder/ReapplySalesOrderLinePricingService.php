@@ -16,8 +16,7 @@ class ReapplySalesOrderLinePricingService
     public function __construct(
         private readonly ResolvePriceService $resolvePriceService,
         private readonly AuditLogService $auditLogService,
-    ) {
-    }
+    ) {}
 
     public function reapply(SalesOrder $salesOrder, SalesOrderLine $line, ?string $reason = null): SalesOrder
     {
@@ -25,6 +24,10 @@ class ReapplySalesOrderLinePricingService
             $salesOrder = SalesOrder::query()->with('customer')->lockForUpdate()->findOrFail($salesOrder->id);
             if ($salesOrder->status !== 'received') {
                 throw SalesOrderException::notPriceEditable($salesOrder->id, $salesOrder->status);
+            }
+
+            if ($salesOrder->isRetailManaged()) {
+                throw SalesOrderException::retailManagedOrderCannotBeChanged($salesOrder->id);
             }
 
             $line = SalesOrderLine::query()->with(['product', 'unit'])->lockForUpdate()->findOrFail($line->id);
@@ -42,14 +45,7 @@ class ReapplySalesOrderLinePricingService
 
             $this->disableCustomerSpecificPriceRules($salesOrder, $line, $reason);
 
-            $line->update([
-                'unit_price' => $resolved->unitPrice,
-                'price_list_id' => $resolved->priceListId,
-                'price_rule_id' => $resolved->priceRuleId,
-                'price_source' => $resolved->source,
-                'price_reason' => $resolved->reason,
-                'priced_at' => now(),
-            ]);
+            $line->update($resolved->salesOrderLineAttributes());
 
             $this->auditLogService->record(new AuditLogData(
                 event: 'sales_order_line.price_reapplied',

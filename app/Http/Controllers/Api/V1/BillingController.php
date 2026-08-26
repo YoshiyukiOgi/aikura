@@ -316,8 +316,13 @@ class BillingController extends ApiController
         ]);
 
         $query = Payment::query()
-            ->with(['customer', 'allocations.invoiceHeader'])
-            ->whereDate('payment_date', '>=', $operationalPeriod->startDate())
+            ->with(['customer', 'allocations.invoiceHeader']);
+        $operationalPeriod->applyVisiblePeriodOrImportedHistory(
+            $query,
+            'payment_date',
+            fn ($imported) => $imported->where('is_legacy_history', true),
+        );
+        $query
             ->when($validated['customer'] ?? null, function ($query, string $customer): void {
                 $query->whereHas('customer', fn ($customerQuery) => $customerQuery->where('name', 'like', "%{$customer}%"));
             })

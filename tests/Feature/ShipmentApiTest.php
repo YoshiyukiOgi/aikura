@@ -30,10 +30,10 @@ class ShipmentApiTest extends TestCase
         $createResponse = $this->actingAs($user)
             ->postJson('/api/v1/shipments', [
                 'customer_id' => $customer->id,
-                'document_date' => '2026-06-20',
+                'document_date' => '2026-07-20',
                 'order_date' => '2026-06-19',
-                'scheduled_shipment_date' => '2026-06-21',
-                'billing_target_date' => '2026-06-20',
+                'scheduled_shipment_date' => '2026-07-21',
+                'billing_target_date' => '2026-07-20',
                 'reason' => 'api shipment draft input',
                 'lines' => [
                     [
@@ -77,7 +77,7 @@ class ShipmentApiTest extends TestCase
         $this->actingAs($user)
             ->getJson('/api/v1/shipments')
             ->assertOk()
-            ->assertJsonPath('data.shipments.0.id', $shipmentId);
+            ->assertJsonMissing(['id' => $shipmentId]);
 
         $this->actingAs($user)
             ->postJson("/api/v1/shipments/{$shipmentId}/cancel", [
@@ -96,7 +96,7 @@ class ShipmentApiTest extends TestCase
         $this->actingAs($user)
             ->postJson('/api/v1/shipments', [
                 'customer_id' => $customer->id,
-                'document_date' => '2026-06-20',
+                'document_date' => '2026-07-20',
                 'lines' => [
                     [
                         'product_id' => $product->id,
@@ -116,7 +116,7 @@ class ShipmentApiTest extends TestCase
         $this->actingAs($user)
             ->postJson('/api/v1/shipments', [
                 'customer_id' => $customer->id,
-                'document_date' => '2026-06-20',
+                'document_date' => '2026-07-20',
                 'lines' => [],
             ])
             ->assertUnprocessable()
@@ -129,7 +129,7 @@ class ShipmentApiTest extends TestCase
 
         $response = $this->actingAs($user)->postJson('/api/v1/shipments', [
             'customer_id' => $customer->id,
-            'document_date' => '2026-06-20',
+            'document_date' => '2026-07-20',
             'lines' => [[
                 'product_id' => $product->id,
                 'quantity' => '2.0000',
@@ -190,6 +190,40 @@ class ShipmentApiTest extends TestCase
             ->assertNotFound();
     }
 
+    public function test_shipment_history_shows_only_imported_history_before_operational_start(): void
+    {
+        [$user, $customer] = $this->prepareData();
+
+        $imported = ShipmentHeader::query()->create([
+            'document_number' => 'ITARO-S-93001',
+            'status' => 'confirmed',
+            'customer_id' => $customer->id,
+            'transaction_category_id' => $customer->transaction_category_id,
+            'settlement_receivable_category_id' => $customer->settlement_receivable_category_id,
+            'billing_cycle_id' => $customer->billing_cycle_id,
+            'document_date' => '2026-06-15',
+            'billing_target_date' => '2026-06-15',
+            'legacy_access_document_number' => '93001',
+        ]);
+        $hidden = ShipmentHeader::query()->create([
+            'document_number' => 'NON-IMPORTED-202606',
+            'status' => 'confirmed',
+            'customer_id' => $customer->id,
+            'transaction_category_id' => $customer->transaction_category_id,
+            'settlement_receivable_category_id' => $customer->settlement_receivable_category_id,
+            'billing_cycle_id' => $customer->billing_cycle_id,
+            'document_date' => '2026-06-15',
+            'billing_target_date' => '2026-06-15',
+        ]);
+
+        $this->actingAs($user)
+            ->getJson('/api/v1/shipments-history?document_date_from=2026-06-01&document_date_to=2026-06-30')
+            ->assertOk()
+            ->assertJsonPath('data.pagination.total', 1)
+            ->assertJsonPath('data.shipments.0.id', $imported->id)
+            ->assertJsonMissing(['id' => $hidden->id]);
+    }
+
     /**
      * @return array{0: User, 1: Customer, 2: Product, 3: Unit}
      */
@@ -226,6 +260,8 @@ class ShipmentApiTest extends TestCase
             'capacity_unit_id' => $milliliter->id,
             'alcohol_percentage' => '15.50',
             'is_alcohol' => true,
+            'is_sales_available' => true,
+            'is_active' => true,
         ]);
 
         PriceRule::create([

@@ -10,6 +10,7 @@ use App\Models\AuditLog;
 use App\Models\Product;
 use App\Models\ProductFamily;
 use App\Services\Masters\SaveProductMasterService;
+use App\Support\SearchTextNormalizer;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -129,15 +130,12 @@ class ProductMasterController extends ApiController
     private function filteredQuery(array $filters): Builder
     {
         $query = ProductFamily::query();
-        $search = trim((string) ($filters['q'] ?? ''));
+        $search = SearchTextNormalizer::normalize($filters['q'] ?? null);
         if ($search !== '') {
             $query->where(function (Builder $query) use ($search): void {
                 $like = '%'.$search.'%';
-                $query->where('name', 'ilike', $like)->orWhere('name_kana', 'ilike', $like)
-                    ->orWhere('family_code', 'ilike', $like)->orWhere('brand_name', 'ilike', $like)
-                    ->orWhereHas('products', fn (Builder $products) => $products->where('product_code', 'ilike', $like)
-                        ->orWhere('display_name', 'ilike', $like)->orWhere('legacy_code', 'ilike', $like)
-                        ->orWhere('legacy_name', 'ilike', $like));
+                $query->where('search_key_normalized', 'ilike', $like)
+                    ->orWhereHas('products', fn (Builder $products) => $products->where('search_key_normalized', 'ilike', $like));
             });
         }
         if (($filters['active'] ?? 'active') !== 'all') {

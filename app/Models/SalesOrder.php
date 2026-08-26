@@ -76,4 +76,15 @@ class SalesOrder extends Model
     {
         return $this->hasMany(ShipmentInstructionLine::class);
     }
+
+    public function isRetailManaged(): bool
+    {
+        return in_array($this->source_type, [
+            'retail_sale',
+            'retail_sale_correction',
+            'retail_sale_credit_note',
+            'retail_purchase_order',
+            'retail_purchase_order_cancellation',
+        ], true);
+    }
 }

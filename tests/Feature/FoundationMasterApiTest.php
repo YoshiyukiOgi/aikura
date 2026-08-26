@@ -5,7 +5,9 @@ namespace Tests\Feature;
 use App\Models\AuditLog;
 use App\Models\ConsumptionTaxCategory;
 use App\Models\Permission;
+use App\Models\ProductionLot;
 use App\Models\Role;
+use App\Models\StockLocation;
 use App\Models\Unit;
 use App\Models\User;
 use Database\Seeders\FoundationPermissionSeeder;
@@ -16,14 +18,14 @@ class FoundationMasterApiTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_admin_can_open_basic_master_screen_and_manage_units(): void
+    public function test_admin_can_open_master_screen_and_manage_units(): void
     {
         $this->actingAsAdmin();
 
         $this->get('/masters/foundation/units')
             ->assertOk()
             ->assertSee('単位マスタ')
-            ->assertSee('基本マスタ');
+            ->assertSee('マスタ');
 
         $created = $this->postJson('/api/v1/masters/foundation/units', [
             'code' => 'test-bottle',
@@ -117,6 +119,80 @@ class FoundationMasterApiTest extends TestCase
             'change_reason' => '権限整理',
         ])->assertOk()
             ->assertJsonPath('data.record.permissions_count', 0);
+    }
+
+    public function test_admin_can_manage_lots_in_master(): void
+    {
+        $this->actingAsAdmin();
+
+        $location = StockLocation::query()->create([
+            'code' => 'lot-master-main',
+            'name' => 'ロット倉庫',
+            'location_type' => 'warehouse',
+            'is_inventory_managed' => true,
+            'is_active' => true,
+        ]);
+        $unit = Unit::query()->create([
+            'code' => 'lot-master-bottle',
+            'name' => 'ロット本',
+            'symbol' => '本',
+            'unit_type' => 'count',
+            'decimal_scale' => 0,
+            'is_active' => true,
+        ]);
+        $capacityUnit = Unit::query()->create([
+            'code' => 'lot-master-ml',
+            'name' => 'ミリリットル',
+            'symbol' => 'ml',
+            'unit_type' => 'volume',
+            'decimal_scale' => 0,
+            'is_active' => true,
+        ]);
+
+        $this->get('/masters/foundation/lots')
+            ->assertOk()
+            ->assertSee('ロットマスタ')
+            ->assertSee('マスタ');
+
+        $created = $this->postJson('/api/v1/masters/foundation/lots', [
+            'lot_code' => 'LOT-MASTER-001',
+            'display_name' => 'ロットマスタ登録',
+            'stock_location_id' => $location->id,
+            'unit_id' => $unit->id,
+            'capacity_value' => 720,
+            'capacity_unit_id' => $capacityUnit->id,
+            'alcohol_percentage' => 15.5,
+            'analysis_status' => 'confirmed',
+            'production_date' => '2026-08-01',
+            'is_active' => true,
+        ])->assertCreated()
+            ->assertJsonPath('data.record.lot_code', 'LOT-MASTER-001');
+
+        $lotId = $created->json('data.record.id');
+
+        $this->putJson("/api/v1/masters/foundation/lots/{$lotId}", [
+            'lot_code' => 'LOT-MASTER-001',
+            'display_name' => 'ロットマスタ更新',
+            'stock_location_id' => $location->id,
+            'unit_id' => $unit->id,
+            'capacity_value' => 1800,
+            'capacity_unit_id' => $capacityUnit->id,
+            'alcohol_percentage' => 16.0,
+            'analysis_status' => 'provisional',
+            'production_date' => '2026-08-02',
+            'is_active' => true,
+            'change_reason' => 'ロット情報の補正',
+        ])->assertOk()
+            ->assertJsonPath('data.record.display_name', 'ロットマスタ更新')
+            ->assertJsonPath('data.record.capacity_value', '1800.0000');
+
+        $this->assertDatabaseHas('production_lots', [
+            'id' => $lotId,
+            'lot_code' => 'LOT-MASTER-001',
+            'display_name' => 'ロットマスタ更新',
+        ]);
+        $this->assertSame(2, AuditLog::query()->where('target_table', 'production_lots')->where('target_id', (string) $lotId)->count());
+        $this->assertSame('ロットマスタ更新', ProductionLot::query()->findOrFail($lotId)->display_name);
     }
 
     public function test_user_without_master_permission_is_forbidden(): void

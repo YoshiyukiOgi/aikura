@@ -10,6 +10,7 @@ class ProductLotCandidateSummaryService
     public function __construct(
         private readonly LotStockBalanceService $lotBalances,
         private readonly EvaluateLotProductCompatibilityService $compatibility,
+        private readonly OperationalStartStockLotEligibilityService $lotEligibility,
     ) {}
 
     /** @return array{normal:string,approval_required:string,total:string,lot_count:int} */
@@ -18,7 +19,18 @@ class ProductLotCandidateSummaryService
         $normal = '0.0000';
         $conditional = '0.0000';
         $count = 0;
-        $lots = ProductionLot::query()->where('is_active', true)->where('status', 'active')->get()->keyBy('id');
+        $eligibleLotIds = $this->lotEligibility->eligibleLotIds();
+        $lots = ProductionLot::query()
+            ->where(function ($query) use ($eligibleLotIds): void {
+                $query->where(function ($query): void {
+                    $query->where('is_active', true)->where('status', 'active');
+                });
+                if ($eligibleLotIds !== []) {
+                    $query->orWhereIn('id', $eligibleLotIds);
+                }
+            })
+            ->get()
+            ->keyBy('id');
 
         foreach ($this->lotBalances->all() as $balance) {
             if (($locationId !== null && $balance->stockLocationId !== $locationId)

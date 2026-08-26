@@ -6,6 +6,7 @@ use App\Models\Product;
 use App\Models\ProductFamily;
 use App\Models\Unit;
 use App\Services\Audit\AuditLogService;
+use App\Support\SearchTextNormalizer;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -157,7 +158,14 @@ class SaveProductMasterService
         }
         $attributes['is_alcohol'] = $attributes['product_type'] === 'sake';
         $attributes['disabled_at'] = $attributes['is_active'] ? null : now();
-        $attributes['search_key'] = implode(' ', array_filter([$attributes['name'], $attributes['name_kana'], $attributes['brand_name'], $attributes['category_name'], $attributes['liquor_type_name']]));
+        $attributes['search_key'] = SearchTextNormalizer::searchKey(
+            $attributes['name'] ?? null,
+            $attributes['name_kana'] ?? null,
+            $attributes['brand_name'] ?? null,
+            $attributes['category_name'] ?? null,
+            $attributes['liquor_type_name'] ?? null,
+            $attributes['product_code'] ?? null,
+        );
 
         return $attributes;
     }
@@ -210,7 +218,16 @@ class SaveProductMasterService
 
     private function productSearchKey(ProductFamily $family, Product $product): string
     {
-        return implode(' ', array_filter([$family->search_key, $product->product_code, $product->display_name, $product->legacy_code, $product->legacy_name, $product->variant_label]));
+        return SearchTextNormalizer::searchKey(
+            $family->search_key,
+            $product->display_name,
+            $product->series_name,
+            $product->style_name,
+            $product->legacy_code,
+            $product->legacy_name,
+            $product->variant_label,
+            $product->product_code,
+        );
     }
 
     private function hasUsage(Product $product): bool

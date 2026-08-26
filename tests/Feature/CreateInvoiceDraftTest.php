@@ -37,14 +37,14 @@ class CreateInvoiceDraftTest extends TestCase
     public function test_it_creates_invoice_draft_from_confirmed_shipments(): void
     {
         [$customer, $product, $unit] = $this->prepareBaseData();
-        $shipment = $this->createConfirmedShipment($customer, $product, $unit, '2026-05-10', '2.0000');
+        $shipment = $this->createConfirmedShipment($customer, $product, $unit, '2026-07-10', '2.0000');
 
         $invoice = app(CreateInvoiceDraftService::class)->create(new CreateInvoiceDraftData(
             customerId: $customer->id,
-            invoiceDate: '2026-05-31',
-            billingPeriodStart: '2026-05-01',
-            billingPeriodEnd: '2026-05-31',
-            dueDate: '2026-06-30',
+            invoiceDate: '2026-07-31',
+            billingPeriodStart: '2026-07-01',
+            billingPeriodEnd: '2026-07-31',
+            dueDate: '2026-08-31',
             reason: '5月分請求作成',
         ));
 
@@ -81,11 +81,11 @@ class CreateInvoiceDraftTest extends TestCase
     public function test_invoice_line_snapshot_does_not_change_after_shipment_or_product_changes(): void
     {
         [$customer, $product, $unit] = $this->prepareBaseData();
-        $shipment = $this->createConfirmedShipment($customer, $product, $unit, '2026-05-10', '2.0000');
+        $shipment = $this->createConfirmedShipment($customer, $product, $unit, '2026-07-10', '2.0000');
 
         $invoice = app(CreateInvoiceDraftService::class)->create(new CreateInvoiceDraftData(
             customerId: $customer->id,
-            invoiceDate: '2026-05-31',
+            invoiceDate: '2026-07-31',
             shipmentHeaderIds: [$shipment->id],
         ));
 
@@ -101,20 +101,20 @@ class CreateInvoiceDraftTest extends TestCase
     public function test_it_excludes_cancelled_invoice_schedule_from_previous_balance(): void
     {
         [$customer, $product, $unit] = $this->prepareBaseData();
-        $firstShipment = $this->createConfirmedShipment($customer, $product, $unit, '2026-05-10', '2.0000');
+        $firstShipment = $this->createConfirmedShipment($customer, $product, $unit, '2026-07-10', '2.0000');
 
         $firstInvoice = app(CreateInvoiceDraftService::class)->create(new CreateInvoiceDraftData(
             customerId: $customer->id,
-            invoiceDate: '2026-05-31',
+            invoiceDate: '2026-07-31',
             shipmentHeaderIds: [$firstShipment->id],
         ));
         $firstInvoice = app(ConfirmInvoiceService::class)->confirm($firstInvoice);
         app(CancelInvoiceService::class)->cancel($firstInvoice, 'cancelled invoice must not be carried forward');
 
-        $secondShipment = $this->createConfirmedShipment($customer, $product, $unit, '2026-06-10', '1.0000');
+        $secondShipment = $this->createConfirmedShipment($customer, $product, $unit, '2026-08-10', '1.0000');
         $secondInvoice = app(CreateInvoiceDraftService::class)->create(new CreateInvoiceDraftData(
             customerId: $customer->id,
-            invoiceDate: '2026-06-30',
+            invoiceDate: '2026-08-31',
             shipmentHeaderIds: [$secondShipment->id],
         ));
 
@@ -127,19 +127,19 @@ class CreateInvoiceDraftTest extends TestCase
     public function test_confirming_invoice_preserves_carried_forward_in_total_amount(): void
     {
         [$customer, $product, $unit] = $this->prepareBaseData();
-        $firstShipment = $this->createConfirmedShipment($customer, $product, $unit, '2026-05-10', '2.0000');
+        $firstShipment = $this->createConfirmedShipment($customer, $product, $unit, '2026-07-10', '2.0000');
 
         $firstInvoice = app(CreateInvoiceDraftService::class)->create(new CreateInvoiceDraftData(
             customerId: $customer->id,
-            invoiceDate: '2026-05-31',
+            invoiceDate: '2026-07-31',
             shipmentHeaderIds: [$firstShipment->id],
         ));
         app(ConfirmInvoiceService::class)->confirm($firstInvoice);
 
-        $secondShipment = $this->createConfirmedShipment($customer, $product, $unit, '2026-06-10', '1.0000');
+        $secondShipment = $this->createConfirmedShipment($customer, $product, $unit, '2026-08-10', '1.0000');
         $secondInvoice = app(CreateInvoiceDraftService::class)->create(new CreateInvoiceDraftData(
             customerId: $customer->id,
-            invoiceDate: '2026-06-30',
+            invoiceDate: '2026-08-31',
             shipmentHeaderIds: [$secondShipment->id],
         ));
 
@@ -159,11 +159,11 @@ class CreateInvoiceDraftTest extends TestCase
     public function test_period_payment_offsets_current_invoice_amount_after_previous_balance_is_cleared(): void
     {
         [$customer, $product, $unit] = $this->prepareBaseData();
-        $firstShipment = $this->createConfirmedShipment($customer, $product, $unit, '2026-05-10', '2.0000');
+        $firstShipment = $this->createConfirmedShipment($customer, $product, $unit, '2026-07-10', '2.0000');
 
         $firstInvoice = app(CreateInvoiceDraftService::class)->create(new CreateInvoiceDraftData(
             customerId: $customer->id,
-            invoiceDate: '2026-05-31',
+            invoiceDate: '2026-07-31',
             shipmentHeaderIds: [$firstShipment->id],
         ));
         app(ConfirmInvoiceService::class)->confirm($firstInvoice);
@@ -171,18 +171,18 @@ class CreateInvoiceDraftTest extends TestCase
         Payment::create([
             'customer_id' => $customer->id,
             'status' => 'unallocated',
-            'payment_date' => '2026-06-15',
+            'payment_date' => '2026-08-15',
             'payment_method' => 'bank_transfer',
             'amount' => '4950.00',
             'unapplied_amount' => '4950.00',
         ]);
 
-        $secondShipment = $this->createConfirmedShipment($customer, $product, $unit, '2026-06-10', '1.0000');
+        $secondShipment = $this->createConfirmedShipment($customer, $product, $unit, '2026-08-10', '1.0000');
         $secondInvoice = app(CreateInvoiceDraftService::class)->create(new CreateInvoiceDraftData(
             customerId: $customer->id,
-            invoiceDate: '2026-06-30',
-            billingPeriodStart: '2026-06-01',
-            billingPeriodEnd: '2026-06-30',
+            invoiceDate: '2026-08-31',
+            billingPeriodStart: '2026-08-01',
+            billingPeriodEnd: '2026-08-31',
         ));
 
         $confirmed = app(ConfirmInvoiceService::class)->confirm($secondInvoice);
@@ -202,9 +202,9 @@ class CreateInvoiceDraftTest extends TestCase
     public function test_it_excludes_draft_and_cancelled_shipments(): void
     {
         [$customer, $product, $unit] = $this->prepareBaseData();
-        $draft = $this->createDraftShipment($customer, $product, $unit, '2026-05-10', '1.0000');
+        $draft = $this->createDraftShipment($customer, $product, $unit, '2026-07-10', '1.0000');
         $cancelled = app(CancelShipmentService::class)->cancel(
-            $this->createConfirmedShipment($customer, $product, $unit, '2026-05-11', '1.0000'),
+            $this->createConfirmedShipment($customer, $product, $unit, '2026-07-11', '1.0000'),
             '請求対象外',
         );
 
@@ -212,7 +212,7 @@ class CreateInvoiceDraftTest extends TestCase
 
         app(CreateInvoiceDraftService::class)->create(new CreateInvoiceDraftData(
             customerId: $customer->id,
-            invoiceDate: '2026-05-31',
+            invoiceDate: '2026-07-31',
             shipmentHeaderIds: [$draft->id, $cancelled->id],
         ));
     }
@@ -220,11 +220,11 @@ class CreateInvoiceDraftTest extends TestCase
     public function test_it_rejects_already_invoiced_shipment(): void
     {
         [$customer, $product, $unit] = $this->prepareBaseData();
-        $shipment = $this->createConfirmedShipment($customer, $product, $unit, '2026-05-10', '1.0000');
+        $shipment = $this->createConfirmedShipment($customer, $product, $unit, '2026-07-10', '1.0000');
 
         app(CreateInvoiceDraftService::class)->create(new CreateInvoiceDraftData(
             customerId: $customer->id,
-            invoiceDate: '2026-05-31',
+            invoiceDate: '2026-07-31',
             shipmentHeaderIds: [$shipment->id],
         ));
 
@@ -232,7 +232,7 @@ class CreateInvoiceDraftTest extends TestCase
 
         app(CreateInvoiceDraftService::class)->create(new CreateInvoiceDraftData(
             customerId: $customer->id,
-            invoiceDate: '2026-05-31',
+            invoiceDate: '2026-07-31',
             shipmentHeaderIds: [$shipment->id],
         ));
     }
@@ -245,9 +245,9 @@ class CreateInvoiceDraftTest extends TestCase
 
         app(CreateInvoiceDraftService::class)->create(new CreateInvoiceDraftData(
             customerId: $customer->id,
-            invoiceDate: '2026-05-31',
-            billingPeriodStart: '2026-05-01',
-            billingPeriodEnd: '2026-05-31',
+            invoiceDate: '2026-07-31',
+            billingPeriodStart: '2026-07-01',
+            billingPeriodEnd: '2026-07-31',
         ));
     }
 

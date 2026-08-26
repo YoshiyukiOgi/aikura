@@ -6,6 +6,7 @@ use App\Models\BillingCycle;
 use App\Models\Customer;
 use App\Models\Employee;
 use App\Models\InvoiceHeader;
+use App\Models\Payment;
 use App\Models\PriceList;
 use App\Models\PriceRule;
 use App\Models\Product;
@@ -35,8 +36,8 @@ class BillingApiTest extends TestCase
         $createInvoice = $this->actingAs($user)
             ->postJson('/api/v1/billing/invoices', [
                 'customer_id' => $customer->id,
-                'invoice_date' => '2026-06-30',
-                'due_date' => '2026-07-31',
+                'invoice_date' => '2026-07-31',
+                'due_date' => '2026-08-31',
                 'shipment_header_ids' => [$shipment->id],
                 'reason' => 'api invoice draft',
             ])
@@ -109,7 +110,7 @@ class BillingApiTest extends TestCase
         $this->actingAs($user)
             ->postJson('/api/v1/billing/invoices', [
                 'customer_id' => $customer->id,
-                'invoice_date' => '2026-06-30',
+                'invoice_date' => '2026-07-31',
                 'shipment_header_ids' => [$shipment->id],
             ])
             ->assertForbidden()
@@ -176,6 +177,39 @@ class BillingApiTest extends TestCase
             ->assertNotFound();
     }
 
+    public function test_payment_list_shows_only_imported_history_before_operational_start(): void
+    {
+        [$user, $customer] = $this->prepareData();
+
+        $imported = Payment::query()->create([
+            'customer_id' => $customer->id,
+            'is_legacy_history' => true,
+            'status' => 'legacy_imported',
+            'payment_date' => '2026-06-20',
+            'payment_method' => 'bank_transfer',
+            'amount' => '1000.00',
+            'unapplied_amount' => '0.00',
+            'reference_number' => 'ITARO-PAY-TEST-1',
+        ]);
+        $hidden = Payment::query()->create([
+            'customer_id' => $customer->id,
+            'is_legacy_history' => false,
+            'status' => 'review_required',
+            'payment_date' => '2026-06-20',
+            'payment_method' => 'bank_transfer',
+            'amount' => '2000.00',
+            'unapplied_amount' => '2000.00',
+            'reference_number' => 'NON-IMPORTED-PAYMENT',
+        ]);
+
+        $this->actingAs($user)
+            ->getJson('/api/v1/billing/payments?payment_date_from=2026-06-01&payment_date_to=2026-06-30')
+            ->assertOk()
+            ->assertJsonPath('data.pagination.total', 1)
+            ->assertJsonPath('data.payments.0.id', $imported->id)
+            ->assertJsonMissing(['id' => $hidden->id]);
+    }
+
     /**
      * @return array{0: User, 1: Customer, 2: ShipmentHeader}
      */
@@ -212,6 +246,8 @@ class BillingApiTest extends TestCase
             'capacity_unit_id' => $milliliter->id,
             'alcohol_percentage' => '15.50',
             'is_alcohol' => true,
+            'is_sales_available' => true,
+            'is_active' => true,
         ]);
 
         PriceRule::create([
@@ -225,8 +261,8 @@ class BillingApiTest extends TestCase
 
         $shipment = app(CreateDraftShipmentService::class)->create(new CreateDraftShipmentData(
             customerId: $customer->id,
-            documentDate: '2026-06-20',
-            billingTargetDate: '2026-06-20',
+            documentDate: '2026-07-20',
+            billingTargetDate: '2026-07-20',
             lines: [
                 new CreateDraftShipmentLineData($product->id, '2.0000', $bottle->id),
             ],

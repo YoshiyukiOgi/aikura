@@ -8,6 +8,7 @@
 4. `screens.md`、`reports.md`: 画面と帳票の設計方針。
 5. `tax-export-rules.md`、`returns-and-tax-adjustments.md`: 税務上の追加要件と実装課題。
 6. `operation-test-plan.md`、`testing-rules.md`: 運用試験と自動テストの基準。
+7. `itaro-xp-cutover-migration-standard.md`: Itaro-XPからの初回移行、白紙化再移行、過去履歴追加の標準手順。
 
 ## 文書の優先順位
 

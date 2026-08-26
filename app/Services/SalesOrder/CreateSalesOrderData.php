@@ -22,6 +22,7 @@ class CreateSalesOrderData
         public readonly ?string $reason = null,
         public readonly bool $applyPricing = false,
         public readonly bool $awaitingShipmentInstruction = false,
+        public readonly bool $allowNegativeLines = false,
         public readonly array $lines = [],
     ) {
     }

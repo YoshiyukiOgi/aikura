@@ -18,18 +18,20 @@ class ImportAccessInventoryHistory
 
     private const LINE_MAPPING_TABLE = '伝票外在庫出入:明細';
 
-    public function import(AccessMigrationBatch $batch, bool $deltaOnly = false): array
+    public function import(AccessMigrationBatch $batch, bool $deltaOnly = false, ?string $cutoverDate = null): array
     {
         if (! in_array($batch->status, ['shipments_imported', 'inventory_history_imported'], true)) {
             throw new RuntimeException("在庫履歴を移行できないバッチ状態です: {$batch->status}");
         }
 
-        return DB::transaction(function () use ($batch, $deltaOnly): array {
+        $cutoverDate = $cutoverDate === null ? null : CarbonImmutable::parse($cutoverDate)->toDateString();
+
+        return DB::transaction(function () use ($batch, $deltaOnly, $cutoverDate): array {
             $context = $this->context($batch);
-            $detailResult = $this->importHistoricalLots($batch, $context, $deltaOnly);
-            $headerResult = $this->importHeaders($batch, $deltaOnly);
-            $lineCount = $this->importLines($batch, $context, $deltaOnly);
-            $this->recordMappings($batch, $detailResult['hashes'], $deltaOnly);
+            $detailResult = $this->importHistoricalLots($batch, $context, $deltaOnly, $cutoverDate);
+            $headerResult = $this->importHeaders($batch, $deltaOnly, $cutoverDate);
+            $lineCount = $this->importLines($batch, $context, $deltaOnly, $cutoverDate);
+            $this->recordMappings($batch, $detailResult['hashes'], $deltaOnly, $cutoverDate);
 
             $summary = [
                 'production_lots' => $detailResult['count'],
@@ -37,6 +39,7 @@ class ImportAccessInventoryHistory
                 'operation_lines' => $lineCount,
                 'tax_review_headers' => $headerResult['tax_review_count'],
                 'stock_movements_created' => 0,
+                'cutover_date' => $cutoverDate,
                 'returns_already_imported_as_shipments' => DB::table('shipment_headers')->whereNotNull('legacy_access_document_number')->where('confirmed_liquor_tax_treatment', 'return')->count(),
                 'imported_at' => now()->toIso8601String(),
             ];
@@ -75,7 +78,7 @@ class ImportAccessInventoryHistory
         ];
     }
 
-    private function importHistoricalLots(AccessMigrationBatch $batch, array $context, bool $deltaOnly): array
+    private function importHistoricalLots(AccessMigrationBatch $batch, array $context, bool $deltaOnly, ?string $cutoverDate): array
     {
         $names = $this->sourceQuery($batch, '商品詳細名称')
             ->get()
@@ -89,7 +92,7 @@ class ImportAccessInventoryHistory
             });
         $details = [];
 
-        $this->sourceQuery($batch, self::SOURCE_TABLE, $deltaOnly)->chunkById(500, function ($rows) use (&$details): void {
+        $this->sourceQuery($batch, self::SOURCE_TABLE, $deltaOnly, $cutoverDate)->chunkById(500, function ($rows) use (&$details): void {
             foreach ($rows as $row) {
                 $source = $this->payload($row);
                 foreach ([['増商品詳細ID', '増商品ID'], ['減商品詳細ID', '減商品ID']] as [$detailField, $productField]) {
@@ -162,13 +165,13 @@ class ImportAccessInventoryHistory
         );
     }
 
-    private function importHeaders(AccessMigrationBatch $batch, bool $deltaOnly): array
+    private function importHeaders(AccessMigrationBatch $batch, bool $deltaOnly, ?string $cutoverDate): array
     {
         $count = 0;
         $taxReviewCount = 0;
         $now = now();
 
-        $this->sourceQuery($batch, self::SOURCE_TABLE, $deltaOnly)->chunkById(500, function ($rows) use ($batch, &$count, &$taxReviewCount, $now): void {
+        $this->sourceQuery($batch, self::SOURCE_TABLE, $deltaOnly, $cutoverDate)->chunkById(500, function ($rows) use ($batch, &$count, &$taxReviewCount, $now): void {
             $records = [];
             foreach ($rows as $row) {
                 $source = $this->payload($row);
@@ -208,14 +211,14 @@ class ImportAccessInventoryHistory
         return ['count' => $count, 'tax_review_count' => $taxReviewCount];
     }
 
-    private function importLines(AccessMigrationBatch $batch, array $context, bool $deltaOnly): int
+    private function importLines(AccessMigrationBatch $batch, array $context, bool $deltaOnly, ?string $cutoverDate): int
     {
         $headers = DB::table('non_sales_stock_operation_headers')->whereNotNull('legacy_access_stock_operation_id')->pluck('id', 'legacy_access_stock_operation_id');
         $lots = DB::table('production_lots')->where('external_system_code', 'like', 'ITARO-DETAIL-%')->pluck('id', 'external_system_code');
         $count = 0;
         $now = now();
 
-        $this->sourceQuery($batch, self::SOURCE_TABLE, $deltaOnly)->chunkById(500, function ($rows) use ($context, $headers, $lots, &$count, $now): void {
+        $this->sourceQuery($batch, self::SOURCE_TABLE, $deltaOnly, $cutoverDate)->chunkById(500, function ($rows) use ($context, $headers, $lots, &$count, $now): void {
             $records = [];
             foreach ($rows as $row) {
                 $source = $this->payload($row);
@@ -291,9 +294,9 @@ class ImportAccessInventoryHistory
         return $count;
     }
 
-    private function recordMappings(AccessMigrationBatch $batch, array $detailHashes, bool $deltaOnly): void
+    private function recordMappings(AccessMigrationBatch $batch, array $detailHashes, bool $deltaOnly, ?string $cutoverDate): void
     {
-        $sourceHashes = $this->sourceQuery($batch, self::SOURCE_TABLE, $deltaOnly)->pluck('payload_sha256', 'source_key');
+        $sourceHashes = $this->sourceQuery($batch, self::SOURCE_TABLE, $deltaOnly, $cutoverDate)->pluck('payload_sha256', 'source_key');
         $this->recordTargetMappings($batch, self::SOURCE_TABLE, 'non_sales_stock_operation_headers', 'legacy_access_stock_operation_id', $sourceHashes);
         $lineHashes = $sourceHashes->flatMap(fn (string $hash, string $key): array => [
             $key.':plus' => $hash,
@@ -303,10 +306,10 @@ class ImportAccessInventoryHistory
 
         $lots = DB::table('production_lots')
             ->where('external_system_code', 'like', 'ITARO-DETAIL-%')
-            ->when($deltaOnly, fn ($query) => $query->whereIn(
+            ->whereIn(
                 'external_system_code',
                 array_map(fn (string $id): string => 'ITARO-DETAIL-'.$id, array_keys($detailHashes)),
-            ))
+            )
             ->get(['id', 'external_system_code']);
         $records = [];
         $now = now();
@@ -327,7 +330,7 @@ class ImportAccessInventoryHistory
         foreach (array_chunk($records, 500) as $chunk) {
             DB::table('access_migration_mappings')->upsert($chunk, ['batch_id', 'source_table', 'source_key'], ['target_table', 'target_id', 'action', 'source_payload_sha256', 'updated_at']);
         }
-        $this->sourceQuery($batch, self::SOURCE_TABLE, $deltaOnly)->update([
+        $this->sourceQuery($batch, self::SOURCE_TABLE, $deltaOnly, $cutoverDate)->update([
             'status' => 'imported', 'target_table' => 'non_sales_stock_operation_headers', 'updated_at' => now(),
         ]);
     }
@@ -368,11 +371,13 @@ class ImportAccessInventoryHistory
         };
     }
 
-    private function sourceQuery(AccessMigrationBatch $batch, string $table, bool $deltaOnly = false)
+    private function sourceQuery(AccessMigrationBatch $batch, string $table, bool $deltaOnly = false, ?string $cutoverDate = null)
     {
         return DB::table('access_migration_staging_rows')
             ->where('batch_id', $batch->id)
             ->where('source_table', $table)
+            ->when($cutoverDate !== null && $table === self::SOURCE_TABLE, fn ($query) => $query
+                ->whereRaw("CAST(payload->>'年月日' AS date) >= ?", [$cutoverDate]))
             ->when($deltaOnly, fn ($query) => $query->whereExists(function ($delta) use ($batch): void {
                 $delta->selectRaw('1')
                     ->from('access_migration_deltas')

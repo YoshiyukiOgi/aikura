@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\V1\MonthlyClosingController;
 use App\Http\Controllers\Api\V1\NonSalesStockOperationController;
 use App\Http\Controllers\Api\V1\PriceReviewTaskController;
 use App\Http\Controllers\Api\V1\PriceRuleController;
+use App\Http\Controllers\Api\V1\ProductItemMasterController;
 use App\Http\Controllers\Api\V1\ProductMasterController;
 use App\Http\Controllers\Api\V1\SalesOrderController;
 use App\Http\Controllers\Api\V1\SalesReturnController;
@@ -68,6 +69,20 @@ Route::prefix('v1')->name('api.v1.')->group(function (): void {
             ->middleware('permission:product_master.edit')->name('masters.product-families.products.store');
         Route::put('/masters/product-families/{productFamily}/products/{product}', [ProductMasterController::class, 'updateVariant'])
             ->middleware('permission:product_master.edit')->name('masters.product-families.products.update');
+
+        Route::middleware('permission:product_master.view')->group(function (): void {
+            Route::get('/masters/products/export', [ProductItemMasterController::class, 'export'])->name('masters.products.export');
+            Route::get('/masters/products', [ProductItemMasterController::class, 'index'])->name('masters.products.index');
+            Route::get('/masters/products/{product}', [ProductItemMasterController::class, 'show'])->name('masters.products.show');
+        });
+        Route::post('/masters/products', [ProductItemMasterController::class, 'store'])
+            ->middleware('permission:product_master.edit')->name('masters.products.store');
+        Route::put('/masters/products/{product}', [ProductItemMasterController::class, 'update'])
+            ->middleware('permission:product_master.edit')->name('masters.products.update');
+        Route::post('/masters/products/{product}/price-revisions', [ProductItemMasterController::class, 'storePriceRevision'])
+            ->middleware('permission:price.change')->name('masters.products.price-revisions.store');
+        Route::post('/masters/products/{product}/price-rules/{priceRule}/deactivate', [ProductItemMasterController::class, 'deactivatePriceRule'])
+            ->middleware('permission:price.change')->name('masters.products.price-rules.deactivate');
 
         Route::get('/masters/foundation/{master}', [FoundationMasterController::class, 'index'])
             ->name('masters.foundation.index');

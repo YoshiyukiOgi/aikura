@@ -17,7 +17,7 @@ class ImportAccessOpeningStockTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_it_does_not_link_opening_stock_by_legacy_detail_id_only(): void
+    public function test_it_imports_only_positive_bottled_stock_on_a_separate_opening_date(): void
     {
         $bottle = Unit::query()->create([
             'code' => 'bottle',
@@ -94,34 +94,82 @@ class ImportAccessOpeningStockTest extends TestCase
             'started_at' => now(),
             'completed_at' => now(),
         ]);
-        $calculator = new class($feeProduct) extends ExportAccessDetailStockWorkbook {
-            public function __construct(private Product $feeProduct) {}
+        StockMovement::query()->create([
+            'status' => 'confirmed',
+            'movement_type' => 'opening_stock',
+            'movement_date' => '2026-07-01',
+            'stock_location_id' => $location->id,
+            'unit_id' => $bottle->id,
+            'quantity' => -5,
+            'production_lot_id' => $legacyAlcoholLot->id,
+            'lot_code' => $legacyAlcoholLot->lot_code,
+            'source_type' => 'access_opening_stock',
+            'source_document_number' => "ITARO-OPENING-BATCH-{$batch->id}-2026-07-01",
+            'source_line_no' => 3,
+            'confirmed_at' => now(),
+        ]);
+        $calculator = new class($alcoholProduct, $feeProduct) extends ExportAccessDetailStockWorkbook {
+            public function __construct(
+                private Product $alcoholProduct,
+                private Product $feeProduct,
+            ) {}
 
             public function calculateRows(AccessMigrationBatch $batch, string $asOfDate): array
             {
                 return [
                     (object) [
+                        'product_id' => $this->alcoholProduct->id,
+                        'product_type' => 'sake',
+                        'access_product_id' => 5403,
+                        'access_detail_id' => 415,
+                        'detail_name' => '初期詳細名',
+                        'calculated_stock' => 32,
+                    ],
+                    (object) [
                         'product_id' => $this->feeProduct->id,
+                        'product_type' => 'goods',
                         'access_product_id' => 8210,
                         'access_detail_id' => 415,
                         'detail_name' => '初期詳細名',
-                        'calculated_stock' => -32,
+                        'calculated_stock' => 20,
+                    ],
+                    (object) [
+                        'product_id' => $this->alcoholProduct->id,
+                        'product_type' => 'sake',
+                        'access_product_id' => 5403,
+                        'access_detail_id' => 416,
+                        'detail_name' => '負在庫',
+                        'calculated_stock' => -5,
                     ],
                 ];
             }
         };
 
-        $summary = (new ImportAccessOpeningStock($calculator))->import($batch, '2026-06-30');
+        $summary = (new ImportAccessOpeningStock($calculator))->import(
+            $batch,
+            '2026-06-30',
+            'main_brewery',
+            '2026-07-01',
+        );
 
         $canonicalLot = ProductionLot::query()
-            ->where('external_system_code', 'ITARO-PRODUCT-DETAIL-8210-415')
+            ->where('external_system_code', 'ITARO-PRODUCT-DETAIL-5403-415')
             ->firstOrFail();
         $movement = StockMovement::query()->where('source_type', 'access_opening_stock')->sole();
 
         $this->assertSame(1, $summary['lots_created']);
+        $this->assertSame(1, $summary['row_count']);
+        $this->assertSame(1, $summary['movements_deleted']);
+        $this->assertSame('2026-06-30', $summary['as_of_date']);
+        $this->assertSame('2026-07-01', $summary['opening_date']);
         $this->assertSame($canonicalLot->id, $movement->production_lot_id);
         $this->assertNotSame($legacyAlcoholLot->id, $movement->production_lot_id);
-        $this->assertSame('1.0000', $canonicalLot->capacity_value);
-        $this->assertNull($canonicalLot->alcohol_percentage);
+        $this->assertSame('32.0000', $movement->quantity);
+        $this->assertSame('2026-07-01', $movement->movement_date->toDateString());
+        $this->assertSame('720.0000', $canonicalLot->capacity_value);
+        $this->assertSame('15.00', $canonicalLot->alcohol_percentage);
+        $this->assertDatabaseMissing('production_lots', [
+            'external_system_code' => 'ITARO-PRODUCT-DETAIL-8210-415',
+        ]);
     }
 }

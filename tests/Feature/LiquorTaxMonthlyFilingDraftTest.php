@@ -154,6 +154,35 @@ class LiquorTaxMonthlyFilingDraftTest extends TestCase
         $this->assertCount(1, $second->lines);
     }
 
+    public function test_it_sorts_lines_by_alcohol_percentage_desc_within_same_treatment(): void
+    {
+        [$customer, $product, $unit] = $this->prepareBaseData();
+
+        $stronger = $product->replicate();
+        $stronger->product_code = 'LT-FILING-SAKE-002';
+        $stronger->name = 'Liquor tax filing sake strong';
+        $stronger->display_name = 'Liquor tax filing sake strong';
+        $stronger->alcohol_percentage = '17.20';
+        $stronger->save();
+
+        PriceRule::create([
+            'price_list_id' => PriceList::where('code', 'common')->firstOrFail()->id,
+            'product_id' => $stronger->id,
+            'unit_id' => $unit->id,
+            'unit_price' => '1600.0000',
+            'priority' => 301,
+            'effective_from' => '2026-01-01',
+        ]);
+
+        $this->confirmShipment($customer, $product, $unit, '2026-06-10', '2026-06-10', '1.0000');
+        $this->confirmShipment($customer, $stronger, $unit, '2026-06-11', '2026-06-11', '1.0000');
+
+        $filing = app(CreateLiquorTaxMonthlyFilingDraftService::class)->create(2026, 6, 'sort by alcohol desc');
+
+        $this->assertSame([17, 15], $filing->lines->pluck('reporting_alcohol_percentage')->all());
+        $this->assertSame(['taxable', 'taxable'], $filing->lines->pluck('tax_treatment')->all());
+    }
+
     public function test_it_rejects_recreating_non_draft_month(): void
     {
         [$customer, $product, $unit] = $this->prepareBaseData();

@@ -20,8 +20,7 @@ class CreateSalesOrderService
         private readonly NumberSequenceService $numberSequenceService,
         private readonly AuditLogService $auditLogService,
         private readonly ResolvePriceService $resolvePriceService,
-    ) {
-    }
+    ) {}
 
     public function create(CreateSalesOrderData $data): SalesOrder
     {
@@ -66,7 +65,7 @@ class CreateSalesOrderService
             ]);
 
             foreach (array_values($data->lines) as $index => $lineData) {
-                $this->validateLine($lineData);
+                $this->validateLine($lineData, $data->allowNegativeLines);
 
                 $line = $salesOrder->lines()->create([
                     'line_no' => $index + 1,
@@ -85,14 +84,7 @@ class CreateSalesOrderService
                         unitId: $lineData->unitId,
                     );
 
-                    $line->update([
-                        'unit_price' => $resolved->unitPrice,
-                        'price_list_id' => $resolved->priceListId,
-                        'price_rule_id' => $resolved->priceRuleId,
-                        'price_source' => $resolved->source,
-                        'price_reason' => $resolved->reason,
-                        'priced_at' => now(),
-                    ]);
+                    $line->update($resolved->salesOrderLineAttributes());
                 }
             }
 
@@ -112,9 +104,13 @@ class CreateSalesOrderService
         });
     }
 
-    private function validateLine(CreateSalesOrderLineData $lineData): void
+    private function validateLine(CreateSalesOrderLineData $lineData, bool $allowNegativeLines = false): void
     {
-        if (bccomp($lineData->quantity, '0', 4) <= 0) {
+        if ($allowNegativeLines) {
+            if (bccomp($lineData->quantity, '0', 4) === 0) {
+                throw SalesOrderException::invalidQuantity($lineData->quantity);
+            }
+        } elseif (bccomp($lineData->quantity, '0', 4) <= 0) {
             throw SalesOrderException::invalidQuantity($lineData->quantity);
         }
 

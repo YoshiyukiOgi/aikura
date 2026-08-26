@@ -33,6 +33,36 @@ services:
       - ./docker/php/conf.d/opcache.ini:/usr/local/etc/php/conf.d/99-aikura-opcache.ini:ro
       - ./docker/php/php-fpm.d/zz-aikura.conf:/usr/local/etc/php-fpm.d/zz-aikura.conf:ro
 
+  scheduler:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    container_name: aikura_scheduler
+    command: php artisan schedule:work
+    working_dir: /var/www/html
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      APP_ENV: local
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: aikura
+      DB_USERNAME: aikura
+      DB_PASSWORD: aikura
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_CLIENT: predis
+      SESSION_DRIVER: redis
+      CACHE_STORE: redis
+      QUEUE_CONNECTION: redis
+      LOG_CHANNEL: stderr
+      LOG_STACK: stderr
+      BCRYPT_ROUNDS: 4
+      APP_DEBUG: "false"
+    volumes:
+      - ./:/var/www/html
+
   test:
     build:
       context: .

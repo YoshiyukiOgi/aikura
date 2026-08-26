@@ -126,8 +126,8 @@ class GenerateInvoiceReportTest extends TestCase
 
         $shipment = app(CreateDraftShipmentService::class)->create(new CreateDraftShipmentData(
             customerId: $customer->id,
-            documentDate: '2026-05-23',
-            billingTargetDate: '2026-05-23',
+            documentDate: '2026-07-23',
+            billingTargetDate: '2026-07-23',
             lines: [
                 new CreateDraftShipmentLineData($product->id, '2.0000', $unit->id),
             ],
@@ -137,7 +137,7 @@ class GenerateInvoiceReportTest extends TestCase
 
         return app(CreateInvoiceDraftService::class)->create(new CreateInvoiceDraftData(
             customerId: $customer->id,
-            invoiceDate: '2026-05-31',
+            invoiceDate: '2026-07-31',
             shipmentHeaderIds: [$shipment->id],
         ));
     }

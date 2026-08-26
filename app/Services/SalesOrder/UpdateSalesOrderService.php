@@ -17,14 +17,17 @@ class UpdateSalesOrderService
     public function __construct(
         private readonly ResolvePriceService $resolvePriceService,
         private readonly AuditLogService $auditLogService,
-    ) {
-    }
+    ) {}
 
     /** @param array<int, array<string, mixed>> $lines */
-    public function update(SalesOrder $salesOrder, array $attributes, array $lines, ?string $reason = null): SalesOrder
+    public function update(SalesOrder $salesOrder, array $attributes, array $lines, ?string $reason = null, bool $allowRetailManaged = false): SalesOrder
     {
-        return DB::transaction(function () use ($salesOrder, $attributes, $lines, $reason): SalesOrder {
+        return DB::transaction(function () use ($salesOrder, $attributes, $lines, $reason, $allowRetailManaged): SalesOrder {
             $salesOrder = SalesOrder::query()->with('customer')->lockForUpdate()->findOrFail($salesOrder->id);
+            if ($salesOrder->isRetailManaged() && ! $allowRetailManaged) {
+                throw SalesOrderException::retailManagedOrderCannotBeChanged($salesOrder->id);
+            }
+
             if (! in_array($salesOrder->status, ['received', 'partially_instructed'], true)) {
                 throw SalesOrderException::notEditable($salesOrder->id, $salesOrder->status);
             }
@@ -75,9 +78,9 @@ class UpdateSalesOrderService
                     'note' => $lineData['note'] ?? null,
                 ];
 
-                if (! $line || $productOrUnitChanged) {
+                if (! $line || $productOrUnitChanged || $line->unit_price === null) {
                     $resolved = $this->resolvePriceService->resolve(customer: $salesOrder->customer, product: $product, pricingDate: $salesOrder->order_date, unitId: (int) $lineData['unit_id']);
-                    $values += ['unit_price' => $resolved->unitPrice, 'price_list_id' => $resolved->priceListId, 'price_rule_id' => $resolved->priceRuleId, 'price_source' => $resolved->source, 'price_reason' => $resolved->reason, 'priced_at' => now()];
+                    $values += $resolved->salesOrderLineAttributes();
                 }
 
                 if ($line) {
@@ -106,13 +109,18 @@ class UpdateSalesOrderService
     private function validProduct(int $productId): Product
     {
         $product = Product::query()->findOrFail($productId);
-        if (! $product->is_active || ! $product->is_sales_available) throw SalesOrderException::inactiveProduct($product->id);
+        if (! $product->is_active || ! $product->is_sales_available) {
+            throw SalesOrderException::inactiveProduct($product->id);
+        }
+
         return $product;
     }
 
     private function validUnit(int $unitId): void
     {
         $unit = Unit::query()->findOrFail($unitId);
-        if (! $unit->is_active) throw SalesOrderException::inactiveUnit($unit->id);
+        if (! $unit->is_active) {
+            throw SalesOrderException::inactiveUnit($unit->id);
+        }
     }
 }

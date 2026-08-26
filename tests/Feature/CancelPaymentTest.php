@@ -37,7 +37,7 @@ class CancelPaymentTest extends TestCase
     public function test_it_cancels_full_payment_and_reopens_schedule(): void
     {
         $schedule = $this->preparePaymentSchedule();
-        $payment = app(RegisterPaymentService::class)->register($schedule, '3300.00', '2026-06-30');
+        $payment = app(RegisterPaymentService::class)->register($schedule, '3300.00', '2026-07-31');
 
         $cancelled = app(CancelPaymentService::class)->cancel($payment, 'wrong deposit');
 
@@ -62,8 +62,8 @@ class CancelPaymentTest extends TestCase
     public function test_it_cancels_one_partial_payment_and_restores_remaining_balance(): void
     {
         $schedule = $this->preparePaymentSchedule();
-        $firstPayment = app(RegisterPaymentService::class)->register($schedule, '1000.00', '2026-06-20');
-        app(RegisterPaymentService::class)->register($schedule->refresh(), '500.00', '2026-06-25');
+        $firstPayment = app(RegisterPaymentService::class)->register($schedule, '1000.00', '2026-07-20');
+        app(RegisterPaymentService::class)->register($schedule->refresh(), '500.00', '2026-07-25');
 
         app(CancelPaymentService::class)->cancel($firstPayment, 'partial payment reversal');
 
@@ -78,7 +78,7 @@ class CancelPaymentTest extends TestCase
     public function test_it_rejects_empty_cancellation_reason(): void
     {
         $schedule = $this->preparePaymentSchedule();
-        $payment = app(RegisterPaymentService::class)->register($schedule, '1000.00', '2026-06-20');
+        $payment = app(RegisterPaymentService::class)->register($schedule, '1000.00', '2026-07-20');
 
         $this->expectException(PaymentCancellationException::class);
 
@@ -88,7 +88,7 @@ class CancelPaymentTest extends TestCase
     public function test_it_rejects_cancelling_payment_twice(): void
     {
         $schedule = $this->preparePaymentSchedule();
-        $payment = app(RegisterPaymentService::class)->register($schedule, '1000.00', '2026-06-20');
+        $payment = app(RegisterPaymentService::class)->register($schedule, '1000.00', '2026-07-20');
         $payment = app(CancelPaymentService::class)->cancel($payment, 'first cancellation');
 
         $this->expectException(PaymentCancellationException::class);
@@ -102,8 +102,8 @@ class CancelPaymentTest extends TestCase
 
         $shipment = app(CreateDraftShipmentService::class)->create(new CreateDraftShipmentData(
             customerId: $customer->id,
-            documentDate: '2026-05-23',
-            billingTargetDate: '2026-05-23',
+            documentDate: '2026-07-23',
+            billingTargetDate: '2026-07-23',
             lines: [
                 new CreateDraftShipmentLineData($product->id, '2.0000', $unit->id),
             ],
@@ -113,8 +113,8 @@ class CancelPaymentTest extends TestCase
 
         $invoice = app(CreateInvoiceDraftService::class)->create(new CreateInvoiceDraftData(
             customerId: $customer->id,
-            invoiceDate: '2026-05-31',
-            dueDate: '2026-06-30',
+            invoiceDate: '2026-07-31',
+            dueDate: '2026-08-31',
             shipmentHeaderIds: [$shipment->id],
         ));
         $invoice = app(ConfirmInvoiceService::class)->confirm($invoice);

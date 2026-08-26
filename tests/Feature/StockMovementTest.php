@@ -24,7 +24,6 @@ class StockMovementTest extends TestCase
             'status',
             'movement_type',
             'movement_date',
-            'product_id',
             'stock_location_id',
             'unit_id',
             'quantity',
@@ -57,7 +56,6 @@ class StockMovementTest extends TestCase
             'status' => 'confirmed',
             'movement_type' => 'production_receipt',
             'movement_date' => '2026-05-23',
-            'product_id' => $product->id,
             'stock_location_id' => $location->id,
             'unit_id' => $unit->id,
             'quantity' => '12.0000',
@@ -70,7 +68,6 @@ class StockMovementTest extends TestCase
             'status' => 'confirmed',
             'movement_type' => 'shipment',
             'movement_date' => '2026-05-24',
-            'product_id' => $product->id,
             'stock_location_id' => $location->id,
             'unit_id' => $unit->id,
             'quantity' => '-3.0000',
@@ -81,8 +78,8 @@ class StockMovementTest extends TestCase
         ]);
 
         $quantity = StockMovement::query()
-            ->where('product_id', $product->id)
             ->where('stock_location_id', $location->id)
+            ->where('unit_id', $unit->id)
             ->sum('quantity');
 
         $this->assertSame('9.0000', bcadd((string) $quantity, '0', 4));
@@ -95,14 +92,12 @@ class StockMovementTest extends TestCase
         $movement = StockMovement::create([
             'movement_type' => 'inventory_adjustment',
             'movement_date' => '2026-05-23',
-            'product_id' => $product->id,
             'stock_location_id' => $location->id,
             'unit_id' => $unit->id,
             'quantity' => '1.0000',
             'reason' => 'opening balance',
         ]);
 
-        $this->assertTrue($movement->product->is($product));
         $this->assertTrue($movement->stockLocation->is($location));
         $this->assertTrue($movement->unit->is($unit));
         $this->assertSame('draft', $movement->refresh()->status);
@@ -118,7 +113,6 @@ class StockMovementTest extends TestCase
             'status' => 'confirmed',
             'movement_type' => 'transfer',
             'movement_date' => '2026-05-23',
-            'product_id' => $product->id,
             'stock_location_id' => $fromLocation->id,
             'unit_id' => $unit->id,
             'quantity' => '-5.0000',
@@ -129,7 +123,6 @@ class StockMovementTest extends TestCase
             'status' => 'confirmed',
             'movement_type' => 'transfer',
             'movement_date' => '2026-05-23',
-            'product_id' => $product->id,
             'stock_location_id' => $toLocation->id,
             'unit_id' => $unit->id,
             'quantity' => '5.0000',

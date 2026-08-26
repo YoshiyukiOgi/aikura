@@ -5,6 +5,11 @@ use App\Jobs\RunMonthlyClosingJob;
 use App\Jobs\RunReportExportRetentionCheckJob;
 use App\Jobs\RunReportGenerationJob;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Schedule;
+
+Schedule::command('retail:detect-brewery-products')
+    ->everyMinute()
+    ->withoutOverlapping();
 
 Artisan::command('aikura:health', function (): int {
     $this->info('ok');

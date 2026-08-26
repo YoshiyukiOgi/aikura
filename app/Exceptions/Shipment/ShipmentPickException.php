@@ -8,62 +8,62 @@ class ShipmentPickException extends DomainException
 {
     public static function lotAllocationRequired(int $lineId): self
     {
-        return new self("Shipment instruction line {$lineId} requires lot allocation before picking.");
+        return new self("出荷指示明細 {$lineId} は、ピッキング前にロット割当が必要です。");
     }
 
     public static function lotAllocationIncomplete(int $lineId, string $required, string $allocated): self
     {
-        return new self("Shipment instruction line {$lineId} lot allocation is incomplete. Required: {$required}; allocated: {$allocated}.");
+        return new self("出荷指示明細 {$lineId} のロット割当が不足しています。必要数: {$required} / 割当済み: {$allocated}");
     }
 
     public static function lotAlcoholAnalysisRequired(int $lotId): self
     {
-        return new self("Production lot {$lotId} requires a confirmed alcohol analysis.");
+        return new self("ロット {$lotId} はアルコール分析確定が必要です。");
     }
 
     public static function lotApprovalRequired(int $lotId): self
     {
-        return new self("Production lot {$lotId} is outside the alcohol range and requires administrator approval.");
+        return new self("ロット {$lotId} はアルコール許容範囲外のため、管理者承認が必要です。");
     }
 
     public static function emptyLines(): self
     {
-        return new self('Shipment pick requires at least one line.');
+        return new self('ピッキングには明細が1件以上必要です。');
     }
 
     public static function invalidQuantity(string $quantity): self
     {
-        return new self("Shipment pick line quantity [{$quantity}] must be greater than zero.");
+        return new self("ピッキング数量は0より大きい必要があります: {$quantity}");
     }
 
     public static function cancelledInstruction(int $shipmentInstructionId): self
     {
-        return new self("Shipment instruction [{$shipmentInstructionId}] is cancelled.");
+        return new self("出荷指示 [{$shipmentInstructionId}] は取消済みです。");
     }
 
     public static function lineDoesNotBelongToInstruction(int $lineId, int $shipmentInstructionId): self
     {
-        return new self("Shipment instruction line [{$lineId}] does not belong to instruction [{$shipmentInstructionId}].");
+        return new self("出荷指示明細 [{$lineId}] は出荷指示 [{$shipmentInstructionId}] に属していません。");
     }
 
     public static function duplicateInstructionLine(int $lineId): self
     {
-        return new self("Shipment instruction line [{$lineId}] is duplicated in the same shipment pick.");
+        return new self("出荷指示明細 [{$lineId}] が同じピッキング内で重複しています。");
     }
 
     public static function exceedsRemainingQuantity(int $lineId, string $remainingQuantity, string $requestedQuantity): self
     {
-        return new self("Shipment instruction line [{$lineId}] remaining pick quantity [{$remainingQuantity}] is less than requested pick quantity [{$requestedQuantity}].");
+        return new self("出荷指示明細 [{$lineId}] の残ピッキング数 {$remainingQuantity} が、要求数 {$requestedQuantity} を下回っています。");
     }
 
     public static function emptyCancellationReason(): self
     {
-        return new self('Shipment pick cancellation reason is required.');
+        return new self('ピッキング取消理由が必要です。');
     }
 
     public static function alreadyCancelled(int $shipmentPickId): self
     {
-        return new self("Shipment pick [{$shipmentPickId}] is already cancelled.");
+        return new self("ピッキング [{$shipmentPickId}] は既に取消済みです。");
     }
 
     public static function alreadyConvertedToShipment(int $shipmentPickId): self

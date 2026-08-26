@@ -9,7 +9,10 @@ use Throwable;
 
 class ImportAccessReceivablesCommand extends Command
 {
-    protected $signature = 'aikura:access-import-receivables {batch : 在庫履歴移行済みAccess移行バッチID}';
+    protected $signature = 'aikura:access-import-receivables
+        {batch : 在庫履歴移行済みAccess移行バッチID}
+        {--cutover= : この日以降の入金だけを業務テーブルへ移行する}
+        {--opening-date= : この日時点の開始売掛を全Itaro履歴から計算する}';
 
     protected $description = 'Import Access receivable ledger, payment history, and calculated opening receivable balances.';
 
@@ -23,7 +26,11 @@ class ImportAccessReceivablesCommand extends Command
         }
 
         try {
-            $summary = $importer->import($batch);
+            $summary = $importer->import(
+                $batch,
+                cutoverDate: $this->option('cutover'),
+                openingDate: $this->option('opening-date'),
+            );
         } catch (Throwable $exception) {
             $this->error($exception->getMessage());
 
