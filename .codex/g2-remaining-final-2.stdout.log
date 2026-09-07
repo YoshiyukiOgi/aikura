@@ -1,0 +1,25 @@
+
+   PASS  Tests\Feature\NonSalesStockOperationTest
+  ✓ it creates non sales stock operation and stock movement             13.30s  
+
+   PASS  Tests\Feature\OperationTestDemoSeederTest
+  ✓ operation test demo seeder creates loginable users and editable dem… 3.28s  
+
+   PASS  Tests\Feature\OrderInstructionPickCancellationFlowTest
+  ✓ pick instruction and order can be cancelled in reverse order         0.48s  
+
+   PASS  Tests\Feature\PickOriginShipmentCancellationPolicyTest
+  ✓ cancelling pick origin draft shipment allows the unlinked pick to b… 0.55s  
+  ✓ cancelling pick origin confirmed shipment keeps pick and instructio… 0.55s  
+
+   PASS  Tests\Feature\ShipmentApiTest
+  ✓ user with permission can create price confirm show list and cancel…  1.00s  
+  ✓ user without shipment create permission cannot create shipment       0.66s  
+  ✓ shipment create api validates required lines                         0.66s  
+  ✓ shipment detail returns the display name and capacity                0.68s  
+  ✓ legacy period shipments are hidden and not operable                  0.69s  
+  ✓ shipment history shows only imported history before operational sta… 0.70s  
+
+  Tests:    11 passed (81 assertions)
+  Duration: 24.83s
+

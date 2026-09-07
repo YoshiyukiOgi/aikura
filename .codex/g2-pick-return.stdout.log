@@ -1,0 +1,22 @@
+
+   PASS  Tests\Feature\PickShipmentInstructionTest
+  ✓ shipment pick tables exist                                          11.71s  
+  ✓ it picks shipment instruction line                                   1.07s  
+  ✓ it marks instruction picked when all quantity is picked              0.42s  
+  ✓ it allows split picking up to instruction quantity                   0.45s  
+  ✓ it rejects empty lines                                               0.42s  
+  ✓ it rejects non positive quantity                                     0.42s  
+  ✓ it rejects quantity over remaining pick quantity                     0.39s  
+  ✓ it rejects duplicate instruction line in same pick                   0.39s  
+  ✓ it rejects line from different instruction                           0.41s  
+
+   PASS  Tests\Feature\SalesReturnTest
+  ✓ it creates sales return credit memo and return stock movement        0.91s  
+  ✓ it creates credit memo without stock movement for no stock return    0.54s  
+  ✓ regular sales stock return requires source lot                       0.56s  
+  ✓ regular sales stock return can restore to source lot                 0.56s  
+  ✓ regular sales stock return can split quantity across source lots     0.57s  
+
+  Tests:    14 passed (66 assertions)
+  Duration: 21.12s
+

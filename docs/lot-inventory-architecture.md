@@ -11,7 +11,7 @@
 - `production_lots`: ロット固有の製造情報、包装単位、容量、分析値を保持する。
 - `stock_movements`: ロット、在庫場所、単位、数量の増減を保持する。`product_id` は持たない。
 - `stock_lot_monthly_balances`: ロット、在庫場所、単位ごとの月末残高を保持する。
-- `non_sales_stock_operation_lines`: 販売外の在庫増減対象ロットを保持する。`production_lot_id` は必須で、`product_id` は持たない。
+- `non_sales_stock_operation_lines`: 販売外の在庫増減対象ロットを保持する。`production_lot_id` を在庫識別子とし、商品・酒税情報は取引時点の表示・税務スナップショットとしてのみ保持できる。
 - `shipment_lot_allocations`: 出荷明細の商品と、実際に選んだロットの取引時点の関係を保持する。
 
 ## 出荷候補
@@ -35,12 +35,20 @@
 - `production_lots.product_id`
 - `product_production_lot`
 - `stock_movements.product_id`
-- `non_sales_stock_operation_lines.product_id`
-- 販売外出入の消費税・酒税区分と酒税計算スナップショット
-- `inventory_count_lines.product_id`
 - `stock_lot_monthly_balances.product_id`
 - `stock_monthly_balances`
 - `shipment_stock_reservations`
 - 商品別在庫予約API
 
 出荷商品の履歴は出荷明細に、商品とロットの実績関係は `shipment_lot_allocations` に残す。
+
+商品IDや税務スナップショットを取引履歴に保持しても、在庫残高の識別子・集計キー・利用可能在庫の計算に使ってはならない。ロット、在庫場所、単位を在庫計算の唯一のキーとする。
+
+## 移行時の旧方式の扱い
+
+旧商品在庫方式の原値は、変更禁止のB1 Access原本と検証済み移行パッケージに保持する。A/B2の業務DBに旧方式テーブルを残して並行運用してはならない。旧方式を新方式と並行して更新したり、業務画面、API、バッチ、帳票の在庫計算に使ってはならない。
+
+- 正規在庫は `stock_movements` と `stock_lot_monthly_balances` だけから算出する。
+- B1から取り込む原値と旧方式の集計値は、取込バッチ、対応表、照合結果として分離保管する。
+- B1原本と移行パッケージは読取専用に凍結し、B1、A、B2のいずれでも業務更新の対象にしない。
+- B1原本と移行パッケージの削除は、保管期限、バックアップからの復元確認、および明示承認後に限る。

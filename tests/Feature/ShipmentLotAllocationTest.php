@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Exceptions\Shipment\ShipmentConfirmationException;
 use App\Exceptions\Shipment\ShipmentLotAllocationException;
+use App\Models\AppSetting;
 use App\Models\BillingCycle;
 use App\Models\Customer;
 use App\Models\PriceList;
@@ -84,7 +85,7 @@ class ShipmentLotAllocationTest extends TestCase
         $this->assertSame('2.0000', $allocation->quantity);
 
         $balance = app(LotStockBalanceService::class)
-            ->forLotProductLocationUnit($lot->id, $product->id, $location->id, $unit->id);
+            ->forLotLocationUnit($lot->id, $location->id, $unit->id);
 
         $this->assertSame('5.0000', $balance->physicalQuantity);
         $this->assertSame('2.0000', $balance->allocatedQuantity);
@@ -133,7 +134,6 @@ class ShipmentLotAllocationTest extends TestCase
         $this->assertDatabaseHas('stock_movements', [
             'status' => 'confirmed',
             'movement_type' => 'shipment',
-            'product_id' => $product->id,
             'stock_location_id' => $location->id,
             'unit_id' => $unit->id,
             'quantity' => '-3.0000',
@@ -144,7 +144,7 @@ class ShipmentLotAllocationTest extends TestCase
         ]);
 
         $balance = app(LotStockBalanceService::class)
-            ->forLotProductLocationUnit($lot->id, $product->id, $location->id, $unit->id);
+            ->forLotLocationUnit($lot->id, $location->id, $unit->id);
 
         $this->assertSame('2.0000', $balance->physicalQuantity);
         $this->assertSame('0.0000', $balance->allocatedQuantity);
@@ -239,6 +239,7 @@ class ShipmentLotAllocationTest extends TestCase
             ShipmentMasterSeeder::class,
             StockLocationSeeder::class,
         ]);
+        AppSetting::setValue('operational_start_date', '2026-06-01');
 
         $transactionCategory = TransactionCategory::where('code', 'wholesale')->firstOrFail();
         $settlementCategory = SettlementReceivableCategory::where('code', 'accounts_receivable_1')->firstOrFail();
@@ -278,9 +279,15 @@ class ShipmentLotAllocationTest extends TestCase
         return ProductionLot::create([
             'lot_code' => 'ALLOC-LOT-001',
             'display_name' => 'Allocation Lot 001',
-            'product_id' => $product->id,
+            'status' => 'active',
             'stock_location_id' => $location->id,
+            'unit_id' => $product->inventory_unit_id,
+            'capacity_value' => $product->capacity_value,
+            'capacity_unit_id' => $product->capacity_unit_id,
+            'alcohol_percentage' => $product->alcohol_percentage,
+            'analysis_status' => 'confirmed',
             'production_date' => '2026-06-01',
+            'is_active' => true,
         ]);
     }
 

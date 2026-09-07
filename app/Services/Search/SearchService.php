@@ -2,9 +2,9 @@
 
 namespace App\Services\Search;
 
-use App\Models\Customer;
 use App\Models\AuditLog;
 use App\Models\ConsumptionTaxMonthlyFiling;
+use App\Models\Customer;
 use App\Models\InvoiceHeader;
 use App\Models\LiquorTaxMonthlyFiling;
 use App\Models\OperationJob;
@@ -212,7 +212,7 @@ class SearchService
                 'shipments_for_liquor_tax' => $this->closingShipments($periodStart, $periodEnd, $limit),
                 'invoices_for_consumption_tax' => $this->closingInvoices($periodStart, $periodEnd, $limit),
                 'payment_schedules_for_receivables' => $this->closingPaymentSchedules($periodEnd, $limit),
-                'stock_monthly_balances' => $this->monthlyRows(StockLotMonthlyBalance::query(), $year, $month, 'stock_lot_monthly_balance', 'production_lot_id', $limit),
+                'stock_lot_monthly_balances' => $this->monthlyRows(StockLotMonthlyBalance::query(), $year, $month, 'stock_lot_monthly_balance', 'production_lot_id', $limit),
                 'receivable_monthly_balances' => $this->monthlyRows(ReceivableMonthlyBalance::query(), $year, $month, 'receivable_monthly_balance', 'customer_name', $limit),
                 'liquor_tax_monthly_filings' => $this->monthlyRows(LiquorTaxMonthlyFiling::query(), $year, $month, 'liquor_tax_monthly_filing', 'id', $limit),
                 'consumption_tax_monthly_filings' => $this->monthlyRows(ConsumptionTaxMonthlyFiling::query(), $year, $month, 'consumption_tax_monthly_filing', 'id', $limit),

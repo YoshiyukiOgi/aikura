@@ -21,6 +21,7 @@ class StoreShipmentLiquorTaxEvidenceRequest extends FormRequest
             'destination' => ['nullable', 'required_if:status,confirmed', 'string', 'max:160'],
             'customs_office' => ['nullable', 'string', 'max:160'],
             'exporter_type' => ['nullable', 'in:direct,indirect'],
+            'document' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,xls,xlsx,doc,docx', 'max:10240'],
             'note' => ['nullable', 'string', 'max:1000'],
         ];
     }

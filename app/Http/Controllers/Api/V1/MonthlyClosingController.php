@@ -25,7 +25,7 @@ class MonthlyClosingController extends ApiController
         ]);
 
         if (isset($validated['year'], $validated['month'])) {
-            return $this->ok(['stock_monthly_balances' => $this->lotBalances((int) $validated['year'], (int) $validated['month'])]);
+            return $this->ok(['stock_lot_monthly_balances' => $this->lotBalances((int) $validated['year'], (int) $validated['month'])]);
         }
 
         $query = StockLotMonthlyBalance::query()
@@ -45,7 +45,7 @@ class MonthlyClosingController extends ApiController
         }
 
         return $this->ok([
-            'stock_monthly_balances' => $query
+            'stock_lot_monthly_balances' => $query
                 ->limit(100)
                 ->get()
                 ->map(fn (StockLotMonthlyBalance $balance): array => $this->serializeLotStockBalance($balance))
@@ -66,7 +66,7 @@ class MonthlyClosingController extends ApiController
             reason: $validated['reason'] ?? null,
         );
 
-        return $this->created(['stock_monthly_balances' => $this->lotBalances((int) $validated['year'], (int) $validated['month'])]);
+        return $this->created(['stock_lot_monthly_balances' => $this->lotBalances((int) $validated['year'], (int) $validated['month'])]);
     }
 
     public function confirmStockBalances(
@@ -77,7 +77,7 @@ class MonthlyClosingController extends ApiController
     ): JsonResponse {
         $balances = $service->confirm($year, $month, $request->validated('reason'));
 
-        return $this->ok(['stock_monthly_balances' => $this->lotBalances($year, $month)]);
+        return $this->ok(['stock_lot_monthly_balances' => $this->lotBalances($year, $month)]);
     }
 
     public function receivableBalances(Request $request): JsonResponse
@@ -172,7 +172,7 @@ class MonthlyClosingController extends ApiController
     }
 
     /**
-     * @param Collection<int, ReceivableMonthlyBalance> $balances
+     * @param  Collection<int, ReceivableMonthlyBalance>  $balances
      * @return array<int, array<string, mixed>>
      */
     private function serializeReceivableBalances(Collection $balances): array

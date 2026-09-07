@@ -84,12 +84,12 @@ DB変更、migration作成、model作成、Service実装、テスト作成時は
 
 | 領域 | 正本 | 現在値 |
 | --- | --- | --- |
-| 在庫 | `stock_movements` | 初期実装では集計Service。月次確定値は `stock_monthly_balances` |
+| 在庫 | `stock_movements` | 初期実装では集計Service。月次確定値は `stock_lot_monthly_balances` |
 | 売掛 | `invoice_headers`, `payment_schedules`, `payments`, `payment_allocations` | 初期実装では集計Service。月次確定値は `receivable_monthly_balances` |
 | 酒税 | 確定済み出荷明細の酒税保存値 | `liquor_tax_monthly_filings`, `liquor_tax_monthly_filing_lines` |
 | 消費税 | 確定済み請求明細の消費税保存値 | `consumption_tax_monthly_filings`, `consumption_tax_monthly_filing_lines` |
 | 帳票 | 確定済み業務データ | `report_exports` |
-| 製造ロット | `production_lots` | ロット別在庫は `stock_movements`、引当は `shipment_lot_allocations`、予約は `shipment_stock_reservations` から算出 |
+| 製造ロット | `production_lots` | ロット別在庫は `stock_movements`、引当は `shipment_lot_allocations` から算出 |
 
 現在値だけを直接修正してはならない。差異は履歴台帳に調整レコードとして記録する。
 
@@ -99,7 +99,7 @@ DB変更、migration作成、model作成、Service実装、テスト作成時は
 
 第6段階では、製造ロットを `production_lots` で正規管理する。`stock_movements.production_lot_id` は製造ロット参照、`stock_movements.lot_code` は旧データ互換または補助表示用とする。
 
-販売商品と製造ロットの候補関連は `product_production_lot` で管理する。`production_lots.product_id` は主関連または由来商品の補助参照であり、多対多の候補関連の正本は `product_production_lot` とする。
+販売商品と製造ロットの候補は、出荷時にロットの容量、単位、分析状態、アルコール度数、在庫量から動的に判定する。`product_production_lot` と `production_lots.product_id` は使用しない。
 
 ロット別在庫は第6段階時点では専用残高テーブルを持たず、`stock_movements` から集計する。将来、参照性能が必要になった場合はロット別現在値テーブルを追加できるが、その場合も正本は在庫移動履歴とする。
 
@@ -168,7 +168,7 @@ DB変更、migration作成、model作成、Service実装、テスト作成時は
 
 ## 6-y 在庫予約
 
-出荷前の在庫予約は `shipment_stock_reservations` で管理する。`status = reserved` の数量は商品別現在庫の `reserved_quantity` として利用可能在庫から控除する。同一出荷行でロット引当がある場合、同一商品、在庫場所、単位の引当数量を予約残から差し引き、予約と引当を二重控除しない。出荷確定後は予約を `confirmed` にし、在庫減少は `stock_movements` を正本とする。
+出荷前の引当は `shipment_lot_allocations` で管理する。引当数量はロット別の利用可能在庫から控除し、出荷確定時の在庫減少はロット付き `stock_movements` を正本とする。商品別予約テーブルは使用しない。
 
 ## 6-z 受注
 
@@ -201,7 +201,7 @@ DB変更、migration作成、model作成、Service実装、テスト作成時は
 
 ## 7-8 品出由来出荷伝票と在庫接続
 
-品出由来の出荷伝票ドラフトも、通常の出荷伝票ドラフトと同じ `shipment_stock_reservations` と `shipment_lot_allocations` を使用する。出荷確定時は予約と引当を `confirmed` にし、在庫減少は `stock_movements` にロット付きで記録する。元品出・元品出明細の参照は、在庫予約、ロット引当、出荷確定後も保持する。
+品出由来の出荷伝票ドラフトも、通常の出荷伝票ドラフトと同じ `shipment_lot_allocations` を使用する。出荷確定時は引当を `confirmed` にし、在庫減少は `stock_movements` にロット付きで記録する。元品出・元品出明細の参照は、ロット引当、出荷確定後も保持する。
 
 ## 7-9 品出由来出荷伝票の取消
 

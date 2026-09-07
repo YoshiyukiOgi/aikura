@@ -6,8 +6,8 @@ use App\Models\BillingCycle;
 use App\Models\Customer;
 use App\Models\NumberSequence;
 use App\Models\PriceRule;
-use App\Models\ProductionLot;
 use App\Models\Product;
+use App\Models\ProductionLot;
 use App\Models\SalesOrder;
 use App\Models\ShipmentHeader;
 use App\Models\ShipmentInstruction;
@@ -121,7 +121,7 @@ class FlowValidationDemoSeeder extends Seeder
     }
 
     /**
-     * @param array<string, Customer> $customers
+     * @param  array<string, Customer>  $customers
      * @return array<int, array<string, mixed>>
      */
     private function confirmedShipmentScenarios(array $customers): array
@@ -148,7 +148,7 @@ class FlowValidationDemoSeeder extends Seeder
     }
 
     /**
-     * @param array<string, Customer> $customers
+     * @param  array<string, Customer>  $customers
      * @return array<int, array<string, mixed>>
      */
     private function workInProgressScenarios(array $customers): array
@@ -162,7 +162,7 @@ class FlowValidationDemoSeeder extends Seeder
     }
 
     /**
-     * @param array<int, array{0: string, 1: string}> $lines
+     * @param  array<int, array{0: string, 1: string}>  $lines
      * @return array<string, mixed>
      */
     private function scenario(Customer $customer, string $orderDate, string $shipmentDate, string $reference, array $lines, string $stage = 'confirmed'): array
@@ -171,7 +171,7 @@ class FlowValidationDemoSeeder extends Seeder
     }
 
     /**
-     * @param array<string, mixed> $scenario
+     * @param  array<string, mixed>  $scenario
      */
     private function createFlow(array $scenario, string $stage): ?ShipmentHeader
     {
@@ -209,7 +209,7 @@ class FlowValidationDemoSeeder extends Seeder
     }
 
     /**
-     * @param array<string, mixed> $scenario
+     * @param  array<string, mixed>  $scenario
      */
     private function createOrder(array $scenario): SalesOrder
     {
@@ -236,7 +236,7 @@ class FlowValidationDemoSeeder extends Seeder
     }
 
     /**
-     * @param array<string, mixed> $scenario
+     * @param  array<string, mixed>  $scenario
      */
     private function createInstruction(SalesOrder $order, array $scenario): ShipmentInstruction
     {
@@ -250,7 +250,7 @@ class FlowValidationDemoSeeder extends Seeder
     }
 
     /**
-     * @param array<string, mixed> $scenario
+     * @param  array<string, mixed>  $scenario
      */
     private function pickInstruction(ShipmentInstruction $instruction, array $scenario): ShipmentPick
     {
@@ -264,7 +264,7 @@ class FlowValidationDemoSeeder extends Seeder
     }
 
     /**
-     * @param array<string, mixed> $scenario
+     * @param  array<string, mixed>  $scenario
      */
     private function createDraftShipment(ShipmentPick $pick, array $scenario): ShipmentHeader
     {
@@ -278,7 +278,7 @@ class FlowValidationDemoSeeder extends Seeder
     }
 
     /**
-     * @param array<string, Customer> $customers
+     * @param  array<string, Customer>  $customers
      */
     private function createJuneMonthlyInvoices(array $customers): void
     {
@@ -311,8 +311,8 @@ class FlowValidationDemoSeeder extends Seeder
     }
 
     /**
-     * @param Collection<int, ShipmentHeader|null> $shipments
-     * @param array<string, Customer> $customers
+     * @param  Collection<int, ShipmentHeader|null>  $shipments
+     * @param  array<string, Customer>  $customers
      */
     private function createSpotInvoices(Collection $shipments, array $customers): void
     {
@@ -449,7 +449,7 @@ class FlowValidationDemoSeeder extends Seeder
     }
 
     /**
-     * @param array<string, Customer> $customers
+     * @param  array<string, Customer>  $customers
      */
     private function clearDemoTransactions(array $customers): void
     {
@@ -575,7 +575,6 @@ class FlowValidationDemoSeeder extends Seeder
         DB::table('invoice_headers')->whereIn('id', $invoiceIds)->delete();
         DB::table('stock_movements')->whereIn('source_shipment_line_id', $shipmentLineIds)->delete();
         DB::table('shipment_lot_allocations')->whereIn('shipment_line_id', $shipmentLineIds)->delete();
-        DB::table('shipment_stock_reservations')->whereIn('shipment_line_id', $shipmentLineIds)->delete();
         DB::table('shipment_lines')->whereIn('id', $shipmentLineIds)->delete();
         DB::table('shipment_headers')->whereIn('id', $shipmentIds)->delete();
         DB::table('shipment_pick_lines')->whereIn('shipment_pick_id', $pickIds)->delete();

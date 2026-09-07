@@ -7,10 +7,12 @@ use App\Jobs\RunMonthlyAggregationJob;
 use App\Jobs\RunMonthlyClosingJob;
 use App\Jobs\RunReportExportRetentionCheckJob;
 use App\Jobs\RunReportGenerationJob;
+use App\Models\AppSetting;
 use App\Models\OperationJob;
 use App\Models\Product;
+use App\Models\ProductionLot;
 use App\Models\StockLocation;
-use App\Models\StockMonthlyBalance;
+use App\Models\StockLotMonthlyBalance;
 use App\Models\StockMovement;
 use App\Models\Unit;
 use App\Services\Operations\OperationJobService;
@@ -41,7 +43,7 @@ class OperationJobTest extends TestCase
         ));
 
         $this->assertDatabaseHas('report_exports', [
-            'report_type' => 'stock_balance',
+            'report_type' => 'lot_stock_balance',
             'reason' => 'stock report job',
         ]);
         $this->assertDatabaseHas('operation_jobs', [
@@ -67,53 +69,51 @@ class OperationJobTest extends TestCase
         $this->assertNotNull($location->id);
     }
 
-    public function test_monthly_aggregation_job_creates_stock_monthly_balance_draft(): void
+    public function test_monthly_aggregation_job_creates_stock_lot_monthly_balance_draft(): void
     {
         [$product, $unit, $location] = $this->prepareStockMovement();
 
         dispatch_sync(new RunMonthlyAggregationJob(
-            aggregationType: 'stock_monthly_balance',
+            aggregationType: 'stock_lot_monthly_balance',
             year: 2026,
             month: 6,
             reason: 'stock aggregation job',
         ));
 
-        $this->assertDatabaseHas('stock_monthly_balances', [
+        $this->assertDatabaseHas('stock_lot_monthly_balances', [
             'status' => 'draft',
             'year' => 2026,
             'month' => 6,
-            'product_id' => $product->id,
             'stock_location_id' => $location->id,
             'unit_id' => $unit->id,
             'closing_quantity' => '10.0000',
-            'reason' => 'stock aggregation job',
         ]);
         $this->assertDatabaseHas('operation_jobs', [
             'job_type' => 'monthly_aggregation.create',
             'status' => 'completed',
-            'target_type' => 'stock_monthly_balance',
+            'target_type' => 'stock_lot_monthly_balance',
             'target_id' => '2026-06',
         ]);
     }
 
-    public function test_monthly_closing_job_confirms_stock_monthly_balance(): void
+    public function test_monthly_closing_job_confirms_stock_lot_monthly_balance(): void
     {
         $this->prepareStockMovement();
 
         dispatch_sync(new RunMonthlyAggregationJob(
-            aggregationType: 'stock_monthly_balance',
+            aggregationType: 'stock_lot_monthly_balance',
             year: 2026,
             month: 6,
             reason: 'stock aggregation job',
         ));
         dispatch_sync(new RunMonthlyClosingJob(
-            closingType: 'stock_monthly_balance_confirm',
+            closingType: 'stock_lot_monthly_balance_confirm',
             year: 2026,
             month: 6,
             reason: 'stock closing job',
         ));
 
-        $this->assertTrue(StockMonthlyBalance::query()
+        $this->assertTrue(StockLotMonthlyBalance::query()
             ->where('year', 2026)
             ->where('month', 6)
             ->where('status', 'confirmed')
@@ -125,7 +125,7 @@ class OperationJobTest extends TestCase
         $this->assertDatabaseHas('operation_jobs', [
             'job_type' => 'monthly_closing.execute',
             'status' => 'completed',
-            'target_type' => 'stock_monthly_balance_confirm',
+            'target_type' => 'stock_lot_monthly_balance_confirm',
             'target_id' => '2026-06',
             'reason' => 'stock closing job',
         ]);
@@ -148,7 +148,7 @@ class OperationJobTest extends TestCase
             $this->assertSame('unsupported_report', $job->target_type);
             $this->assertSame('unsupported report job', $job->reason);
             $this->assertNotNull($job->failed_at);
-            $this->assertStringContainsString('Unsupported report generation job type', $job->error_message);
+            $this->assertStringContainsString('未対応の帳票生成ジョブ種別です', $job->error_message);
             $this->assertDatabaseHas('audit_logs', [
                 'event' => 'operation_job.failed',
                 'target_table' => 'operation_jobs',
@@ -284,6 +284,7 @@ class OperationJobTest extends TestCase
             ProductUnitMasterSeeder::class,
             StockLocationSeeder::class,
         ]);
+        AppSetting::setValue('operational_start_date', '2026-06-01');
 
         $unit = Unit::where('code', 'bottle')->firstOrFail();
         $location = StockLocation::where('code', 'main_brewery')->firstOrFail();
@@ -298,11 +299,21 @@ class OperationJobTest extends TestCase
             'is_alcohol' => true,
             'is_inventory_managed' => true,
         ]);
+        $lot = ProductionLot::create([
+            'lot_code' => 'OPERATION-JOB-LOT-001',
+            'display_name' => 'Operation Job Lot',
+            'status' => 'active',
+            'stock_location_id' => $location->id,
+            'unit_id' => $unit->id,
+            'is_active' => true,
+        ]);
 
         StockMovement::create([
             'status' => 'confirmed',
             'movement_type' => 'inventory_adjustment',
             'movement_date' => '2026-06-15',
+            'production_lot_id' => $lot->id,
+            'lot_code' => $lot->lot_code,
             'stock_location_id' => $location->id,
             'unit_id' => $unit->id,
             'quantity' => '10.0000',

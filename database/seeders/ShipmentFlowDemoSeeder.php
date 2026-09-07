@@ -3,8 +3,8 @@
 namespace Database\Seeders;
 
 use App\Models\Customer;
-use App\Models\ProductionLot;
 use App\Models\Product;
+use App\Models\ProductionLot;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderLine;
 use App\Models\ShipmentHeader;
@@ -33,6 +33,7 @@ use RuntimeException;
 class ShipmentFlowDemoSeeder extends Seeder
 {
     private const SOURCE_TYPE = 'shipment_flow_demo';
+
     private const REASON = '出荷フローデモデータ作成';
 
     public function run(): void
@@ -104,7 +105,6 @@ TRUNCATE TABLE
     invoice_lines,
     invoice_headers,
     receivable_monthly_balances,
-    shipment_stock_reservations,
     shipment_lot_allocations,
     stock_movements,
     shipment_lines,
@@ -122,7 +122,7 @@ SQL);
     }
 
     /**
-     * @param array<int, Product> $products
+     * @param  array<int, Product>  $products
      */
     private function createOrder(int $sequence, Customer $customer, array $products, string $date): SalesOrder
     {

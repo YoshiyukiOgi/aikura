@@ -15,13 +15,15 @@ class ShipmentLiquorTaxEvidence extends Model
     protected $fillable = [
         'shipment_header_id', 'tax_treatment', 'status', 'evidence_reference',
         'evidence_date', 'destination', 'customs_office', 'exporter_type', 'note',
-        'confirmed_by', 'confirmed_at',
+        'document_file_path', 'document_file_name', 'document_file_size',
+        'document_mime_type', 'document_checksum_sha256', 'confirmed_by', 'confirmed_at',
     ];
 
     protected function casts(): array
     {
         return [
             'evidence_date' => 'date',
+            'document_file_size' => 'integer',
             'confirmed_at' => 'datetime',
         ];
     }

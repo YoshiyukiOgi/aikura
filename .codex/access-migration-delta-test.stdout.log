@@ -1,0 +1,11 @@
+
+   PASS  Tests\Feature\AccessMigrationDeltaTest
+  ✓ it plans new changed unchanged and deleted rows                     12.20s  
+  ✓ it treats different json key order as unchanged                      0.30s  
+  ✓ apply stops when transaction history was changed                     0.41s  
+  ✓ apply stops new transaction in confirmed month                       0.20s  
+  ✓ apply accepts the price import checkpoint when resuming              0.20s  
+
+  Tests:    5 passed (15 assertions)
+  Duration: 14.88s
+

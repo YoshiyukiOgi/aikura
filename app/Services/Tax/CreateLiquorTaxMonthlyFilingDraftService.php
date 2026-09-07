@@ -124,6 +124,9 @@ class CreateLiquorTaxMonthlyFilingDraftService
                         'review_reason' => $source->reviewReason,
                         'evidence_status' => $source->evidenceStatus,
                         'evidence_reference' => $source->evidenceReference,
+                        'shipment_liquor_tax_evidence_id' => $source->shipmentLiquorTaxEvidenceId,
+                        'evidence_document_file_name' => $source->evidenceDocumentFileName,
+                        'evidence_document_mime_type' => $source->evidenceDocumentMimeType,
                     ]);
                 }
 

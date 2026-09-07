@@ -10,6 +10,7 @@ use App\Models\PriceRule;
 use App\Models\Product;
 use App\Models\ProductionLot;
 use App\Models\SakeProductDetail;
+use App\Models\SalesOrder;
 use App\Models\SettlementReceivableCategory;
 use App\Models\StockLocation;
 use App\Models\StockMovement;
@@ -29,8 +30,6 @@ use App\Services\ShipmentPicking\PickShipmentInstructionData;
 use App\Services\ShipmentPicking\PickShipmentInstructionLineData;
 use App\Services\ShipmentPicking\PickShipmentInstructionService;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 
 class ArimitsuDemoSeeder extends Seeder
 {
@@ -162,8 +161,8 @@ class ArimitsuDemoSeeder extends Seeder
     }
 
     /**
-     * @param array<string, PriceList> $priceLists
-     * @param array<string, TransactionCategory> $categories
+     * @param  array<string, PriceList>  $priceLists
+     * @param  array<string, TransactionCategory>  $categories
      */
     private function createPrices(Product $product, $priceLists, $categories, ?Customer $specialCustomer, int $retailPrice): void
     {
@@ -246,24 +245,6 @@ class ArimitsuDemoSeeder extends Seeder
             ],
         );
 
-        if (Schema::hasTable('product_production_lot')) {
-            DB::table('product_production_lot')->updateOrInsert(
-            ['product_id' => $product->id, 'production_lot_id' => $lot->id, 'usage_type' => 'shipment_candidate'],
-            [
-                'priority' => 100 + $lineNo,
-                'effective_from' => '2026-06-01',
-                'effective_until' => null,
-                'is_default' => true,
-                'is_active' => true,
-                'reason' => '有光酒造場デモ商品の出荷候補ロット',
-                'note' => 'デモ用の架空ロットです。',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-        );
-
-        }
-
         StockMovement::updateOrCreate(
             ['source_type' => 'arimitsu_demo_seeder', 'source_document_number' => 'AKITORA-DEMO-OPENING-202606', 'source_line_no' => $lineNo],
             [
@@ -284,7 +265,7 @@ class ArimitsuDemoSeeder extends Seeder
 
     private function createTransactions(): void
     {
-        if (\App\Models\SalesOrder::query()->where('source_type', 'arimitsu_demo')->exists()) {
+        if (SalesOrder::query()->where('source_type', 'arimitsu_demo')->exists()) {
             return;
         }
 

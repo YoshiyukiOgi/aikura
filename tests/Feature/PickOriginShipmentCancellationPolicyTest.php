@@ -8,7 +8,11 @@ use App\Models\Customer;
 use App\Models\PriceList;
 use App\Models\PriceRule;
 use App\Models\Product;
+use App\Models\SalesOrder;
 use App\Models\SettlementReceivableCategory;
+use App\Models\ShipmentHeader;
+use App\Models\ShipmentInstruction;
+use App\Models\ShipmentPick;
 use App\Models\StockLocation;
 use App\Models\TransactionCategory;
 use App\Models\Unit;
@@ -40,7 +44,7 @@ class PickOriginShipmentCancellationPolicyTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_cancelling_pick_origin_draft_shipment_does_not_restore_upstream_quantities(): void
+    public function test_cancelling_pick_origin_draft_shipment_allows_the_unlinked_pick_to_be_cancelled(): void
     {
         [$salesOrder, $instruction, $pick, $shipment] = $this->preparePickOriginDraftShipment();
 
@@ -52,11 +56,13 @@ class PickOriginShipmentCancellationPolicyTest extends TestCase
         $this->assertSame('instructed', $salesOrder->refresh()->status);
         $this->assertSame('4.0000', $instruction->lines->first()->refresh()->picked_quantity);
         $this->assertSame('0.0000', $salesOrder->lines->first()->refresh()->remaining_quantity);
-        $this->assertSame($pick->id, $cancelledShipment->source_shipment_pick_id);
+        $this->assertNull($cancelledShipment->source_shipment_pick_id);
 
-        $this->expectException(ShipmentPickException::class);
+        $cancelledPick = app(CancelShipmentPickService::class)->cancel($pick, 'cancel unlinked pick after draft cancellation');
 
-        app(CancelShipmentPickService::class)->cancel($pick, 'upstream cancellation remains blocked');
+        $this->assertSame('cancelled', $cancelledPick->status);
+        $this->assertSame('instructed', $instruction->refresh()->status);
+        $this->assertSame('0.0000', $instruction->lines->first()->refresh()->picked_quantity);
     }
 
     public function test_cancelling_pick_origin_confirmed_shipment_keeps_pick_and_instruction_as_history(): void
@@ -79,7 +85,7 @@ class PickOriginShipmentCancellationPolicyTest extends TestCase
     }
 
     /**
-     * @return array{0: \App\Models\SalesOrder, 1: \App\Models\ShipmentInstruction, 2: \App\Models\ShipmentPick, 3: \App\Models\ShipmentHeader}
+     * @return array{0: SalesOrder, 1: ShipmentInstruction, 2: ShipmentPick, 3: ShipmentHeader}
      */
     private function preparePickOriginDraftShipment(): array
     {

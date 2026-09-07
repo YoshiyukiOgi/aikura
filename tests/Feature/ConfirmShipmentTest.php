@@ -2,21 +2,24 @@
 
 namespace Tests\Feature;
 
+use App\Exceptions\Inventory\ClosedStockPeriodException;
 use App\Exceptions\Shipment\ShipmentConfirmationException;
 use App\Models\BillingCycle;
 use App\Models\Customer;
+use App\Models\LiquorTaxCategory;
+use App\Models\LiquorTaxRule;
 use App\Models\PriceList;
 use App\Models\PriceRule;
 use App\Models\Product;
 use App\Models\ProductionLot;
 use App\Models\SettlementReceivableCategory;
+use App\Models\ShipmentHeader;
 use App\Models\StockLocation;
 use App\Models\StockLotMonthlyBalance;
 use App\Models\StockMovement;
 use App\Models\TransactionCategory;
 use App\Models\Unit;
-use App\Models\LiquorTaxCategory;
-use App\Models\LiquorTaxRule;
+use App\Services\Shipment\AllocateShipmentLineLotService;
 use App\Services\Shipment\ApplyDraftShipmentPricingService;
 use App\Services\Shipment\ConfirmShipmentService;
 use App\Services\Shipment\CreateDraftShipmentData;
@@ -157,7 +160,7 @@ class ConfirmShipmentTest extends TestCase
 
         app(ConfirmShipmentService::class)->confirm($shipment);
 
-        $this->assertSame(0, StockMovement::count());
+        $this->assertSame(0, StockMovement::where('movement_type', 'shipment')->count());
     }
 
     public function test_it_rejects_shipment_confirmation_when_stock_period_is_confirmed(): void
@@ -186,7 +189,7 @@ class ConfirmShipmentTest extends TestCase
             'confirmed_at' => now(),
         ]);
 
-        $this->expectException(\App\Exceptions\Inventory\ClosedStockPeriodException::class);
+        $this->expectException(ClosedStockPeriodException::class);
 
         app(ConfirmShipmentService::class)->confirm($shipment);
     }
@@ -271,6 +274,7 @@ class ConfirmShipmentTest extends TestCase
             ],
         ));
         $shipment = app(ApplyDraftShipmentPricingService::class)->apply($shipment);
+        $this->allocateShipmentLine($shipment, $product, $unit);
 
         $confirmed = app(ConfirmShipmentService::class)->confirm($shipment);
         $line = $confirmed->lines->first();
@@ -281,7 +285,7 @@ class ConfirmShipmentTest extends TestCase
     }
 
     /**
-     * @return array{0: \App\Models\ShipmentHeader, 1: Product, 2: PriceRule}
+     * @return array{0: ShipmentHeader, 1: Product, 2: PriceRule}
      */
     private function preparePricedShipment(): array
     {
@@ -299,12 +303,13 @@ class ConfirmShipmentTest extends TestCase
 
         $shipment = $this->createDraft($customer, $product, $unit);
         $shipment = app(ApplyDraftShipmentPricingService::class)->apply($shipment);
+        $this->allocateShipmentLine($shipment, $product, $unit);
 
         return [$shipment, $product, $priceRule];
     }
 
     /**
-     * @return array{0: \App\Models\ShipmentHeader, 1: Product, 2: Unit}
+     * @return array{0: ShipmentHeader, 1: Product, 2: Unit}
      */
     private function prepareUnpricedShipment(): array
     {
@@ -357,7 +362,7 @@ class ConfirmShipmentTest extends TestCase
         return [$customer, $product, $bottle];
     }
 
-    private function createDraft(Customer $customer, Product $product, Unit $unit): \App\Models\ShipmentHeader
+    private function createDraft(Customer $customer, Product $product, Unit $unit): ShipmentHeader
     {
         return app(CreateDraftShipmentService::class)->create(new CreateDraftShipmentData(
             customerId: $customer->id,
@@ -366,5 +371,44 @@ class ConfirmShipmentTest extends TestCase
                 new CreateDraftShipmentLineData($product->id, '3.0000', $unit->id),
             ],
         ));
+    }
+
+    private function allocateShipmentLine(ShipmentHeader $shipment, Product $product, Unit $unit): ProductionLot
+    {
+        $location = StockLocation::where('code', 'main_brewery')->firstOrFail();
+        $lot = ProductionLot::create([
+            'lot_code' => 'CONFIRM-LOT-'.str_pad((string) (ProductionLot::count() + 1), 3, '0', STR_PAD_LEFT),
+            'display_name' => 'Confirm shipment lot',
+            'status' => 'active',
+            'stock_location_id' => $location->id,
+            'unit_id' => $unit->id,
+            'capacity_value' => $product->capacity_value,
+            'capacity_unit_id' => $product->capacity_unit_id,
+            'alcohol_percentage' => $product->alcohol_percentage,
+            'analysis_status' => 'confirmed',
+            'is_active' => true,
+        ]);
+
+        StockMovement::create([
+            'status' => 'confirmed',
+            'movement_type' => 'opening_stock',
+            'movement_date' => '2026-07-01',
+            'production_lot_id' => $lot->id,
+            'lot_code' => $lot->lot_code,
+            'stock_location_id' => $location->id,
+            'unit_id' => $unit->id,
+            'quantity' => '10.0000',
+            'confirmed_at' => now(),
+        ]);
+
+        app(AllocateShipmentLineLotService::class)->allocate(
+            $shipment->lines()->firstOrFail(),
+            $lot,
+            $location,
+            '3.0000',
+            'test lot allocation',
+        );
+
+        return $lot;
     }
 }

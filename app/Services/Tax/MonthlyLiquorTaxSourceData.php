@@ -19,5 +19,8 @@ class MonthlyLiquorTaxSourceData
         public readonly ?string $reviewReason = null,
         public readonly ?string $evidenceStatus = null,
         public readonly ?string $evidenceReference = null,
+        public readonly ?int $shipmentLiquorTaxEvidenceId = null,
+        public readonly ?string $evidenceDocumentFileName = null,
+        public readonly ?string $evidenceDocumentMimeType = null,
     ) {}
 }

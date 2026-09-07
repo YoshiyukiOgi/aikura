@@ -8,7 +8,12 @@
 4. `screens.md`、`reports.md`: 画面と帳票の設計方針。
 5. `tax-export-rules.md`、`returns-and-tax-adjustments.md`: 税務上の追加要件と実装課題。
 6. `operation-test-plan.md`、`testing-rules.md`: 運用試験と自動テストの基準。
-7. `itaro-xp-cutover-migration-standard.md`: Itaro-XPからの初回移行、白紙化再移行、過去履歴追加の標準手順。
+7. `g3-b1-a-validation-20260906.md`: B1 Access原本の抽出、Aステージング、警告隔離の検証記録。
+8. `g4-release-candidate-precheck-20260906.md`: Aをリリース候補として固定する前の判定と停止条件。
+9. `itaro-xp-cutover-migration-standard.md`: Itaro-XPからの初回移行、白紙化再移行、過去履歴追加の標準手順。
+10. `b1-a-b2-migration-security-policy.md`: B1からA、B2を経て本番化する移行サイクル、変更統制、承認、復旧、AI利用のセキュリティ方針。
+11. `lot-inventory-architecture.md`: ロット中心在庫を唯一の正規在庫とし、旧商品在庫を照合・監査専用へ分離する現行設計。
+12. `a-b2-release-readiness-gates.md`: AからB2への完全移行を開始するための段階ゲートと承認条件。
 
 ## 文書の優先順位
 

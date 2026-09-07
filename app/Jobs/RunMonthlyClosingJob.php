@@ -27,8 +27,7 @@ class RunMonthlyClosingJob implements ShouldQueue
         private readonly int $year,
         private readonly int $month,
         private readonly string $reason,
-    ) {
-    }
+    ) {}
 
     public function handle(
         OperationJobService $operationJobService,
@@ -49,7 +48,7 @@ class RunMonthlyClosingJob implements ShouldQueue
             ],
             reason: $this->reason,
             callback: fn (): mixed => match ($this->closingType) {
-                'stock_monthly_balance_confirm' => $stockConfirmService->confirm($this->year, $this->month, $this->reason),
+                'stock_lot_monthly_balance_confirm' => $stockConfirmService->confirm($this->year, $this->month, $this->reason),
                 'receivable_monthly_balance_confirm' => $receivableConfirmService->confirm($this->year, $this->month, $this->reason),
                 'receivable_monthly_balance_close' => $receivableCloseService->close($this->year, $this->month, $this->reason),
                 'liquor_tax_filing_confirm' => $liquorTaxConfirmService->confirm($this->year, $this->month, $this->reason),

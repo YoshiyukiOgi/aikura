@@ -32,6 +32,7 @@ use App\Services\Tax\ReviewSalesReturnLiquorTaxService;
 use App\Services\Tax\UpdateLiquorTaxAdjustmentSettingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\ResponseHeaderBag;
 
@@ -206,6 +207,23 @@ class TaxController extends ApiController
         ], ResponseHeaderBag::DISPOSITION_ATTACHMENT);
     }
 
+    public function downloadShipmentLiquorTaxEvidenceDocument(ShipmentLiquorTaxEvidence $evidence): BinaryFileResponse
+    {
+        $path = $evidence->document_file_path ? Storage::disk('local')->path($evidence->document_file_path) : null;
+        if ($path === null || ! is_file($path)) {
+            abort(404);
+        }
+
+        $mimeType = $evidence->document_mime_type ?: 'application/octet-stream';
+        $disposition = str_starts_with($mimeType, 'image/') || $mimeType === 'application/pdf'
+            ? ResponseHeaderBag::DISPOSITION_INLINE
+            : ResponseHeaderBag::DISPOSITION_ATTACHMENT;
+
+        return response()->download($path, $evidence->document_file_name ?: basename($path), [
+            'Content-Type' => $mimeType,
+        ], $disposition);
+    }
+
     public function consumptionFilings(): JsonResponse
     {
         $filings = ConsumptionTaxMonthlyFiling::query()
@@ -332,6 +350,12 @@ class TaxController extends ApiController
                         'review_reason' => $source->review_reason,
                         'evidence_status' => $source->evidence_status,
                         'evidence_reference' => $source->evidence_reference,
+                        'shipment_liquor_tax_evidence_id' => $source->shipment_liquor_tax_evidence_id,
+                        'evidence_document_file_name' => $source->evidence_document_file_name,
+                        'evidence_document_mime_type' => $source->evidence_document_mime_type,
+                        'evidence_document_download_url' => $source->shipment_liquor_tax_evidence_id
+                            ? "/api/v1/tax/shipment-liquor-tax-evidences/{$source->shipment_liquor_tax_evidence_id}/document"
+                            : null,
                     ])->values()->all() : [],
                 ])
                 ->values()
@@ -386,6 +410,13 @@ class TaxController extends ApiController
             'customs_office' => $evidence->customs_office,
             'exporter_type' => $evidence->exporter_type,
             'note' => $evidence->note,
+            'document_file_name' => $evidence->document_file_name,
+            'document_file_size' => $evidence->document_file_size,
+            'document_mime_type' => $evidence->document_mime_type,
+            'document_checksum_sha256' => $evidence->document_checksum_sha256,
+            'document_download_url' => $evidence->document_file_path
+                ? "/api/v1/tax/shipment-liquor-tax-evidences/{$evidence->id}/document"
+                : null,
             'confirmed_by_name' => $evidence->confirmer?->name,
             'confirmed_at' => $evidence->confirmed_at?->toISOString(),
         ];

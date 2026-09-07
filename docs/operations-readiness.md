@@ -175,7 +175,7 @@ docker compose run --rm app php artisan test tests/Feature/ApiPermissionMiddlewa
 集計リハーサル例:
 
 ```powershell
-docker compose run --rm app php artisan aikura:monthly-aggregation stock_monthly_balance 2026 6 --sync --reason="monthly rehearsal stock aggregation"
+docker compose run --rm app php artisan aikura:monthly-aggregation stock_lot_monthly_balance 2026 6 --sync --reason="monthly rehearsal stock aggregation"
 docker compose run --rm app php artisan aikura:monthly-aggregation receivable_monthly_balance 2026 6 --sync --reason="monthly rehearsal receivable aggregation"
 docker compose run --rm app php artisan aikura:monthly-aggregation liquor_tax_monthly_filing 2026 6 --sync --reason="monthly rehearsal liquor tax aggregation"
 docker compose run --rm app php artisan aikura:monthly-aggregation consumption_tax_monthly_filing 2026 6 --sync --reason="monthly rehearsal consumption tax aggregation"
@@ -184,7 +184,7 @@ docker compose run --rm app php artisan aikura:monthly-aggregation consumption_t
 確定、締めリハーサル例:
 
 ```powershell
-docker compose run --rm app php artisan aikura:monthly-closing stock_monthly_balance_confirm 2026 6 --sync --reason="monthly rehearsal stock confirm"
+docker compose run --rm app php artisan aikura:monthly-closing stock_lot_monthly_balance_confirm 2026 6 --sync --reason="monthly rehearsal stock confirm"
 docker compose run --rm app php artisan aikura:monthly-closing receivable_monthly_balance_confirm 2026 6 --sync --reason="monthly rehearsal receivable confirm"
 docker compose run --rm app php artisan aikura:monthly-closing receivable_monthly_balance_close 2026 6 --sync --reason="monthly rehearsal receivable close"
 docker compose run --rm app php artisan aikura:monthly-closing liquor_tax_monthly_filing_confirm 2026 6 --sync --reason="monthly rehearsal liquor tax confirm"

@@ -61,7 +61,7 @@
 1. `stock_movements` の `confirmed` および `closed` を集計対象にする。
 2. `draft`、`cancelled`、取消日時を持つ在庫移動は除外する。
 3. 棚卸対象日と実際の棚卸実施日、棚卸確定日を分けて扱う。翌月に棚卸を数え終えても、棚卸対象日が前月末であれば前月在庫として確定できる。
-4. 棚卸差異は `stock_monthly_balances` を直接修正せず、棚卸対象日を `movement_date` とする在庫調整の `stock_movements` として記録する。
+4. 棚卸差異は `stock_lot_monthly_balances` を直接修正せず、棚卸対象日を `movement_date` とするロット付き在庫調整の `stock_movements` として記録する。
 5. 月次在庫残高ドラフトを作成する。
 6. 月次在庫残高を確定し、対象期間の `confirmed` な在庫移動を `closed` にする。
 7. 確定済みまたは締め済み月には新規在庫移動を直接作成しない。

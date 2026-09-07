@@ -2,8 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Exceptions\Inventory\ClosedStockPeriodException;
 use App\Exceptions\Shipment\ShipmentCancellationException;
 use App\Exceptions\StateMachine\InvalidStatusTransitionException;
+use App\Models\AppSetting;
 use App\Models\BillingCycle;
 use App\Models\Customer;
 use App\Models\PriceList;
@@ -11,22 +13,25 @@ use App\Models\PriceRule;
 use App\Models\Product;
 use App\Models\ProductionLot;
 use App\Models\SettlementReceivableCategory;
+use App\Models\ShipmentHeader;
 use App\Models\StockLocation;
 use App\Models\StockLotMonthlyBalance;
 use App\Models\StockMovement;
 use App\Models\TransactionCategory;
 use App\Models\Unit;
+use App\Services\Inventory\LotStockBalanceService;
+use App\Services\Shipment\AllocateShipmentLineLotService;
 use App\Services\Shipment\ApplyDraftShipmentPricingService;
 use App\Services\Shipment\CancelShipmentService;
 use App\Services\Shipment\ConfirmShipmentService;
 use App\Services\Shipment\CreateDraftShipmentData;
 use App\Services\Shipment\CreateDraftShipmentLineData;
 use App\Services\Shipment\CreateDraftShipmentService;
-use App\Services\Inventory\CurrentStockBalanceService;
 use Database\Seeders\CustomerMasterSeeder;
 use Database\Seeders\PriceMasterSeeder;
 use Database\Seeders\ProductUnitMasterSeeder;
 use Database\Seeders\ShipmentMasterSeeder;
+use Database\Seeders\StockLocationSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -75,7 +80,7 @@ class CancelShipmentTest extends TestCase
 
     public function test_it_reverses_shipment_stock_movement_when_confirmed_shipment_is_cancelled(): void
     {
-        [$shipment, , $unit] = $this->prepareConfirmedShipment();
+        [$shipment, , $unit, $lot] = $this->prepareConfirmedShipment();
         $line = $shipment->lines->first();
         $location = StockLocation::where('code', 'main_brewery')->firstOrFail();
         $originalMovement = StockMovement::where('source_shipment_header_id', $shipment->id)
@@ -97,24 +102,16 @@ class CancelShipmentTest extends TestCase
             'reason' => 'stock return by cancellation',
         ]);
 
-        $balance = app(CurrentStockBalanceService::class)
-            ->forProductLocationUnit($line->product_id, $location->id, $unit->id);
+        $balance = app(LotStockBalanceService::class)
+            ->forLotLocationUnit($lot->id, $location->id, $unit->id);
 
-        $this->assertSame('0.0000', $balance->physicalQuantity);
+        $this->assertSame('2.0000', $balance->physicalQuantity);
     }
 
     public function test_it_rejects_cancelling_confirmed_shipment_when_stock_period_is_confirmed(): void
     {
-        [$shipment, $product, $unit] = $this->prepareConfirmedShipment();
+        [$shipment, $product, $unit, $lot] = $this->prepareConfirmedShipment();
         $location = StockLocation::where('code', 'main_brewery')->firstOrFail();
-        $lot = ProductionLot::create([
-            'lot_code' => 'CANCEL-SH-LOT-001',
-            'display_name' => 'Cancel shipment lot',
-            'status' => 'active',
-            'stock_location_id' => $location->id,
-            'unit_id' => $unit->id,
-            'is_active' => true,
-        ]);
 
         StockLotMonthlyBalance::create([
             'status' => 'confirmed',
@@ -129,7 +126,7 @@ class CancelShipmentTest extends TestCase
             'confirmed_at' => now(),
         ]);
 
-        $this->expectException(\App\Exceptions\Inventory\ClosedStockPeriodException::class);
+        $this->expectException(ClosedStockPeriodException::class);
 
         app(CancelShipmentService::class)->cancel($shipment, 'closed stock period');
     }
@@ -165,7 +162,7 @@ class CancelShipmentTest extends TestCase
     }
 
     /**
-     * @return array{0: \App\Models\ShipmentHeader, 1: Product, 2: Unit}
+     * @return array{0: ShipmentHeader, 1: Product, 2: Unit, 3: ProductionLot}
      */
     private function prepareDraftShipment(): array
     {
@@ -183,7 +180,7 @@ class CancelShipmentTest extends TestCase
     }
 
     /**
-     * @return array{0: \App\Models\ShipmentHeader, 1: Product, 2: Unit}
+     * @return array{0: ShipmentHeader, 1: Product, 2: Unit}
      */
     private function prepareConfirmedShipment(): array
     {
@@ -207,10 +204,11 @@ class CancelShipmentTest extends TestCase
             ],
         ));
 
+        $lot = $this->allocateShipmentLine($shipment, $unit);
         $shipment = app(ApplyDraftShipmentPricingService::class)->apply($shipment);
         $shipment = app(ConfirmShipmentService::class)->confirm($shipment);
 
-        return [$shipment, $product, $unit];
+        return [$shipment, $product, $unit, $lot];
     }
 
     /**
@@ -223,12 +221,15 @@ class CancelShipmentTest extends TestCase
             ProductUnitMasterSeeder::class,
             PriceMasterSeeder::class,
             ShipmentMasterSeeder::class,
+            StockLocationSeeder::class,
         ]);
+        AppSetting::setValue('operational_start_date', '2026-06-01');
 
         $transactionCategory = TransactionCategory::where('code', 'wholesale')->firstOrFail();
         $settlementCategory = SettlementReceivableCategory::where('code', 'accounts_receivable_1')->firstOrFail();
         $billingCycle = BillingCycle::where('code', 'monthly_end_next_month_end')->firstOrFail();
         $unit = Unit::where('code', 'bottle')->firstOrFail();
+        $capacityUnit = Unit::where('code', 'milliliter')->firstOrFail();
 
         $customer = Customer::create([
             'customer_code' => 'CANCEL-CUST-001',
@@ -246,9 +247,51 @@ class CancelShipmentTest extends TestCase
             'base_unit_id' => $unit->id,
             'sales_unit_id' => $unit->id,
             'inventory_unit_id' => $unit->id,
+            'capacity_value' => '720.0000',
+            'capacity_unit_id' => $capacityUnit->id,
+            'alcohol_percentage' => '15.00',
             'is_alcohol' => true,
         ]);
 
         return [$customer, $product, $unit];
+    }
+
+    private function allocateShipmentLine(ShipmentHeader $shipment, Unit $unit): ProductionLot
+    {
+        $location = StockLocation::where('code', 'main_brewery')->firstOrFail();
+        $lot = ProductionLot::create([
+            'lot_code' => 'CANCEL-SH-LOT-'.str_pad((string) $shipment->id, 4, '0', STR_PAD_LEFT),
+            'display_name' => 'Cancel shipment lot',
+            'status' => 'active',
+            'stock_location_id' => $location->id,
+            'unit_id' => $unit->id,
+            'capacity_value' => '720.0000',
+            'capacity_unit_id' => Unit::where('code', 'milliliter')->firstOrFail()->id,
+            'alcohol_percentage' => '15.00',
+            'analysis_status' => 'confirmed',
+            'is_active' => true,
+        ]);
+
+        StockMovement::create([
+            'status' => 'confirmed',
+            'movement_type' => 'opening_stock',
+            'movement_date' => '2026-07-20',
+            'stock_location_id' => $location->id,
+            'unit_id' => $unit->id,
+            'quantity' => '2.0000',
+            'production_lot_id' => $lot->id,
+            'lot_code' => $lot->lot_code,
+            'confirmed_at' => now(),
+        ]);
+
+        app(AllocateShipmentLineLotService::class)->allocate(
+            shipmentLine: $shipment->lines->firstOrFail(),
+            productionLot: $lot,
+            stockLocation: $location,
+            quantity: '2.0000',
+            reason: 'Cancellation workflow test allocation',
+        );
+
+        return $lot;
     }
 }

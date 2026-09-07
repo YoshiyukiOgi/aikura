@@ -152,7 +152,7 @@ class ApprovalFlowApiTest extends TestCase
     {
         [$requester, $approver] = $this->prepareUsers();
 
-        $pendingId = $this->createApprovalRequest($requester, ApprovalService::ACTION_CLOSING_REOPEN, 'stock_monthly_balance', '2026-06');
+        $pendingId = $this->createApprovalRequest($requester, ApprovalService::ACTION_CLOSING_REOPEN, 'stock_lot_monthly_balance', '2026-06');
 
         $this->actingAs($approver)
             ->postJson("/api/v1/approval-requests/{$pendingId}/consume")
@@ -164,7 +164,7 @@ class ApprovalFlowApiTest extends TestCase
         app(ApprovalService::class)->assertApprovedFor(
             approvalRequestId: $approvalRequest->id,
             actionType: ApprovalService::ACTION_CLOSING_REOPEN,
-            targetType: 'stock_monthly_balance',
+            targetType: 'stock_lot_monthly_balance',
             targetId: '2026-06',
         );
     }

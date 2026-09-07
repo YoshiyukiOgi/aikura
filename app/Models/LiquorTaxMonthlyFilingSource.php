@@ -15,7 +15,8 @@ class LiquorTaxMonthlyFilingSource extends Model
         'source_type', 'source_header_id', 'source_line_id', 'source_document_number',
         'source_date', 'tax_treatment', 'quantity', 'taxable_kl', 'gross_tax_amount',
         'reporting_alcohol_percentage', 'requires_review', 'review_reason',
-        'evidence_status', 'evidence_reference',
+        'evidence_status', 'evidence_reference', 'shipment_liquor_tax_evidence_id',
+        'evidence_document_file_name', 'evidence_document_mime_type',
     ];
 
     protected function casts(): array

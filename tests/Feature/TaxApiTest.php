@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Models\AppSetting;
+use App\Models\AuditLog;
 use App\Models\BillingCycle;
 use App\Models\Customer;
 use App\Models\Employee;
@@ -11,6 +13,7 @@ use App\Models\Product;
 use App\Models\Role;
 use App\Models\SettlementReceivableCategory;
 use App\Models\ShipmentHeader;
+use App\Models\ShipmentLiquorTaxEvidence;
 use App\Models\TransactionCategory;
 use App\Models\Unit;
 use App\Models\User;
@@ -26,6 +29,7 @@ use App\Services\Tax\ConfirmLiquorTaxMonthlyFilingService;
 use App\Services\Tax\CreateLiquorTaxMonthlyFilingDraftService;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Tests\TestCase;
 
 class TaxApiTest extends TestCase
@@ -150,20 +154,27 @@ class TaxApiTest extends TestCase
     public function test_tax_user_can_confirm_export_evidence_and_rebuild_filing_sources(): void
     {
         [$user, $shipment] = $this->prepareData('direct_export', 'tax-evidence@example.com');
+        $document = UploadedFile::fake()->create('export-proof.pdf', 24, 'application/pdf');
 
-        $this->actingAs($user)
-            ->putJson("/api/v1/tax/shipments/{$shipment->id}/liquor-tax-evidence", [
+        $response = $this->actingAs($user)
+            ->post("/api/v1/tax/shipments/{$shipment->id}/liquor-tax-evidence", [
+                '_method' => 'PUT',
                 'status' => 'confirmed',
                 'evidence_reference' => 'EXP-API-001',
                 'evidence_date' => '2026-06-25',
                 'destination' => 'United States',
                 'customs_office' => 'Yokohama Customs',
                 'exporter_type' => 'direct',
+                'document' => $document,
                 'note' => 'export permit checked',
             ])
             ->assertOk()
             ->assertJsonPath('data.shipment_liquor_tax_evidence.status', 'confirmed')
-            ->assertJsonPath('data.shipment_liquor_tax_evidence.evidence_reference', 'EXP-API-001');
+            ->assertJsonPath('data.shipment_liquor_tax_evidence.evidence_reference', 'EXP-API-001')
+            ->assertJsonPath('data.shipment_liquor_tax_evidence.document_file_name', 'export-proof.pdf');
+
+        $evidenceId = $response->json('data.shipment_liquor_tax_evidence.id');
+        $this->assertNotNull($evidenceId);
 
         $draft = $this->actingAs($user)
             ->postJson('/api/v1/tax/liquor-monthly-filings', [
@@ -177,7 +188,80 @@ class TaxApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.liquor_tax_monthly_filing.lines.0.sources.0.requires_review', false)
             ->assertJsonPath('data.liquor_tax_monthly_filing.lines.0.sources.0.evidence_status', 'confirmed')
-            ->assertJsonPath('data.liquor_tax_monthly_filing.lines.0.sources.0.evidence_reference', 'EXP-API-001');
+            ->assertJsonPath('data.liquor_tax_monthly_filing.lines.0.sources.0.evidence_reference', 'EXP-API-001')
+            ->assertJsonPath('data.liquor_tax_monthly_filing.lines.0.sources.0.shipment_liquor_tax_evidence_id', $evidenceId)
+            ->assertJsonPath('data.liquor_tax_monthly_filing.lines.0.sources.0.evidence_document_file_name', 'export-proof.pdf');
+
+        $this->actingAs($user)
+            ->get("/api/v1/tax/shipment-liquor-tax-evidences/{$evidenceId}/document")
+            ->assertOk()
+            ->assertHeader('content-type', 'application/pdf');
+
+        $auditLog = AuditLog::query()
+            ->where('event', 'shipment.liquor_tax_evidence_recorded')
+            ->where('auditable_id', $evidenceId)
+            ->latest('id')
+            ->first();
+
+        $this->assertNotNull($auditLog);
+        $this->assertSame('export-proof.pdf', $auditLog->after_values['document_file_name'] ?? null);
+        $this->assertNotEmpty($auditLog->after_values['document_checksum_sha256'] ?? null);
+    }
+
+    public function test_tax_user_cannot_replace_evidence_document_after_liquor_filing_is_confirmed(): void
+    {
+        [$user, $shipment] = $this->prepareData('direct_export', 'tax-evidence-lock@example.com');
+
+        $this->actingAs($user)
+            ->post("/api/v1/tax/shipments/{$shipment->id}/liquor-tax-evidence", [
+                '_method' => 'PUT',
+                'status' => 'confirmed',
+                'evidence_reference' => 'EXP-LOCK-001',
+                'evidence_date' => '2026-06-25',
+                'destination' => 'United States',
+                'customs_office' => 'Yokohama Customs',
+                'exporter_type' => 'direct',
+                'document' => UploadedFile::fake()->create('initial-proof.pdf', 24, 'application/pdf'),
+                'note' => 'initial evidence',
+            ])
+            ->assertOk();
+
+        $draft = $this->actingAs($user)
+            ->postJson('/api/v1/tax/liquor-monthly-filings', [
+                'year' => 2026,
+                'month' => 6,
+                'reason' => 'lock evidence before filing confirmation',
+            ])->assertCreated();
+
+        $this->actingAs($user)
+            ->postJson('/api/v1/tax/liquor-monthly-filings/'.$draft->json('data.liquor_tax_monthly_filing.id').'/confirm', [
+                'reason' => 'confirm filing after evidence check',
+            ])
+            ->assertOk();
+
+        $evidence = ShipmentLiquorTaxEvidence::query()->where('shipment_header_id', $shipment->id)->firstOrFail();
+        $originalPath = $evidence->document_file_path;
+        $originalChecksum = $evidence->document_checksum_sha256;
+
+        $this->actingAs($user)
+            ->post("/api/v1/tax/shipments/{$shipment->id}/liquor-tax-evidence", [
+                '_method' => 'PUT',
+                'status' => 'confirmed',
+                'evidence_reference' => 'EXP-LOCK-002',
+                'evidence_date' => '2026-06-26',
+                'destination' => 'Canada',
+                'customs_office' => 'Kobe Customs',
+                'exporter_type' => 'direct',
+                'document' => UploadedFile::fake()->create('replacement-proof.pdf', 24, 'application/pdf'),
+                'note' => 'replacement evidence',
+            ])
+            ->assertStatus(409)
+            ->assertJsonPath('error.code', 'business_rule_violation');
+
+        $evidence->refresh();
+        $this->assertSame('initial-proof.pdf', $evidence->document_file_name);
+        $this->assertSame($originalPath, $evidence->document_file_path);
+        $this->assertSame($originalChecksum, $evidence->document_checksum_sha256);
     }
 
     public function test_tax_user_can_create_and_download_liquor_tax_confirmation_sheets(): void
@@ -259,6 +343,7 @@ class TaxApiTest extends TestCase
     private function prepareData(string $settlementCode = 'accounts_receivable_1', string $email = 'tax-admin@example.com'): array
     {
         $this->seed(DatabaseSeeder::class);
+        AppSetting::setValue('operational_start_date', '2026-06-01');
 
         $user = $this->createUser($email);
         $user->roles()->attach(Role::where('code', 'admin')->firstOrFail());

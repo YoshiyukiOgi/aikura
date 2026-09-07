@@ -322,6 +322,7 @@ Route::prefix('v1')->name('api.v1.')->group(function (): void {
             Route::get('/tax/liquor-monthly-filings/{filing}', [TaxController::class, 'liquorFiling'])->name('tax.liquor-monthly-filings.show');
             Route::get('/tax/liquor-settings', [TaxController::class, 'liquorSettings'])->name('tax.liquor-settings');
             Route::get('/tax/report-exports/{reportExport}/download', [TaxController::class, 'downloadLiquorFilingExport'])->name('tax.report-exports.download');
+            Route::get('/tax/shipment-liquor-tax-evidences/{evidence}/document', [TaxController::class, 'downloadShipmentLiquorTaxEvidenceDocument'])->name('tax.shipment-liquor-tax-evidences.document');
             Route::get('/tax/consumption-monthly-filings', [TaxController::class, 'consumptionFilings'])->name('tax.consumption-monthly-filings');
             Route::get('/tax/consumption-monthly-filings/{filing}', [TaxController::class, 'consumptionFiling'])->name('tax.consumption-monthly-filings.show');
         });

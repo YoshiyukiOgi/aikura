@@ -1,0 +1,92 @@
+
+   FAIL  Tests\Feature\CancelShipmentTest
+  ✓ it cancels draft shipment with reason and audit log                 14.20s  
+  ⨯ it cancels confirmed shipment without destroying snapshot            0.79s  
+  ⨯ it reverses shipment stock movement when confirmed shipment is canc… 0.48s  
+  ⨯ it rejects cancelling confirmed shipment when stock period is confi… 0.52s  
+  ✓ it rejects empty reason                                              0.47s  
+  ✓ it rejects cancelling already cancelled shipment                     0.49s  
+  ✓ it rejects cancelling closed shipment                                0.44s  
+
+   PASS  Tests\Feature\GenerateInventoryReportTest
+  ✓ it generates lot stock balance report file and export record         0.36s  
+  ✓ it keeps reissued lot stock balance reports as separate files        0.49s  
+  ✓ it rejects empty lot stock balance report generation                 0.32s  
+  ✓ it rejects unsupported lot stock balance report format               0.28s  
+
+   PASS  Tests\Feature\InventoryOperationsWorkflowTest
+  ✓ monthly count creates lot adjustment on target month end             0.48s  
+  ✓ current stock uses confirmed monthly lot balances plus later moveme… 0.40s  
+  ✓ self consumption keeps tax treatments and reduces stock              0.58s  
+  ✓ stock movement correction posts an opposite movement                 0.39s  
+  ✓ cancelling self consumption restores stock and excludes liquor tax   0.59s  
+
+   PASS  Tests\Feature\PickShipmentInventoryConnectionTest
+  ✓ pick origin shipment can allocate and confirm lot stock              0.82s  
+  ✓ out of range lot is split and requires approval before pick          0.78s  
+
+   PASS  Tests\Feature\ProductionLotTest
+  ✓ production lots table exists                                         0.22s  
+  ✓ it creates production lot and relates to location and stock movemen… 0.26s  
+  ✓ lot code is unique                                                   0.26s  
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\CancelShipmentTest > it cancels co…  DomainException   
+  選択したロットは商品容量または分析条件を満たしていません: analysis_required
+
+  at app/Services/Shipment/AllocateShipmentLineLotService.php:91
+     87▕             }
+     88▕ 
+     89▕             $compatibility = $this->compatibility->evaluate($shipmentLine->product, $productionLot, $shipmentLine->unit_id);
+     90▕             if (! $compatibility['selectable']) {
+  ➜  91▕                 throw new DomainException('選択したロットは商品容量または分析条件を満たしていません: '.$compatibility['status']);
+     92▕             }
+     93▕             $alcohol = $compatibility['alcohol'];
+     94▕ 
+     95▕             if ($alcohol['status'] === 'out_of_range' && $this->lineAllocatedQuantity($shipmentLine) !== '0.0000') {
+
+  1   app/Services/Shipment/AllocateShipmentLineLotService.php:91
+      [2m+3 vendor frames [22m
+  5   app/Services/Shipment/AllocateShipmentLineLotService.php:37
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\CancelShipmentTest > it reverses s…  DomainException   
+  選択したロットは商品容量または分析条件を満たしていません: analysis_required
+
+  at app/Services/Shipment/AllocateShipmentLineLotService.php:91
+     87▕             }
+     88▕ 
+     89▕             $compatibility = $this->compatibility->evaluate($shipmentLine->product, $productionLot, $shipmentLine->unit_id);
+     90▕             if (! $compatibility['selectable']) {
+  ➜  91▕                 throw new DomainException('選択したロットは商品容量または分析条件を満たしていません: '.$compatibility['status']);
+     92▕             }
+     93▕             $alcohol = $compatibility['alcohol'];
+     94▕ 
+     95▕             if ($alcohol['status'] === 'out_of_range' && $this->lineAllocatedQuantity($shipmentLine) !== '0.0000') {
+
+  1   app/Services/Shipment/AllocateShipmentLineLotService.php:91
+      [2m+3 vendor frames [22m
+  5   app/Services/Shipment/AllocateShipmentLineLotService.php:37
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\CancelShipmentTest > it rejects ca…  DomainException   
+  選択したロットは商品容量または分析条件を満たしていません: analysis_required
+
+  at app/Services/Shipment/AllocateShipmentLineLotService.php:91
+     87▕             }
+     88▕ 
+     89▕             $compatibility = $this->compatibility->evaluate($shipmentLine->product, $productionLot, $shipmentLine->unit_id);
+     90▕             if (! $compatibility['selectable']) {
+  ➜  91▕                 throw new DomainException('選択したロットは商品容量または分析条件を満たしていません: '.$compatibility['status']);
+     92▕             }
+     93▕             $alcohol = $compatibility['alcohol'];
+     94▕ 
+     95▕             if ($alcohol['status'] === 'out_of_range' && $this->lineAllocatedQuantity($shipmentLine) !== '0.0000') {
+
+  1   app/Services/Shipment/AllocateShipmentLineLotService.php:91
+      [2m+3 vendor frames [22m
+  5   app/Services/Shipment/AllocateShipmentLineLotService.php:37
+
+
+  Tests:    3 failed, 18 passed (95 assertions)
+  Duration: 26.15s
+

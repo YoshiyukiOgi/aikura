@@ -1,0 +1,330 @@
+
+   FAIL  Tests\Feature\CancelShipmentTest
+  ✓ it cancels draft shipment with reason and audit log                 13.70s  
+  ⨯ it cancels confirmed shipment without destroying snapshot            0.89s  
+  ⨯ it reverses shipment stock movement when confirmed shipment is canc… 0.49s  
+  ⨯ it rejects cancelling confirmed shipment when stock period is confi… 0.47s  
+  ✓ it rejects empty reason                                              0.44s  
+  ✓ it rejects cancelling already cancelled shipment                     0.44s  
+  ✓ it rejects cancelling closed shipment                                0.43s  
+
+   FAIL  Tests\Feature\GenerateInventoryReportTest
+  ⨯ it generates stock balance report file and export record             0.30s  
+  ⨯ it keeps reissued stock balance reports as separate files            0.27s  
+  ⨯ it generates lot stock balance report file and export record         0.31s  
+  ⨯ it keeps reissued lot stock balance reports as separate files        0.28s  
+  ⨯ it rejects empty stock balance report generation                     0.22s  
+  ✓ it rejects empty lot stock balance report generation                 0.19s  
+  ⨯ it rejects unsupported report format                                 0.25s  
+
+   FAIL  Tests\Feature\InventoryOperationsWorkflowTest
+  ⨯ monthly count creates lot adjustment on target month end             0.48s  
+  ⨯ current stock uses confirmed monthly product and lot balances plus…  0.40s  
+  ✓ self consumption keeps tax treatments and reduces stock              0.48s  
+  ⨯ stock movement correction posts an opposite movement                 0.41s  
+  ⨯ cancelling self consumption restores stock and excludes liquor tax   0.56s  
+
+   FAIL  Tests\Feature\PickShipmentInventoryConnectionTest
+  ⨯ pick origin shipment can allocate and confirm lot stock              0.75s  
+  ⨯ out of range lot is split and requires approval before pick          0.76s  
+
+   FAIL  Tests\Feature\ProductionLotTest
+  ⨯ production lots table exists                                         0.21s  
+  ⨯ it creates production lot and relates to product location and stock… 0.25s  
+  ✓ lot code is unique                                                   0.26s  
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\CancelShipmentTest >…  ShipmentConfirmationException   
+  出荷明細 [2] の数量 2.0000 とロット割当数量 0.0000 が一致しません。
+
+  at app/Exceptions/Shipment/ShipmentConfirmationException.php:31
+     27▕     }
+     28▕ 
+     29▕     public static function lineLotAllocationIncomplete(int $shipmentLineId, string $lineQuantity, string $allocatedQuantity): self
+     30▕     {
+  ➜  31▕         return new self("出荷明細 [{$shipmentLineId}] の数量 {$lineQuantity} とロット割当数量 {$allocatedQuantity} が一致しません。");
+     32▕     }
+     33▕ }
+     34▕
+
+  1   app/Exceptions/Shipment/ShipmentConfirmationException.php:31
+  2   app/Services/Inventory/CreateShipmentStockMovementsService.php:50
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\CancelShipmentTest >…  ShipmentConfirmationException   
+  出荷明細 [3] の数量 2.0000 とロット割当数量 0.0000 が一致しません。
+
+  at app/Exceptions/Shipment/ShipmentConfirmationException.php:31
+     27▕     }
+     28▕ 
+     29▕     public static function lineLotAllocationIncomplete(int $shipmentLineId, string $lineQuantity, string $allocatedQuantity): self
+     30▕     {
+  ➜  31▕         return new self("出荷明細 [{$shipmentLineId}] の数量 {$lineQuantity} とロット割当数量 {$allocatedQuantity} が一致しません。");
+     32▕     }
+     33▕ }
+     34▕
+
+  1   app/Exceptions/Shipment/ShipmentConfirmationException.php:31
+  2   app/Services/Inventory/CreateShipmentStockMovementsService.php:50
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\CancelShipmentTest >…  ShipmentConfirmationException   
+  出荷明細 [4] の数量 2.0000 とロット割当数量 0.0000 が一致しません。
+
+  at app/Exceptions/Shipment/ShipmentConfirmationException.php:31
+     27▕     }
+     28▕ 
+     29▕     public static function lineLotAllocationIncomplete(int $shipmentLineId, string $lineQuantity, string $allocatedQuantity): self
+     30▕     {
+  ➜  31▕         return new self("出荷明細 [{$shipmentLineId}] の数量 {$lineQuantity} とロット割当数量 {$allocatedQuantity} が一致しません。");
+     32▕     }
+     33▕ }
+     34▕
+
+  1   app/Exceptions/Shipment/ShipmentConfirmationException.php:31
+  2   app/Services/Inventory/CreateShipmentStockMovementsService.php:50
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\GenerateInventoryReport…  BindingResolutionException   
+  Target class [App\Services\Inventory\GenerateStockBalanceReportService] does not exist.
+
+  at vendor/laravel/framework/src/Illuminate/Container/Container.php:1124
+    1120▕ 
+    1121▕         try {
+    1122▕             $reflector = new ReflectionClass($concrete);
+    1123▕         } catch (ReflectionException $e) {
+  ➜ 1124▕             throw new BindingResolutionException("Target class [$concrete] does not exist.", 0, $e);
+    1125▕         }
+    1126▕ 
+    1127▕         // If the type is not instantiable, the developer is attempting to resolve
+    1128▕         // an abstract type such as an Interface or Abstract Class and there is
+
+      [2m+8 vendor frames [22m
+  9   tests/Feature/GenerateInventoryReportTest.php:36
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\GenerateInventoryReport…  BindingResolutionException   
+  Target class [App\Services\Inventory\GenerateStockBalanceReportService] does not exist.
+
+  at vendor/laravel/framework/src/Illuminate/Container/Container.php:1124
+    1120▕ 
+    1121▕         try {
+    1122▕             $reflector = new ReflectionClass($concrete);
+    1123▕         } catch (ReflectionException $e) {
+  ➜ 1124▕             throw new BindingResolutionException("Target class [$concrete] does not exist.", 0, $e);
+    1125▕         }
+    1126▕ 
+    1127▕         // If the type is not instantiable, the developer is attempting to resolve
+    1128▕         // an abstract type such as an Interface or Abstract Class and there is
+
+      [2m+8 vendor frames [22m
+  9   tests/Feature/GenerateInventoryReportTest.php:77
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\GenerateInventoryRe…  InventoryReportExportException   
+  在庫帳票の対象となるロット在庫残高がありません。
+
+  at app/Exceptions/Inventory/InventoryReportExportException.php:16
+     12▕     }
+     13▕ 
+     14▕     public static function noLotStockBalances(): self
+     15▕     {
+  ➜  16▕         return new self('在庫帳票の対象となるロット在庫残高がありません。');
+     17▕     }
+     18▕ 
+     19▕     public static function unsupportedFormat(string $format): self
+     20▕     {
+
+  1   app/Exceptions/Inventory/InventoryReportExportException.php:16
+  2   app/Services/Inventory/GenerateLotStockBalanceReportService.php:36
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\GenerateInventoryRe…  InventoryReportExportException   
+  在庫帳票の対象となるロット在庫残高がありません。
+
+  at app/Exceptions/Inventory/InventoryReportExportException.php:16
+     12▕     }
+     13▕ 
+     14▕     public static function noLotStockBalances(): self
+     15▕     {
+  ➜  16▕         return new self('在庫帳票の対象となるロット在庫残高がありません。');
+     17▕     }
+     18▕ 
+     19▕     public static function unsupportedFormat(string $format): self
+     20▕     {
+
+  1   app/Exceptions/Inventory/InventoryReportExportException.php:16
+  2   app/Services/Inventory/GenerateLotStockBalanceReportService.php:36
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\GenerateInventoryReportTest > it rejects empty stoc…   
+  Failed asserting that exception of type "Illuminate\Contracts\Container\BindingResolutionException" matches expected exception "App\Exceptions\Inventory\InventoryReportExportException". Message was: "Target class [App\Services\Inventory\GenerateStockBalanceReportService] does not exist." at
+/var/www/html/vendor/laravel/framework/src/Illuminate/Container/Container.php:1122
+/var/www/html/vendor/laravel/framework/src/Illuminate/Container/Container.php:933
+/var/www/html/vendor/laravel/framework/src/Illuminate/Foundation/Application.php:1078
+/var/www/html/vendor/laravel/framework/src/Illuminate/Container/Container.php:864
+/var/www/html/vendor/laravel/framework/src/Illuminate/Foundation/Application.php:1058
+/var/www/html/vendor/laravel/framework/src/Illuminate/Foundation/helpers.php:138
+/var/www/html/tests/Feature/GenerateInventoryReportTest.php:152
+.
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\GenerateInventoryReportTest > it rejects unsupporte…   
+  Failed asserting that exception of type "Illuminate\Contracts\Container\BindingResolutionException" matches expected exception "App\Exceptions\Inventory\InventoryReportExportException". Message was: "Target class [App\Services\Inventory\GenerateStockBalanceReportService] does not exist." at
+/var/www/html/vendor/laravel/framework/src/Illuminate/Container/Container.php:1122
+/var/www/html/vendor/laravel/framework/src/Illuminate/Container/Container.php:933
+/var/www/html/vendor/laravel/framework/src/Illuminate/Foundation/Application.php:1078
+/var/www/html/vendor/laravel/framework/src/Illuminate/Container/Container.php:864
+/var/www/html/vendor/laravel/framework/src/Illuminate/Foundation/Application.php:1058
+/var/www/html/vendor/laravel/framework/src/Illuminate/Foundation/helpers.php:138
+/var/www/html/tests/Feature/GenerateInventoryReportTest.php:169
+.
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\InventoryOperationsWork…  BindingResolutionException   
+  Target class [App\Services\Inventory\CurrentStockBalanceService] does not exist.
+
+  at vendor/laravel/framework/src/Illuminate/Container/Container.php:1124
+    1120▕ 
+    1121▕         try {
+    1122▕             $reflector = new ReflectionClass($concrete);
+    1123▕         } catch (ReflectionException $e) {
+  ➜ 1124▕             throw new BindingResolutionException("Target class [$concrete] does not exist.", 0, $e);
+    1125▕         }
+    1126▕ 
+    1127▕         // If the type is not instantiable, the developer is attempting to resolve
+    1128▕         // an abstract type such as an Interface or Abstract Class and there is
+
+      [2m+8 vendor frames [22m
+  9   tests/Feature/InventoryOperationsWorkflowTest.php:52
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\Inventory…  StockMonthlyBalanceConfirmationException   
+  2026年6月の下書き在庫月次残高がありません。
+
+  at app/Exceptions/Inventory/StockMonthlyBalanceConfirmationException.php:16
+     12▕     }
+     13▕ 
+     14▕     public static function noDraftBalances(int $year, int $month): self
+     15▕     {
+  ➜  16▕         return new self("{$year}年{$month}月の下書き在庫月次残高がありません。");
+     17▕     }
+     18▕ 
+     19▕     public static function containsNonDraftBalances(int $year, int $month): self
+     20▕     {
+
+  1   app/Exceptions/Inventory/StockMonthlyBalanceConfirmationException.php:16
+  2   app/Services/Inventory/ConfirmStockMonthlyBalanceService.php:35
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\InventoryOperationsWork…  BindingResolutionException   
+  Target class [App\Services\Inventory\CurrentStockBalanceService] does not exist.
+
+  at vendor/laravel/framework/src/Illuminate/Container/Container.php:1124
+    1120▕ 
+    1121▕         try {
+    1122▕             $reflector = new ReflectionClass($concrete);
+    1123▕         } catch (ReflectionException $e) {
+  ➜ 1124▕             throw new BindingResolutionException("Target class [$concrete] does not exist.", 0, $e);
+    1125▕         }
+    1126▕ 
+    1127▕         // If the type is not instantiable, the developer is attempting to resolve
+    1128▕         // an abstract type such as an Interface or Abstract Class and there is
+
+      [2m+8 vendor frames [22m
+  9   tests/Feature/InventoryOperationsWorkflowTest.php:105
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\InventoryOperationsWork…  BindingResolutionException   
+  Target class [App\Services\Inventory\CurrentStockBalanceService] does not exist.
+
+  at vendor/laravel/framework/src/Illuminate/Container/Container.php:1124
+    1120▕ 
+    1121▕         try {
+    1122▕             $reflector = new ReflectionClass($concrete);
+    1123▕         } catch (ReflectionException $e) {
+  ➜ 1124▕             throw new BindingResolutionException("Target class [$concrete] does not exist.", 0, $e);
+    1125▕         }
+    1126▕ 
+    1127▕         // If the type is not instantiable, the developer is attempting to resolve
+    1128▕         // an abstract type such as an Interface or Abstract Class and there is
+
+      [2m+8 vendor frames [22m
+  9   tests/Feature/InventoryOperationsWorkflowTest.php:134
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\PickShipmentInventoryConnectionTest > pick origin s…   
+  Failed asserting that two strings are identical.
+  -'6.0000'
+  +'0.0000'
+  
+
+  at tests/Feature/PickShipmentInventoryConnectionTest.php:103
+     99▕ 
+    100▕         $lotBeforeConfirm = app(LotStockBalanceService::class)
+    101▕             ->forLotLocationUnit($lot->id, $location->id, $unit->id);
+    102▕ 
+  ➜ 103▕         $this->assertSame('6.0000', $lotBeforeConfirm->physicalQuantity);
+    104▕         $this->assertSame('4.0000', $lotBeforeConfirm->allocatedQuantity);
+    105▕         $this->assertSame('2.0000', $lotBeforeConfirm->availableQuantity);
+    106▕ 
+    107▕         $pricedShipment = app(ApplyDraftShipmentPricingService::class)->apply($draftShipment);
+
+  1   tests/Feature/PickShipmentInventoryConnectionTest.php:103
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\PickShipmentInventoryConnectionTest > out of range…    
+  Failed asserting that two strings are identical.
+  -'0.002880'
+  +'0.001440'
+  
+
+  at tests/Feature/PickShipmentInventoryConnectionTest.php:200
+    196▕ 
+    197▕         $taxSummary = app(AggregateMonthlyLiquorTaxTransfersService::class)
+    198▕             ->aggregate($confirmed->document_date->year, $confirmed->document_date->month)
+    199▕             ->firstOrFail();
+  ➜ 200▕         $this->assertSame('0.002880', $taxSummary->taxableKl);
+    201▕         $this->assertSame('288.00', $taxSummary->estimatedAmount);
+    202▕     }
+    203▕ 
+    204▕     /**
+
+  1   tests/Feature/PickShipmentInventoryConnectionTest.php:200
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\ProductionLotTest > production lots table exists       
+  Column [production_lots.product_id] does not exist.
+Failed asserting that false is true.
+
+  at tests/Feature/ProductionLotTest.php:44
+     40▕             'search_key',
+     41▕             'is_active',
+     42▕             'disabled_at',
+     43▕         ] as $column) {
+  ➜  44▕             $this->assertTrue(
+     45▕                 Schema::hasColumn('production_lots', $column),
+     46▕                 "Column [production_lots.{$column}] does not exist.",
+     47▕             );
+     48▕         }
+
+  1   tests/Feature/ProductionLotTest.php:44
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\ProductionLotTest > it creates prod…  ErrorException   
+  Attempt to read property "id" on null
+
+  at tests/Feature/ProductionLotTest.php:91
+     87▕ 
+     88▕         $this->assertSame('LOT-2026-0001', $lot->lot_code);
+     89▕         $this->assertSame('55.00', $lot->rice_polishing_ratio);
+     90▕         $this->assertTrue($lot->is_active);
+  ➜  91▕         $this->assertSame($product->id, $lot->product->id);
+     92▕         $this->assertSame($location->id, $lot->stockLocation->id);
+     93▕         $this->assertSame($lot->id, $movement->productionLot->id);
+     94▕         $this->assertSame($movement->id, $lot->stockMovements->first()->id);
+     95▕         $this->assertSame($lot->id, $product->productionLots->first()->id);
+
+
+  Tests:    17 failed, 7 passed (41 assertions)
+  Duration: 25.69s
+

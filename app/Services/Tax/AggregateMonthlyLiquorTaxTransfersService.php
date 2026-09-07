@@ -32,7 +32,9 @@ class AggregateMonthlyLiquorTaxTransfersService
                 'headers.id as header_id', 'headers.document_number', 'headers.confirmed_liquor_tax_treatment',
                 'headers.confirmed_requires_tax_review', 'lines.id as line_id', 'lines.quantity',
                 'headers.confirmed_requires_evidence', 'evidences.status as evidence_status',
-                'evidences.evidence_reference',
+                'evidences.evidence_reference', 'evidences.id as shipment_liquor_tax_evidence_id',
+                'evidences.document_file_name as evidence_document_file_name',
+                'evidences.document_mime_type as evidence_document_mime_type',
                 'lines.confirmed_liquor_tax_category_id as category_id',
                 'lines.confirmed_liquor_tax_category_code as category_code',
                 'lines.confirmed_liquor_tax_category_name as category_name',
@@ -70,7 +72,9 @@ class AggregateMonthlyLiquorTaxTransfersService
                 'headers.id as header_id', 'headers.document_number', 'headers.confirmed_liquor_tax_treatment',
                 'headers.confirmed_requires_tax_review', 'allocations.id as line_id', 'allocations.quantity',
                 'headers.confirmed_requires_evidence', 'evidences.status as evidence_status',
-                'evidences.evidence_reference',
+                'evidences.evidence_reference', 'evidences.id as shipment_liquor_tax_evidence_id',
+                'evidences.document_file_name as evidence_document_file_name',
+                'evidences.document_mime_type as evidence_document_mime_type',
                 'categories.id as category_id', 'categories.code as category_code', 'categories.name as category_name',
                 'categories.taxability', 'rules.id as rule_id', 'rules.calculation_method',
                 'allocations.liquor_tax_per_kl as tax_per_kl', 'rules.reduction_rate',
@@ -229,6 +233,9 @@ class AggregateMonthlyLiquorTaxTransfersService
             grossTaxAmount: $sourceGross, requiresReview: $review, reviewReason: $reviewReason,
             evidenceStatus: $row->evidence_status ?? null,
             evidenceReference: $row->evidence_reference ?? null,
+            shipmentLiquorTaxEvidenceId: isset($row->shipment_liquor_tax_evidence_id) ? (int) $row->shipment_liquor_tax_evidence_id : null,
+            evidenceDocumentFileName: $row->evidence_document_file_name ?? null,
+            evidenceDocumentMimeType: $row->evidence_document_mime_type ?? null,
         );
 
         return [

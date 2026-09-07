@@ -19,7 +19,7 @@ class ImportAccessShipments
 
     public function import(AccessMigrationBatch $batch, bool $deltaOnly = false, ?string $cutoverDate = null): array
     {
-        if (! in_array($batch->status, ['masters_imported', 'shipments_imported'], true)) {
+        if (! in_array($batch->status, ['masters_imported', 'prices_imported', 'shipments_imported'], true)) {
             throw new RuntimeException("出荷履歴を移行できないバッチ状態です: {$batch->status}");
         }
 

@@ -6,9 +6,10 @@ use App\Models\BillingCycle;
 use App\Models\Customer;
 use App\Models\NumberSequence;
 use App\Models\PriceRule;
-use App\Models\ProductionLot;
 use App\Models\Product;
+use App\Models\ProductionLot;
 use App\Models\SalesOrder;
+use App\Models\ShipmentHeader;
 use App\Models\StockLocation;
 use App\Models\StockMovement;
 use App\Models\Unit;
@@ -21,8 +22,8 @@ use App\Services\Billing\RegisterPaymentService;
 use App\Services\SalesOrder\CreateSalesOrderData;
 use App\Services\SalesOrder\CreateSalesOrderLineData;
 use App\Services\SalesOrder\CreateSalesOrderService;
-use App\Services\Shipment\ApplyDraftShipmentPricingService;
 use App\Services\Shipment\AllocateShipmentLineLotService;
+use App\Services\Shipment\ApplyDraftShipmentPricingService;
 use App\Services\Shipment\ConfirmShipmentService;
 use App\Services\Shipment\CreateDraftShipmentFromPickData;
 use App\Services\Shipment\CreateDraftShipmentFromPickService;
@@ -159,7 +160,7 @@ class BillingThreeMonthDemoSeeder extends Seeder
     }
 
     /**
-     * @param array<int, array{0: string, 1: string}> $lines
+     * @param  array<int, array{0: string, 1: string}>  $lines
      * @return array<string, mixed>
      */
     private function scenario(Customer $customer, string $orderDate, string $shipmentDate, string $orderNumber, array $lines): array
@@ -168,9 +169,9 @@ class BillingThreeMonthDemoSeeder extends Seeder
     }
 
     /**
-     * @param array<string, mixed> $scenario
+     * @param  array<string, mixed>  $scenario
      */
-    private function createShipmentFlow(array $scenario): \App\Models\ShipmentHeader
+    private function createShipmentFlow(array $scenario): ShipmentHeader
     {
         $orderLines = collect($scenario['lines'])->map(function (array $line): CreateSalesOrderLineData {
             $product = Product::query()->where('product_code', $line[0])->firstOrFail();
@@ -222,7 +223,7 @@ class BillingThreeMonthDemoSeeder extends Seeder
         return app(ConfirmShipmentService::class)->confirm($shipment, 'billing three month demo shipment confirm');
     }
 
-    private function allocateLots(\App\Models\ShipmentHeader $shipment): void
+    private function allocateLots(ShipmentHeader $shipment): void
     {
         $location = StockLocation::query()
             ->where('is_default_shipping_location', true)
@@ -256,7 +257,7 @@ class BillingThreeMonthDemoSeeder extends Seeder
     }
 
     /**
-     * @param array<int, array{closing_date: string, due_date: string, payment_date: string|null, payment_ratio: string}> $periods
+     * @param  array<int, array{closing_date: string, due_date: string, payment_date: string|null, payment_ratio: string}>  $periods
      */
     private function createMonthlyInvoices(Customer $customer, array $periods): void
     {
@@ -383,7 +384,6 @@ class BillingThreeMonthDemoSeeder extends Seeder
         DB::table('invoice_headers')->whereIn('id', $invoiceIds)->delete();
         DB::table('stock_movements')->whereIn('source_shipment_line_id', $shipmentLineIds)->delete();
         DB::table('shipment_lot_allocations')->whereIn('shipment_line_id', $shipmentLineIds)->delete();
-        DB::table('shipment_stock_reservations')->whereIn('shipment_line_id', $shipmentLineIds)->delete();
         DB::table('shipment_lines')->whereIn('id', $shipmentLineIds)->delete();
         DB::table('shipment_headers')->whereIn('id', $shipmentIds)->delete();
         DB::table('shipment_pick_lines')->whereIn('shipment_pick_id', $pickIds)->delete();

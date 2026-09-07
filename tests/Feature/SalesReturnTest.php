@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Exceptions\Billing\SalesReturnException;
+use App\Models\AppSetting;
 use App\Models\BillingCycle;
 use App\Models\Customer;
 use App\Models\InvoiceHeader;
@@ -256,6 +257,7 @@ class SalesReturnTest extends TestCase
             PriceMasterSeeder::class,
             ShipmentMasterSeeder::class,
         ]);
+        AppSetting::setValue('operational_start_date', '2026-06-01');
 
         $transactionCategory = TransactionCategory::where('code', 'wholesale')->firstOrFail();
         $settlementCategory = SettlementReceivableCategory::where('code', 'accounts_receivable_1')->firstOrFail();

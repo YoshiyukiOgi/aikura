@@ -41,7 +41,7 @@ class OperationTestDemoSeederTest extends TestCase
             'customer_order_number' => 'DEMO-BILL-001',
             'status' => 'instructed',
         ]);
-        $this->assertTrue(ShipmentHeader::query()->where('note', '請求書作成前のデモ出荷')->where('status', 'confirmed')->exists());
+        $this->assertTrue(ShipmentHeader::query()->where('status', 'confirmed')->whereNotNull('source_shipment_pick_id')->exists());
         $this->assertTrue(SalesOrder::query()->where('customer_order_number', 'DEMO-ORDER-001')->exists());
     }
 }

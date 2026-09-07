@@ -16,8 +16,7 @@ use App\Models\StockMovement;
 use App\Models\Unit;
 use App\Models\UnitConversion;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Collection;
 
 class DemoProductSeeder extends Seeder
 {
@@ -71,7 +70,7 @@ class DemoProductSeeder extends Seeder
     }
 
     /**
-     * @param array<string, string> $row
+     * @param  array<string, string>  $row
      */
     private function createDetail(Product $product, array $row): void
     {
@@ -115,8 +114,8 @@ class DemoProductSeeder extends Seeder
     }
 
     /**
-     * @param array<string, string> $row
-     * @param \Illuminate\Support\Collection<string, Unit> $units
+     * @param  array<string, string>  $row
+     * @param  Collection<string, Unit>  $units
      */
     private function createUnitConversion(Product $product, array $row, $units): void
     {
@@ -136,7 +135,7 @@ class DemoProductSeeder extends Seeder
     }
 
     /**
-     * @param array<string, string> $row
+     * @param  array<string, string>  $row
      */
     private function createPriceRule(PriceList $priceList, Product $product, array $row): void
     {
@@ -162,7 +161,7 @@ class DemoProductSeeder extends Seeder
     }
 
     /**
-     * @param array<string, string> $row
+     * @param  array<string, string>  $row
      */
     private function createLotAndOpeningStock(StockLocation $location, Product $product, array $row, int $lineNo): void
     {
@@ -193,24 +192,6 @@ class DemoProductSeeder extends Seeder
                 'disabled_at' => null,
             ],
         );
-
-        if (Schema::hasTable('product_production_lot')) {
-            DB::table('product_production_lot')->updateOrInsert(
-            ['product_id' => $product->id, 'production_lot_id' => $lot->id, 'usage_type' => 'shipment_candidate'],
-            [
-                'priority' => 100 + $lineNo,
-                'effective_from' => '2026-06-01',
-                'effective_until' => null,
-                'is_default' => true,
-                'is_active' => true,
-                'reason' => '架空デモ商品の出荷候補ロット',
-                'note' => '実運用では使用しない。',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-        );
-
-        }
 
         StockMovement::updateOrCreate(
             ['source_type' => 'demo_product_seeder', 'source_document_number' => 'DEMO-PRODUCT-OPENING-202606', 'source_line_no' => $lineNo],

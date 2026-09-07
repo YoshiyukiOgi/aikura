@@ -190,7 +190,7 @@ closed
 
 対象例は以下とする。
 
-* `stock_monthly_balances`
+* `stock_lot_monthly_balances`
 * `liquor_tax_monthly_filings`
 * `consumption_tax_monthly_filings`
 * `receivable_monthly_balances`

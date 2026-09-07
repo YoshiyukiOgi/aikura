@@ -134,7 +134,7 @@ docker compose exec -T app php artisan aikura:access-import-inventory-history <b
 
 ## 6. 差分取込
 
-稼働開始後の`Itaro-xp.accdb`は、全スナップショットを再抽出して前回の移行済みバッチと比較する。業務テーブルへ直接投入せず、必ず`Plan -> CSV確認 -> Apply`の順で実行する。
+初回基準取込後の`Itaro-xp.accdb`は、全スナップショットを再抽出して前回の適用済みバッチと比較する。業務テーブルへ直接投入せず、必ず`Plan -> CSV確認 -> Apply`の順で実行する。Aで月次処理を行う場合、月次確定・締め済み期間への影響を先に確認する。
 
 ### 6.1 Plan
 
@@ -164,6 +164,7 @@ docker compose exec -T app php artisan aikura:access-import-inventory-history <b
 - `unchanged`: 取込を省略する。
 - `deleted`: テーブルを問わず自動適用を停止する。業務データを自動削除しない。
 - 価格テーブルはAccess側に安定IDがないため、CSVで変更内容を重点確認する。
+- 月次確定・締め済み期間に影響する`new`、`changed`、`deleted`は自動適用しない。月次解除、訂正取引、再集計、在庫・売掛・酒税・消費税への影響を記録し、個別承認後に処理する。
 
 ### 6.3 Apply
 

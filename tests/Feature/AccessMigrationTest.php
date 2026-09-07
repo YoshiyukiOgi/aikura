@@ -95,6 +95,9 @@ class AccessMigrationTest extends TestCase
         $this->assertDatabaseHas('access_migration_issues', [
             'batch_id' => $batch->id,
             'issue_code' => 'negative_quantity',
+            'source_table' => '出荷伝票・商品',
+            'source_row_number' => 1,
+            'source_key' => '1',
         ]);
 
         $payload = DB::table('access_migration_staging_rows')

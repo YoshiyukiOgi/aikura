@@ -2,16 +2,15 @@
 
 namespace Tests\Feature;
 
-use App\Exceptions\Inventory\InventoryAdjustmentException;
+use App\Exceptions\Inventory\ClosedStockPeriodException;
 use App\Models\Product;
 use App\Models\ProductionLot;
 use App\Models\StockLocation;
 use App\Models\StockLotMonthlyBalance;
-use App\Models\StockMovement;
 use App\Models\Unit;
 use App\Services\Inventory\CreateInventoryAdjustmentData;
 use App\Services\Inventory\CreateInventoryAdjustmentService;
-use App\Services\Inventory\CurrentStockBalanceService;
+use App\Services\Inventory\LotStockBalanceService;
 use Database\Seeders\ProductUnitMasterSeeder;
 use Database\Seeders\StockLocationSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -68,8 +67,8 @@ class CreateInventoryAdjustmentTest extends TestCase
             reason: 'inventory count difference',
         ));
 
-        $balance = app(CurrentStockBalanceService::class)
-            ->forProductLocationUnit($product->id, $location->id, $unit->id);
+        $balance = app(LotStockBalanceService::class)
+            ->forLotLocationUnit($lot->id, $location->id, $unit->id);
 
         $this->assertSame('8.5000', $balance->physicalQuantity);
         $this->assertSame('8.5000', $balance->availableQuantity);
@@ -137,7 +136,7 @@ class CreateInventoryAdjustmentTest extends TestCase
             'confirmed_at' => now(),
         ]);
 
-        $this->expectException(\App\Exceptions\Inventory\ClosedStockPeriodException::class);
+        $this->expectException(ClosedStockPeriodException::class);
 
         app(CreateInventoryAdjustmentService::class)->create(new CreateInventoryAdjustmentData(
             productionLotId: $lot->id,

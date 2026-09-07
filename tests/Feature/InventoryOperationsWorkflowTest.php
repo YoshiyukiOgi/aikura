@@ -2,27 +2,27 @@
 
 namespace Tests\Feature;
 
+use App\Models\AppSetting;
 use App\Models\Product;
 use App\Models\ProductionLot;
 use App\Models\StockLocation;
 use App\Models\StockMovement;
 use App\Models\Unit;
+use App\Services\Inventory\CancelNonSalesStockOperationService;
 use App\Services\Inventory\ConfirmInventoryCountService;
 use App\Services\Inventory\ConfirmStockMonthlyBalanceService;
-use App\Services\Inventory\CancelNonSalesStockOperationService;
 use App\Services\Inventory\CreateInventoryCountDraftService;
 use App\Services\Inventory\CreateNonSalesStockOperationData;
 use App\Services\Inventory\CreateNonSalesStockOperationLineData;
 use App\Services\Inventory\CreateNonSalesStockOperationService;
 use App\Services\Inventory\CreateStockMonthlyBalanceDraftService;
-use App\Services\Inventory\CurrentStockBalanceService;
 use App\Services\Inventory\LotStockBalanceService;
 use App\Services\Inventory\ReverseStockMovementService;
 use App\Services\Inventory\SaveInventoryCountService;
+use App\Services\Tax\AggregateMonthlyLiquorTaxTransfersService;
 use Database\Seeders\ProductUnitMasterSeeder;
 use Database\Seeders\ShipmentMasterSeeder;
 use Database\Seeders\TaxMasterSeeder;
-use App\Services\Tax\AggregateMonthlyLiquorTaxTransfersService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -49,10 +49,10 @@ class InventoryOperationsWorkflowTest extends TestCase
             'movement_type' => 'inventory_adjustment', 'movement_date' => '2026-07-31',
             'production_lot_id' => $lot->id, 'quantity' => '-2.0000', 'source_document_number' => 'COUNT-202607',
         ]);
-        $this->assertSame('8.0000', app(CurrentStockBalanceService::class)->forProductLocationUnit($product->id, $location->id, $unit->id)->physicalQuantity);
+        $this->assertSame('8.0000', app(LotStockBalanceService::class)->forLotLocationUnit($lot->id, $location->id, $unit->id)->physicalQuantity);
     }
 
-    public function test_current_stock_uses_confirmed_monthly_product_and_lot_balances_plus_later_movements(): void
+    public function test_current_stock_uses_confirmed_monthly_lot_balances_plus_later_movements(): void
     {
         [$product, $unit, $location, $lot] = $this->masters();
         $this->movement($product, $unit, $location, $lot, '2026-06-10', '10.0000');
@@ -60,9 +60,7 @@ class InventoryOperationsWorkflowTest extends TestCase
         app(ConfirmStockMonthlyBalanceService::class)->confirm(2026, 6, 'June close');
         $this->movement($product, $unit, $location, $lot, '2026-07-02', '-3.0000', 'shipment');
 
-        $stock = app(CurrentStockBalanceService::class)->forProductLocationUnit($product->id, $location->id, $unit->id);
         $lotStock = app(LotStockBalanceService::class)->forLotLocationUnit($lot->id, $location->id, $unit->id);
-        $this->assertSame('7.0000', $stock->physicalQuantity);
         $this->assertSame('7.0000', $lotStock->physicalQuantity);
     }
 
@@ -102,7 +100,7 @@ class InventoryOperationsWorkflowTest extends TestCase
         $this->assertSame('stock_correction', $correction->movement_type);
         $this->assertSame('-5.0000', $correction->quantity);
         $this->assertSame($original->id, $correction->related_stock_movement_id);
-        $this->assertSame('0.0000', app(CurrentStockBalanceService::class)->forProductLocationUnit($product->id, $location->id, $unit->id)->physicalQuantity);
+        $this->assertSame('0.0000', app(LotStockBalanceService::class)->forLotLocationUnit($lot->id, $location->id, $unit->id)->physicalQuantity);
     }
 
     public function test_cancelling_self_consumption_restores_stock_and_excludes_liquor_tax(): void
@@ -131,13 +129,14 @@ class InventoryOperationsWorkflowTest extends TestCase
             'movement_type' => 'non_sales_cancellation', 'quantity' => '1.0000',
             'source_document_number' => $operation->operation_number,
         ]);
-        $this->assertSame('5.0000', app(CurrentStockBalanceService::class)->forProductLocationUnit($product->id, $location->id, $unit->id)->physicalQuantity);
+        $this->assertSame('5.0000', app(LotStockBalanceService::class)->forLotLocationUnit($lot->id, $location->id, $unit->id)->physicalQuantity);
         $this->assertTrue(app(AggregateMonthlyLiquorTaxTransfersService::class)->aggregate(2026, 7)->isEmpty());
     }
 
     private function masters(): array
     {
         $this->seed([ProductUnitMasterSeeder::class, TaxMasterSeeder::class, ShipmentMasterSeeder::class]);
+        AppSetting::setValue('operational_start_date', '2026-06-01');
         $unit = Unit::where('code', 'bottle')->firstOrFail();
         $capacityUnit = Unit::where('code', 'milliliter')->firstOrFail();
         $location = StockLocation::where('code', 'main_brewery')->firstOrFail();
@@ -145,7 +144,6 @@ class InventoryOperationsWorkflowTest extends TestCase
         $lot = ProductionLot::create([
             'lot_code' => 'INV-WORK-LOT-001',
             'display_name' => 'Inventory Workflow Lot',
-            'product_id' => $product->id,
             'stock_location_id' => $location->id,
             'unit_id' => $unit->id,
             'capacity_value' => '720.0000',
@@ -153,6 +151,7 @@ class InventoryOperationsWorkflowTest extends TestCase
             'alcohol_percentage' => '15.00',
             'production_date' => '2026-06-01',
         ]);
+
         return [$product, $unit, $location, $lot];
     }
 

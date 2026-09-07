@@ -7,7 +7,7 @@ use App\Models\ProductionLot;
 use App\Models\StockLocation;
 use App\Models\StockMovement;
 use App\Models\Unit;
-use App\Services\Inventory\CurrentStockBalanceService;
+use App\Services\Inventory\LotStockBalanceService;
 use Database\Seeders\ProductUnitMasterSeeder;
 use Database\Seeders\StockLocationSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -26,8 +26,8 @@ class CurrentStockBalanceTest extends TestCase
         $this->createMovement($lot, $location, 'draft', '99.0000', '2026-07-25');
         $this->createMovement($lot, $location, 'cancelled', '50.0000', '2026-07-26', now());
 
-        $balance = app(CurrentStockBalanceService::class)
-            ->forProductLocationUnit($product->id, $location->id, $unit->id);
+        $balance = app(LotStockBalanceService::class)
+            ->forLotLocationUnit($lot->id, $location->id, $unit->id);
 
         $this->assertSame('7.0000', $balance->physicalQuantity);
         $this->assertSame('0.0000', $balance->reservedQuantity);
@@ -41,8 +41,8 @@ class CurrentStockBalanceTest extends TestCase
 
         $this->createMovement($lot, $location, 'closed', '4.0000', '2026-07-23');
 
-        $balance = app(CurrentStockBalanceService::class)
-            ->forProductLocationUnit($product->id, $location->id, $unit->id);
+        $balance = app(LotStockBalanceService::class)
+            ->forLotLocationUnit($lot->id, $location->id, $unit->id);
 
         $this->assertSame('4.0000', $balance->physicalQuantity);
     }
@@ -63,7 +63,7 @@ class CurrentStockBalanceTest extends TestCase
         $this->createMovement($lot, $location, 'confirmed', '10.0000', '2026-07-23');
         $this->createMovement($secondLot, $secondLocation, 'confirmed', '2.5000', '2026-07-23');
 
-        $balances = app(CurrentStockBalanceService::class)->all();
+        $balances = app(LotStockBalanceService::class)->all();
 
         $this->assertCount(2, $balances);
         $this->assertSame('10.0000', $balances[0]->physicalQuantity);

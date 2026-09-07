@@ -1,0 +1,106 @@
+
+   PASS  Tests\Feature\CancelShipmentTest
+  ✓ it cancels draft shipment with reason and audit log                 12.70s  
+  ✓ it cancels confirmed shipment without destroying snapshot            0.69s  
+  ✓ it reverses shipment stock movement when confirmed shipment is canc… 0.51s  
+  ✓ it rejects cancelling confirmed shipment when stock period is confi… 0.55s  
+  ✓ it rejects empty reason                                              0.40s  
+  ✓ it rejects cancelling already cancelled shipment                     0.43s  
+  ✓ it rejects cancelling closed shipment                                0.40s  
+
+   PASS  Tests\Feature\ConfirmShipmentTest
+  ✓ confirmed snapshot columns exist                                     0.24s  
+  ✓ it confirms draft shipment and stores line snapshot                  0.47s  
+  ✓ it creates confirmed stock movement when shipment is confirmed       0.48s  
+  ✓ it does not create stock movement for non inventory managed product  0.48s  
+  ✓ it rejects shipment confirmation when stock period is confirmed      0.46s  
+  ✓ confirmed snapshot does not change after master or price changes     0.47s  
+  ✓ it rejects confirmation without draft price                          0.40s  
+  ✓ it rejects confirmation for non draft shipment                       0.45s  
+  ✓ liquor tax rule uses liquor tax transfer date when present           0.49s  
+
+   PASS  Tests\Feature\CreateInventoryAdjustmentTest
+  ✓ it creates confirmed inventory adjustment movement                   0.26s  
+  ✓ inventory adjustment updates current stock by movement history       0.24s  
+  ✓ it rejects zero quantity adjustment                                  0.23s  
+  ✓ it rejects empty reason                                              0.25s  
+  ✓ it rejects non inventory managed product                             0.24s  
+  ✓ it rejects adjustment in confirmed stock month                       0.23s  
+
+   PASS  Tests\Feature\CurrentStockBalanceTest
+  ✓ it calculates current stock from confirmed movements                 0.25s  
+  ✓ closed movements are included in current stock                       0.24s  
+  ✓ it lists balances by product location and unit                       0.26s  
+
+   PASS  Tests\Feature\GenerateInventoryReportTest
+  ✓ it generates lot stock balance report file and export record         0.33s  
+  ✓ it keeps reissued lot stock balance reports as separate files        0.48s  
+  ✓ it rejects empty lot stock balance report generation                 0.31s  
+  ✓ it rejects unsupported lot stock balance report format               0.27s  
+
+   PASS  Tests\Feature\InventoryOperationsWorkflowTest
+  ✓ monthly count creates lot adjustment on target month end             0.45s  
+  ✓ current stock uses confirmed monthly lot balances plus later moveme… 0.38s  
+  ✓ self consumption keeps tax treatments and reduces stock              0.45s  
+  ✓ stock movement correction posts an opposite movement                 0.37s  
+  ✓ cancelling self consumption restores stock and excludes liquor tax   0.55s  
+
+   PASS  Tests\Feature\NonSalesStockOperationTest
+  ✓ it creates non sales stock operation and stock movement              0.39s  
+
+   PASS  Tests\Feature\OperationTestDemoSeederTest
+  ✓ operation test demo seeder creates loginable users and editable dem… 3.43s  
+
+   PASS  Tests\Feature\OrderInstructionPickCancellationFlowTest
+  ✓ pick instruction and order can be cancelled in reverse order         0.50s  
+
+   PASS  Tests\Feature\PickOriginShipmentCancellationPolicyTest
+  ✓ cancelling pick origin draft shipment allows the unlinked pick to b… 0.53s  
+  ✓ cancelling pick origin confirmed shipment keeps pick and instructio… 0.54s  
+
+   PASS  Tests\Feature\PickShipmentInstructionTest
+  ✓ shipment pick tables exist                                           0.17s  
+  ✓ it picks shipment instruction line                                   0.40s  
+  ✓ it marks instruction picked when all quantity is picked              0.43s  
+  ✓ it allows split picking up to instruction quantity                   0.44s  
+  ✓ it rejects empty lines                                               0.40s  
+  ✓ it rejects non positive quantity                                     0.39s  
+  ✓ it rejects quantity over remaining pick quantity                     0.40s  
+  ✓ it rejects duplicate instruction line in same pick                   0.42s  
+  ✓ it rejects line from different instruction                           0.42s  
+
+   PASS  Tests\Feature\PickShipmentInventoryConnectionTest
+  ✓ pick origin shipment can allocate and confirm lot stock              0.57s  
+  ✓ out of range lot is split and requires approval before pick          0.66s  
+
+   PASS  Tests\Feature\ProductionLotTest
+  ✓ production lots table exists                                         0.20s  
+  ✓ it creates production lot and relates to location and stock movemen… 0.23s  
+  ✓ lot code is unique                                                   0.21s  
+
+   PASS  Tests\Feature\SalesReturnTest
+  ✓ it creates sales return credit memo and return stock movement        0.52s  
+  ✓ it creates credit memo without stock movement for no stock return    0.53s  
+  ✓ regular sales stock return requires source lot                       0.53s  
+  ✓ regular sales stock return can restore to source lot                 0.55s  
+  ✓ regular sales stock return can split quantity across source lots     0.54s  
+
+   PASS  Tests\Feature\ShipmentApiTest
+  ✓ user with permission can create price confirm show list and cancel…  0.97s  
+  ✓ user without shipment create permission cannot create shipment       0.66s  
+  ✓ shipment create api validates required lines                         0.69s  
+  ✓ shipment detail returns the display name and capacity                0.69s  
+  ✓ legacy period shipments are hidden and not operable                  0.66s  
+  ✓ shipment history shows only imported history before operational sta… 0.67s  
+
+   PASS  Tests\Feature\ShipmentLotAllocationTest
+  ✓ shipment lot allocations table exists                                0.18s  
+  ✓ it allocates lot stock to draft shipment line                        0.43s  
+  ✓ it rejects allocation over available lot stock                       0.40s  
+  ✓ it rejects allocation over shipment line quantity                    0.41s  
+  ✓ confirming shipment creates lot stock movement and confirms allocat… 0.49s  
+  ✓ confirmation rejects partial lot allocation                          0.47s  
+
+  Tests:    70 passed (378 assertions)
+  Duration: 47.83s
+

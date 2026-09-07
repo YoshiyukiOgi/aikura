@@ -2,6 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Exceptions\Shipment\ShipmentPickException;
+use App\Models\ApprovalRequest;
+use App\Models\AppSetting;
 use App\Models\BillingCycle;
 use App\Models\Customer;
 use App\Models\PriceList;
@@ -14,7 +17,6 @@ use App\Models\StockMovement;
 use App\Models\TransactionCategory;
 use App\Models\Unit;
 use App\Models\User;
-use App\Models\ApprovalRequest;
 use App\Services\Approvals\ApprovalService;
 use App\Services\Inventory\LotStockBalanceService;
 use App\Services\SalesOrder\CreateSalesOrderData;
@@ -23,10 +25,9 @@ use App\Services\SalesOrder\CreateSalesOrderService;
 use App\Services\Shipment\AllocateShipmentLineLotService;
 use App\Services\Shipment\ApplyDraftShipmentPricingService;
 use App\Services\Shipment\ConfirmShipmentService;
+use App\Services\Shipment\CreateDraftShipmentFromInstructionService;
 use App\Services\Shipment\CreateDraftShipmentFromPickData;
 use App\Services\Shipment\CreateDraftShipmentFromPickService;
-use App\Services\Shipment\CreateDraftShipmentFromInstructionService;
-use App\Services\Shipment\ReserveShipmentLineStockService;
 use App\Services\ShipmentInstruction\CreateShipmentInstructionData;
 use App\Services\ShipmentInstruction\CreateShipmentInstructionLineData;
 use App\Services\ShipmentInstruction\CreateShipmentInstructionService;
@@ -176,7 +177,7 @@ class PickShipmentInventoryConnectionTest extends TestCase
                 lines: [new PickShipmentInstructionLineData($instruction->lines->first()->id, '4.0000')],
             ));
             $this->fail('Pending alcohol exception approval must block picking.');
-        } catch (\App\Exceptions\Shipment\ShipmentPickException) {
+        } catch (ShipmentPickException) {
             $this->assertTrue(true);
         }
 
@@ -194,11 +195,16 @@ class PickShipmentInventoryConnectionTest extends TestCase
         $this->assertTrue($confirmedAllocations->every(fn ($allocation): bool => $allocation->liquor_taxable_kl !== null));
         $this->assertSame(2, StockMovement::query()->where('source_shipment_header_id', $confirmed->id)->where('movement_type', 'shipment')->count());
 
-        $taxSummary = app(AggregateMonthlyLiquorTaxTransfersService::class)
-            ->aggregate($confirmed->document_date->year, $confirmed->document_date->month)
-            ->firstOrFail();
-        $this->assertSame('0.002880', $taxSummary->taxableKl);
-        $this->assertSame('288.00', $taxSummary->estimatedAmount);
+        $taxSummaries = app(AggregateMonthlyLiquorTaxTransfersService::class)
+            ->aggregate($confirmed->document_date->year, $confirmed->document_date->month);
+        $this->assertSame('0.002880', $taxSummaries->reduce(
+            fn (string $total, object $summary): string => bcadd($total, (string) $summary->taxableKl, 6),
+            '0.000000',
+        ));
+        $this->assertSame('288.00', $taxSummaries->reduce(
+            fn (string $total, object $summary): string => bcadd($total, (string) $summary->estimatedAmount, 2),
+            '0.00',
+        ));
     }
 
     /**
@@ -214,6 +220,7 @@ class PickShipmentInventoryConnectionTest extends TestCase
             StockLocationSeeder::class,
             TaxMasterSeeder::class,
         ]);
+        AppSetting::setValue('operational_start_date', '2026-06-01');
 
         $transactionCategory = TransactionCategory::where('code', 'wholesale')->firstOrFail();
         $settlementCategory = SettlementReceivableCategory::where('code', 'accounts_receivable_1')->firstOrFail();

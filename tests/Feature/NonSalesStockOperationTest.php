@@ -31,7 +31,7 @@ class NonSalesStockOperationTest extends TestCase
 
         $operation = app(CreateNonSalesStockOperationService::class)->create(new CreateNonSalesStockOperationData(
             operationType: 'disposal',
-            operationDate: '2026-06-15',
+            operationDate: '2026-07-15',
             reason: 'broken bottle disposal',
             lines: [
                 new CreateNonSalesStockOperationLineData(

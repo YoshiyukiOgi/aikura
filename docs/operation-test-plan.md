@@ -392,8 +392,8 @@ docker compose run --rm app php artisan aikura:report-retention-check --sync --r
 手順:
 
 ```powershell
-docker compose run --rm app php artisan aikura:monthly-aggregation stock_monthly_balance YYYY M --sync --reason="operation test stock monthly aggregation"
-docker compose run --rm app php artisan aikura:monthly-closing stock_monthly_balance_confirm YYYY M --sync --reason="operation test stock monthly confirm"
+docker compose run --rm app php artisan aikura:monthly-aggregation stock_lot_monthly_balance YYYY M --sync --reason="operation test stock monthly aggregation"
+docker compose run --rm app php artisan aikura:monthly-closing stock_lot_monthly_balance_confirm YYYY M --sync --reason="operation test stock monthly confirm"
 ```
 
 期待結果:

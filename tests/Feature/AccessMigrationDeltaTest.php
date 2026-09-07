@@ -46,6 +46,20 @@ class AccessMigrationDeltaTest extends TestCase
         File::delete($summary['report_path']);
     }
 
+    public function test_it_treats_different_json_key_order_as_unchanged(): void
+    {
+        $baseline = $this->createBatch('completed', 'I');
+        $current = $this->createBatch('ready', 'J');
+        $this->insertRow($baseline, '商品マスター', '1', ['second' => 2, 'first' => 1]);
+        $this->insertRow($current, '商品マスター', '1', ['first' => 1, 'second' => 2]);
+
+        $summary = app(PlanAccessMigrationDelta::class)->plan($current, $baseline);
+
+        $this->assertSame(0, $summary['changed']);
+        $this->assertSame(1, $summary['unchanged']);
+        File::delete($summary['report_path']);
+    }
+
     public function test_apply_stops_when_transaction_history_was_changed(): void
     {
         $baseline = $this->createBatch('completed', 'C');
@@ -58,6 +72,40 @@ class AccessMigrationDeltaTest extends TestCase
         $this->expectExceptionMessage('自動適用できない変更');
 
         app(ApplyAccessMigrationDelta::class)->apply($current->refresh());
+    }
+
+    public function test_apply_stops_new_transaction_in_confirmed_month(): void
+    {
+        $baseline = $this->createBatch('completed', 'E');
+        $current = $this->createBatch('ready', 'F');
+        $this->insertRow($current, '入金', '11', ['年月日' => '2026-07-15', '金額' => 100]);
+        DB::table('liquor_tax_monthly_filings')->insert([
+            'status' => 'confirmed',
+            'year' => 2026,
+            'month' => 7,
+            'period_start' => '2026-07-01',
+            'period_end' => '2026-07-31',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        app(PlanAccessMigrationDelta::class)->plan($current, $baseline);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('月次確定・締め済み期間');
+
+        app(ApplyAccessMigrationDelta::class)->apply($current->refresh());
+    }
+
+    public function test_apply_accepts_the_price_import_checkpoint_when_resuming(): void
+    {
+        $baseline = $this->createBatch('completed', 'G');
+        $current = $this->createBatch('ready', 'H');
+        app(PlanAccessMigrationDelta::class)->plan($current, $baseline);
+        $current->update(['status' => 'prices_imported']);
+
+        app(ApplyAccessMigrationDelta::class)->apply($current->fresh());
+
+        $this->assertSame('delta_applied', $current->fresh()->status);
     }
 
     private function createBatch(string $status, string $hashCharacter): AccessMigrationBatch

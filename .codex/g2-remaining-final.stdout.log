@@ -1,0 +1,83 @@
+
+   PASS  Tests\Feature\NonSalesStockOperationTest
+  ✓ it creates non sales stock operation and stock movement             12.65s  
+
+   FAIL  Tests\Feature\OperationTestDemoSeederTest
+  ⨯ operation test demo seeder creates loginable users and editable dem… 3.98s  
+
+   FAIL  Tests\Feature\OrderInstructionPickCancellationFlowTest
+  ⨯ pick instruction and order can be cancelled in reverse order         0.50s  
+
+   FAIL  Tests\Feature\PickOriginShipmentCancellationPolicyTest
+  ⨯ cancelling pick origin draft shipment does not restore upstream qua… 0.56s  
+  ⨯ cancelling pick origin confirmed shipment keeps pick and instructio… 0.55s  
+
+   PASS  Tests\Feature\ShipmentApiTest
+  ✓ user with permission can create price confirm show list and cancel…  1.04s  
+  ✓ user without shipment create permission cannot create shipment       0.66s  
+  ✓ shipment create api validates required lines                         0.72s  
+  ✓ shipment detail returns the display name and capacity                0.70s  
+  ✓ legacy period shipments are hidden and not operable                  0.70s  
+  ✓ shipment history shows only imported history before operational sta… 0.68s  
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\OperationTestDemoSeederTest > operation test demo s…   
+  Failed asserting that false is true.
+
+  at tests/Feature/OperationTestDemoSeederTest.php:44
+     40▕         $this->assertDatabaseHas('sales_orders', [
+     41▕             'customer_order_number' => 'DEMO-BILL-001',
+     42▕             'status' => 'instructed',
+     43▕         ]);
+  ➜  44▕         $this->assertTrue(ShipmentHeader::query()->where('note', '請求書作成前のデモ出荷')->where('status', 'confirmed')->exists());
+     45▕         $this->assertTrue(SalesOrder::query()->where('customer_order_number', 'DEMO-ORDER-001')->exists());
+     46▕     }
+     47▕ }
+     48▕
+
+  1   tests/Feature/OperationTestDemoSeederTest.php:44
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\OrderInstructionPickCancellationFlowTest > pick ins…   
+  Failed asserting that two strings are identical.
+  -'4.0000'
+  +'6.0000'
+  
+
+  at tests/Feature/OrderInstructionPickCancellationFlowTest.php:49
+     45▕         $instructionLine = $instruction->lines->first()->refresh();
+     46▕ 
+     47▕         $this->assertSame('0.0000', $instructionLine->picked_quantity);
+     48▕         $this->assertSame('instructed', $instruction->refresh()->status);
+  ➜  49▕         $this->assertSame('4.0000', $salesOrderLine->remaining_quantity);
+     50▕         $this->assertSame('partially_instructed', $salesOrder->refresh()->status);
+     51▕ 
+     52▕         app(CancelShipmentInstructionService::class)->cancel($instruction, 'cancel instruction before order');
+     53▕
+
+  1   tests/Feature/OrderInstructionPickCancellationFlowTest.php:49
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\PickOriginShipmentCancellationPolicyTest > cancelli…   
+  Failed asserting that exception of type "App\Exceptions\Shipment\ShipmentPickException" is thrown.
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\PickOriginShipmentCancellationPolicyTest > cancelli…   
+  Failed asserting that 5 is null.
+
+  at tests/Feature/PickOriginShipmentCancellationPolicyTest.php:81
+     77▕         $this->assertSame('picked', $instruction->refresh()->status);
+     78▕         $this->assertSame('instructed', $salesOrder->refresh()->status);
+     79▕         $this->assertSame('4.0000', $instruction->lines->first()->refresh()->picked_quantity);
+     80▕         $this->assertSame('0.0000', $salesOrder->lines->first()->refresh()->remaining_quantity);
+  ➜  81▕         $this->assertNull($cancelledShipment->source_shipment_pick_id);
+     82▕         $this->assertSame($pick->lines->first()->id, $cancelledShipment->lines->first()->source_shipment_pick_line_id);
+     83▕     }
+     84▕ 
+     85▕     /**
+
+  1   tests/Feature/PickOriginShipmentCancellationPolicyTest.php:81
+
+
+  Tests:    4 failed, 7 passed (71 assertions)
+  Duration: 24.93s
+

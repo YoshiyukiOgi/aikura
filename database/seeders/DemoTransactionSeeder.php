@@ -4,7 +4,9 @@ namespace Database\Seeders;
 
 use App\Models\Customer;
 use App\Models\Product;
+use App\Models\ProductionLot;
 use App\Models\SalesOrder;
+use App\Models\StockLocation;
 use App\Models\Unit;
 use App\Services\Billing\ConfirmInvoiceService;
 use App\Services\Billing\CreateInvoiceDraftData;
@@ -14,8 +16,10 @@ use App\Services\Billing\RegisterPaymentService;
 use App\Services\SalesOrder\CreateSalesOrderData;
 use App\Services\SalesOrder\CreateSalesOrderLineData;
 use App\Services\SalesOrder\CreateSalesOrderService;
+use App\Services\Shipment\AllocateShipmentLineLotService;
 use App\Services\Shipment\ApplyDraftShipmentPricingService;
 use App\Services\Shipment\ConfirmShipmentService;
+use App\Services\Shipment\CreateDraftShipmentFromInstructionService;
 use App\Services\Shipment\CreateDraftShipmentFromPickData;
 use App\Services\Shipment\CreateDraftShipmentFromPickService;
 use App\Services\ShipmentInstruction\CreateShipmentInstructionData;
@@ -37,6 +41,8 @@ class DemoTransactionSeeder extends Seeder
         $customer = Customer::query()->where('customer_code', 'DEMO-CUST-001')->firstOrFail();
         $product = Product::query()->where('product_code', 'DEMO-PROD-001')->firstOrFail();
         $unit = Unit::query()->findOrFail($product->sales_unit_id);
+        $location = StockLocation::query()->where('code', 'main_brewery')->firstOrFail();
+        $lot = ProductionLot::query()->where('lot_code', 'DEMO-LOT-DEMO-PROD-001-202606')->firstOrFail();
         $date = '2026-06-20';
 
         $order = app(CreateSalesOrderService::class)->create(new CreateSalesOrderData(
@@ -55,14 +61,25 @@ class DemoTransactionSeeder extends Seeder
         $instruction = app(CreateShipmentInstructionService::class)->create(new CreateShipmentInstructionData(
             instructionDate: $date,
             scheduledShipmentDate: '2026-06-22',
+            stockLocationId: $location->id,
             note: '画面確認用の出荷指示',
             reason: 'screen demo data',
             lines: [new CreateShipmentInstructionLineData($order->lines->first()->id, '6.0000')],
         ));
 
+        $pickingShipment = app(CreateDraftShipmentFromInstructionService::class)->create($instruction);
+        app(AllocateShipmentLineLotService::class)->allocate(
+            shipmentLine: $pickingShipment->lines->firstOrFail(),
+            productionLot: $lot,
+            stockLocation: $location,
+            quantity: '6.0000',
+            reason: 'screen demo data',
+        );
+
         $pick = app(PickShipmentInstructionService::class)->pick(new PickShipmentInstructionData(
             shipmentInstructionId: $instruction->id,
             pickDate: '2026-06-21',
+            stockLocationId: $location->id,
             note: '画面確認用のピッキング',
             reason: 'screen demo data',
             lines: [new PickShipmentInstructionLineData($instruction->lines->first()->id, '6.0000')],

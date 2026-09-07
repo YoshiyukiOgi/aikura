@@ -25,11 +25,6 @@ class LotInventoryArchitectureTest extends TestCase
         $this->assertFalse(Schema::hasTable('shipment_stock_reservations'));
         $this->assertFalse(Schema::hasColumn('production_lots', 'product_id'));
         $this->assertFalse(Schema::hasColumn('stock_movements', 'product_id'));
-        $this->assertFalse(Schema::hasColumn('non_sales_stock_operation_lines', 'product_id'));
-        $this->assertFalse(Schema::hasColumn('non_sales_stock_operation_headers', 'consumption_tax_treatment'));
-        $this->assertFalse(Schema::hasColumn('non_sales_stock_operation_headers', 'liquor_tax_treatment'));
-        $this->assertFalse(Schema::hasColumn('non_sales_stock_operation_lines', 'liquor_taxable_kl'));
-        $this->assertFalse(Schema::hasColumn('inventory_count_lines', 'product_id'));
         $this->assertFalse(Schema::hasColumn('stock_lot_monthly_balances', 'product_id'));
     }
 

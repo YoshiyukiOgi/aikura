@@ -69,6 +69,8 @@ class PlanAccessMigrationDelta
 
                     foreach ($rows as $row) {
                         $previous = $baselineRows->get($row->source_table."\0".$row->source_key);
+                        $currentPayloadHash = $this->canonicalPayloadHash($row->payload);
+                        $baselinePayloadHash = $previous === null ? null : $this->canonicalPayloadHash($previous->payload);
                         $records[] = [
                             'batch_id' => $batch->id,
                             'baseline_batch_id' => $baseline->id,
@@ -76,11 +78,11 @@ class PlanAccessMigrationDelta
                             'source_key' => $row->source_key,
                             'change_type' => $previous === null
                                 ? 'new'
-                                : ($previous->payload_sha256 === $row->payload_sha256 ? 'unchanged' : 'changed'),
+                                : ($baselinePayloadHash === $currentPayloadHash ? 'unchanged' : 'changed'),
                             'current_staging_row_id' => $row->id,
                             'baseline_staging_row_id' => $previous?->id,
-                            'current_payload_sha256' => $row->payload_sha256,
-                            'baseline_payload_sha256' => $previous?->payload_sha256,
+                            'current_payload_sha256' => $currentPayloadHash,
+                            'baseline_payload_sha256' => $baselinePayloadHash,
                             'apply_status' => 'planned',
                             'created_at' => $now,
                             'updated_at' => $now,
@@ -123,7 +125,7 @@ class PlanAccessMigrationDelta
                             'current_staging_row_id' => null,
                             'baseline_staging_row_id' => $row->id,
                             'current_payload_sha256' => null,
-                            'baseline_payload_sha256' => $row->payload_sha256,
+                            'baseline_payload_sha256' => $this->canonicalPayloadHash($row->payload),
                             'apply_status' => 'planned',
                             'created_at' => $now,
                             'updated_at' => $now,
@@ -170,6 +172,16 @@ class PlanAccessMigrationDelta
         ]);
 
         return $summary;
+    }
+
+    private function canonicalPayloadHash(mixed $payload): string
+    {
+        if (! is_string($payload)) {
+            throw new RuntimeException('AccessステージングのJSONペイロードを正規化できません。');
+        }
+
+        // PostgreSQL JSONB returns object keys in a stable canonical order.
+        return strtoupper(hash('sha256', $payload));
     }
 
     private function writeReport(AccessMigrationBatch $batch): string

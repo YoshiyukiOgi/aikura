@@ -109,26 +109,28 @@ class AccessMigrationValidator
         string $comparison,
         string $message,
     ): array {
-        $count = $this->rows($batch, '出荷伝票・商品')
+        $rows = $this->rows($batch, '出荷伝票・商品')
+            ->select(['id', 'source_row_number', 'source_key'])
             ->whereRaw("CAST(payload->>'個数' AS numeric) {$comparison}")
-            ->count();
+            ->orderBy('id');
 
-        return $this->issue($batch, 'warning', $code, $count, $message, '出荷伝票・商品');
+        return $this->rowIssues($batch, 'warning', $code, $message, '出荷伝票・商品', $rows);
     }
 
     private function futureShipmentWarning(AccessMigrationBatch $batch): array
     {
-        $count = $this->rows($batch, '出荷伝票・取引先')
+        $rows = $this->rows($batch, '出荷伝票・取引先')
+            ->select(['id', 'source_row_number', 'source_key'])
             ->whereRaw("CAST(payload->>'年月日' AS date) > CURRENT_DATE")
-            ->count();
+            ->orderBy('id');
 
-        return $this->issue(
+        return $this->rowIssues(
             $batch,
             'warning',
             'future_shipment_date',
-            $count,
             '抽出日より未来日の出荷伝票があります。',
             '出荷伝票・取引先',
+            $rows,
         );
     }
 
@@ -139,24 +141,26 @@ class AccessMigrationValidator
             ->selectRaw("SUM(CAST(payload->>'取引額' AS numeric)) as detail_amount")
             ->groupByRaw("payload->>'伝票番号'");
 
-        $count = $this->rows($batch, '出荷伝票・取引先', 'h')
+        $rows = $this->rows($batch, '出荷伝票・取引先', 'h')
+            ->select(['h.id', 'h.source_row_number', 'h.source_key'])
             ->joinSub($details, 'd', fn ($join) => $join->on('d.document_number', '=', 'h.source_key'))
             ->whereRaw("ABS(CAST(h.payload->>'金額' AS numeric) - d.detail_amount) > 0.0001")
-            ->count();
+            ->orderBy('h.id');
 
-        return $this->issue(
+        return $this->rowIssues(
             $batch,
             'warning',
             'shipment_amount_mismatch',
-            $count,
             '出荷ヘッダー金額と明細取引額合計が一致しない伝票があります。',
             '出荷伝票・取引先',
+            $rows,
         );
     }
 
     private function liquorTaxFlagWarning(AccessMigrationBatch $batch): array
     {
-        $count = $this->rows($batch, '出荷伝票・取引先', 'h')
+        $rows = $this->rows($batch, '出荷伝票・取引先', 'h')
+            ->select(['h.id', 'h.source_row_number', 'h.source_key'])
             ->join('access_migration_staging_rows as c', function ($join) use ($batch): void {
                 $join->on('c.source_key', '=', DB::raw("h.payload->>'酒税区分'"))
                     ->where('c.batch_id', $batch->id)
@@ -167,15 +171,15 @@ class AccessMigrationValidator
                     ->orWhereRaw("COALESCE(h.payload->>'酒税未納取引', 'false') <> COALESCE(c.payload->>'酒税未納取引', 'false')")
                     ->orWhereRaw("COALESCE(h.payload->>'輸出取引', 'false') <> COALESCE(c.payload->>'輸出取引', 'false')");
             })
-            ->count();
+            ->orderBy('h.id');
 
-        return $this->issue(
+        return $this->rowIssues(
             $batch,
             'warning',
             'liquor_tax_classification_flag_mismatch',
-            $count,
             '酒税区分と旧来の個別フラグが一致しない伝票があります。酒税区分を優先し、原値を保持します。',
             '出荷伝票・取引先',
+            $rows,
         );
     }
 
@@ -205,6 +209,48 @@ class AccessMigrationValidator
                 'message' => $message,
                 'context' => ['count' => $count],
             ]);
+        }
+
+        return compact('code', 'severity', 'count', 'message');
+    }
+
+    private function rowIssues(
+        AccessMigrationBatch $batch,
+        string $severity,
+        string $code,
+        string $message,
+        string $sourceTable,
+        Builder $rows,
+    ): array {
+        $count = (clone $rows)->count();
+        if ($count === 0) {
+            return compact('code', 'severity', 'count', 'message');
+        }
+
+        $now = now();
+        $records = [];
+        foreach ($rows->cursor() as $row) {
+            $records[] = [
+                'batch_id' => $batch->id,
+                'severity' => $severity,
+                'issue_code' => $code,
+                'source_table' => $sourceTable,
+                'source_row_number' => $row->source_row_number,
+                'source_key' => $row->source_key,
+                'message' => $message,
+                'context' => json_encode(['batch_id' => $batch->id], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+
+            if (count($records) === 500) {
+                DB::table('access_migration_issues')->insert($records);
+                $records = [];
+            }
+        }
+
+        if ($records !== []) {
+            DB::table('access_migration_issues')->insert($records);
         }
 
         return compact('code', 'severity', 'count', 'message');

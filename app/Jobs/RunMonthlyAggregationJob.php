@@ -26,8 +26,7 @@ class RunMonthlyAggregationJob implements ShouldQueue
         private readonly int $year,
         private readonly int $month,
         private readonly ?string $reason = null,
-    ) {
-    }
+    ) {}
 
     public function handle(
         OperationJobService $operationJobService,
@@ -50,7 +49,7 @@ class RunMonthlyAggregationJob implements ShouldQueue
                 'liquor_tax_filing' => $liquorTaxDraftService->create($this->year, $this->month, $this->reason),
                 'consumption_tax_filing' => $consumptionTaxDraftService->create($this->year, $this->month, $this->reason),
                 'receivable_monthly_balance' => $receivableBalanceDraftService->create($this->year, $this->month, $this->reason),
-                'stock_monthly_balance' => $stockBalanceDraftService->create($this->year, $this->month, $this->reason),
+                'stock_lot_monthly_balance' => $stockBalanceDraftService->create($this->year, $this->month, $this->reason),
                 default => throw OperationJobException::unsupportedAggregationType($this->aggregationType),
             },
         );

@@ -37,7 +37,7 @@ class OrderInstructionPickCancellationFlowTest extends TestCase
 
     public function test_pick_instruction_and_order_can_be_cancelled_in_reverse_order(): void
     {
-        [$salesOrder, $instruction, $pick] = $this->preparePickedOrderFlow('10.0000', '6.0000', '4.0000');
+        [$salesOrder, $instruction, $pick] = $this->preparePickedOrderFlow('10.0000', '4.0000', '4.0000');
 
         app(CancelShipmentPickService::class)->cancel($pick, 'cancel pick before instruction');
 
@@ -46,7 +46,7 @@ class OrderInstructionPickCancellationFlowTest extends TestCase
 
         $this->assertSame('0.0000', $instructionLine->picked_quantity);
         $this->assertSame('instructed', $instruction->refresh()->status);
-        $this->assertSame('4.0000', $salesOrderLine->remaining_quantity);
+        $this->assertSame('6.0000', $salesOrderLine->remaining_quantity);
         $this->assertSame('partially_instructed', $salesOrder->refresh()->status);
 
         app(CancelShipmentInstructionService::class)->cancel($instruction, 'cancel instruction before order');
@@ -131,6 +131,7 @@ class OrderInstructionPickCancellationFlowTest extends TestCase
             'sales_unit_id' => $unit->id,
             'inventory_unit_id' => $unit->id,
             'is_alcohol' => true,
+            'is_inventory_managed' => false,
         ]);
 
         return [$customer, $product, $unit, $location];

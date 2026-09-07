@@ -1,0 +1,13 @@
+
+   PASS  Tests\Feature\CancelShipmentTest
+  ✓ it cancels draft shipment with reason and audit log                 13.76s  
+  ✓ it cancels confirmed shipment without destroying snapshot            0.74s  
+  ✓ it reverses shipment stock movement when confirmed shipment is canc… 0.54s  
+  ✓ it rejects cancelling confirmed shipment when stock period is confi… 0.60s  
+  ✓ it rejects empty reason                                              0.44s  
+  ✓ it rejects cancelling already cancelled shipment                     0.46s  
+  ✓ it rejects cancelling closed shipment                                0.43s  
+
+  Tests:    7 passed (15 assertions)
+  Duration: 19.39s
+

@@ -2,12 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Models\AppSetting;
 use App\Models\BillingCycle;
 use App\Models\Customer;
 use App\Models\Employee;
 use App\Models\PriceList;
 use App\Models\PriceRule;
 use App\Models\Product;
+use App\Models\ProductionLot;
 use App\Models\Role;
 use App\Models\SettlementReceivableCategory;
 use App\Models\StockLocation;
@@ -43,22 +45,22 @@ class MonthlyClosingApiTest extends TestCase
                 'reason' => 'api stock monthly draft',
             ])
             ->assertCreated()
-            ->assertJsonPath('data.stock_monthly_balances.0.status', 'draft')
-            ->assertJsonPath('data.stock_monthly_balances.0.closing_quantity', '5.0000');
+            ->assertJsonPath('data.stock_lot_monthly_balances.0.status', 'draft')
+            ->assertJsonPath('data.stock_lot_monthly_balances.0.closing_quantity', '5.0000');
 
-        $stockBalanceId = $stockDraft->json('data.stock_monthly_balances.0.id');
+        $stockBalanceId = $stockDraft->json('data.stock_lot_monthly_balances.0.id');
 
         $this->actingAs($user)
             ->postJson('/api/v1/monthly-closing/stock-balances/2026/6/confirm', [
                 'reason' => 'api stock monthly confirm',
             ])
             ->assertOk()
-            ->assertJsonPath('data.stock_monthly_balances.0.status', 'confirmed');
+            ->assertJsonPath('data.stock_lot_monthly_balances.0.status', 'confirmed');
 
         $this->actingAs($user)
             ->getJson('/api/v1/monthly-closing/stock-balances?year=2026&month=6')
             ->assertOk()
-            ->assertJsonPath('data.stock_monthly_balances.0.id', $stockBalanceId);
+            ->assertJsonPath('data.stock_lot_monthly_balances.0.id', $stockBalanceId);
 
         $receivableDraft = $this->actingAs($user)
             ->postJson('/api/v1/monthly-closing/receivable-balances', [
@@ -128,6 +130,7 @@ class MonthlyClosingApiTest extends TestCase
     private function prepareData(): array
     {
         $this->seed(DatabaseSeeder::class);
+        AppSetting::setValue('operational_start_date', '2026-06-01');
 
         $user = $this->createUser('monthly-closing-admin@example.com');
         $user->roles()->attach(Role::where('code', 'admin')->firstOrFail());
@@ -135,22 +138,21 @@ class MonthlyClosingApiTest extends TestCase
         $bottle = Unit::where('code', 'bottle')->firstOrFail();
         $location = StockLocation::where('code', 'main_brewery')->firstOrFail();
 
-        $stockProduct = Product::create([
-            'product_code' => 'API-MONTHLY-STOCK-001',
-            'product_type' => 'sake',
-            'name' => 'API Monthly Stock Sake',
-            'display_name' => 'API Monthly Stock Sake',
-            'base_unit_id' => $bottle->id,
-            'sales_unit_id' => $bottle->id,
-            'inventory_unit_id' => $bottle->id,
-            'is_alcohol' => true,
-            'is_inventory_managed' => true,
+        $stockLot = ProductionLot::create([
+            'lot_code' => 'API-MONTHLY-LOT-001',
+            'display_name' => 'API Monthly Stock Lot',
+            'status' => 'active',
+            'stock_location_id' => $location->id,
+            'unit_id' => $bottle->id,
+            'is_active' => true,
         ]);
 
         StockMovement::create([
             'status' => 'confirmed',
             'movement_type' => 'production_receipt',
             'movement_date' => '2026-06-10',
+            'production_lot_id' => $stockLot->id,
+            'lot_code' => $stockLot->lot_code,
             'stock_location_id' => $location->id,
             'unit_id' => $bottle->id,
             'quantity' => '5.0000',

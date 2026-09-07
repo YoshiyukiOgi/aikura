@@ -8,10 +8,13 @@ use App\Models\Employee;
 use App\Models\PriceList;
 use App\Models\PriceRule;
 use App\Models\Product;
+use App\Models\ProductionLot;
 use App\Models\Role;
 use App\Models\SettlementReceivableCategory;
 use App\Models\ShipmentHeader;
 use App\Models\ShipmentLine;
+use App\Models\StockLocation;
+use App\Models\StockMovement;
 use App\Models\TransactionCategory;
 use App\Models\Unit;
 use App\Models\User;
@@ -25,7 +28,7 @@ class ShipmentApiTest extends TestCase
 
     public function test_user_with_permission_can_create_price_confirm_show_list_and_cancel_shipment(): void
     {
-        [$user, $customer, $product, $unit] = $this->prepareData();
+        [$user, $customer, $product, $unit, $location, $lot] = $this->prepareData();
 
         $createResponse = $this->actingAs($user)
             ->postJson('/api/v1/shipments', [
@@ -50,6 +53,17 @@ class ShipmentApiTest extends TestCase
             ->assertJsonPath('data.shipment.lines.0.quantity', '2.0000');
 
         $shipmentId = $createResponse->json('data.shipment.id');
+        $shipmentLineId = $createResponse->json('data.shipment.lines.0.id');
+
+        $this->actingAs($user)
+            ->postJson('/api/v1/inventory/allocate', [
+                'shipment_line_id' => $shipmentLineId,
+                'production_lot_id' => $lot->id,
+                'stock_location_id' => $location->id,
+                'quantity' => '2.0000',
+                'reason' => 'api shipment lot allocation',
+            ])
+            ->assertCreated();
 
         $this->actingAs($user)
             ->postJson("/api/v1/shipments/{$shipmentId}/price", [
@@ -225,7 +239,7 @@ class ShipmentApiTest extends TestCase
     }
 
     /**
-     * @return array{0: User, 1: Customer, 2: Product, 3: Unit}
+     * @return array{0: User, 1: Customer, 2: Product, 3: Unit, 4: StockLocation, 5: ProductionLot}
      */
     private function prepareData(): array
     {
@@ -274,7 +288,32 @@ class ShipmentApiTest extends TestCase
             'rounding_method' => 'round',
         ]);
 
-        return [$user, $customer, $product, $bottle];
+        $location = StockLocation::where('code', 'main_brewery')->firstOrFail();
+        $lot = ProductionLot::create([
+            'lot_code' => 'API-SH-LOT-001',
+            'display_name' => 'API Shipment Lot 001',
+            'stock_location_id' => $location->id,
+            'unit_id' => $bottle->id,
+            'capacity_value' => '720.0000',
+            'capacity_unit_id' => $milliliter->id,
+            'alcohol_percentage' => '15.50',
+            'analysis_status' => 'confirmed',
+            'production_date' => '2026-07-01',
+        ]);
+        StockMovement::create([
+            'status' => 'confirmed',
+            'movement_type' => 'opening_stock',
+            'movement_date' => '2026-07-01',
+            'stock_location_id' => $location->id,
+            'unit_id' => $bottle->id,
+            'quantity' => '2.0000',
+            'production_lot_id' => $lot->id,
+            'lot_code' => $lot->lot_code,
+            'confirmed_at' => now(),
+            'reason' => 'API shipment test opening stock',
+        ]);
+
+        return [$user, $customer, $product, $bottle, $location, $lot];
     }
 
     private function createUser(string $email): User
