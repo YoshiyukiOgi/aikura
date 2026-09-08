@@ -83,6 +83,24 @@ class ImportAccessShipmentsTest extends TestCase
             'batch_id' => $batch->id, 'source_table' => '出荷伝票・商品',
             'source_key' => '200', 'target_table' => 'shipment_lines',
         ]);
+
+        // A reviewed selection must not pull unrelated new rows or omit-table rows.
+        $this->insertSourceRow($batch, '出荷伝票・取引先', '101', [
+            '伝票番号' => 101, '年月日' => '2025-07-01', '取引先ID' => 25,
+        ]);
+        $this->insertSourceRow($batch, '出荷伝票・商品', '201', [
+            'ID' => 201, '伝票番号' => 100, '商品ID' => 13, '個数' => 99,
+        ]);
+        $selected = app(ImportAccessShipments::class)->import(
+            $batch->refresh(), true, null, ['出荷伝票・取引先' => ['100']],
+        );
+        $this->assertSame(1, $selected['shipment_headers']);
+        $this->assertSame(0, $selected['shipment_lines']);
+        $this->assertDatabaseCount('shipment_headers', 1);
+        $this->assertDatabaseCount('shipment_lines', 1);
+        $this->assertDatabaseMissing('access_migration_mappings', [
+            'batch_id' => $batch->id, 'source_table' => '出荷伝票・商品', 'source_key' => '201',
+        ]);
     }
 
     private function insertSourceRow(AccessMigrationBatch $batch, string $table, string $key, array $payload): void

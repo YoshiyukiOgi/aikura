@@ -145,19 +145,26 @@ class ImportAccessInventoryHistory
             ];
 
             if (count($records) === 500) {
-                $this->upsertLots($records);
+                $this->upsertLots($records, $deltaOnly);
                 $records = [];
             }
         }
         if ($records !== []) {
-            $this->upsertLots($records);
+            $this->upsertLots($records, $deltaOnly);
         }
 
         return ['count' => count($details), 'hashes' => $hashes];
     }
 
-    private function upsertLots(array $records): void
+    private function upsertLots(array $records, bool $preserveExisting = false): void
     {
+        if ($preserveExisting) {
+            // A historical delta must not archive or relabel an operational lot.
+            DB::table('production_lots')->insertOrIgnore($records);
+
+            return;
+        }
+
         DB::table('production_lots')->upsert(
             $records,
             ['lot_code'],

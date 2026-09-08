@@ -76,6 +76,22 @@ class ImportAccessInventoryHistoryTest extends TestCase
         $this->assertSame('-1.0000', $breakage->lines->sole()->quantity);
         $this->assertSame('0.2000', $breakage->lines->sole()->liquor_tax_reduction_rate);
         $this->assertSame('57.60', $breakage->lines->sole()->liquor_tax_estimated_amount);
+
+        DB::table('production_lots')->update(['status' => 'active', 'is_active' => true, 'disabled_at' => null]);
+        $lotsBefore = DB::table('production_lots')->orderBy('id')->get()->toJson();
+        $rowId = DB::table('access_migration_staging_rows')
+            ->where('batch_id', $batch->id)->where('source_table', '伝票外在庫出入')
+            ->where('source_key', '101')->value('id');
+        DB::table('access_migration_deltas')->insert([
+            'batch_id' => $batch->id, 'baseline_batch_id' => $batch->id,
+            'source_table' => '伝票外在庫出入', 'source_key' => '101',
+            'change_type' => 'new', 'current_staging_row_id' => $rowId,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $delta = app(ImportAccessInventoryHistory::class)->import($batch->refresh(), true);
+        $this->assertSame(1, $delta['operation_headers']);
+        $this->assertSame($lotsBefore, DB::table('production_lots')->orderBy('id')->get()->toJson());
+        $this->assertDatabaseCount('stock_movements', 0);
     }
 
     private function insertSourceRow(AccessMigrationBatch $batch, string $table, string $key, array $payload): void

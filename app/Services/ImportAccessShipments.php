@@ -17,7 +17,7 @@ class ImportAccessShipments
 
     private const LINE_TABLE = '出荷伝票・商品';
 
-    public function import(AccessMigrationBatch $batch, bool $deltaOnly = false, ?string $cutoverDate = null): array
+    public function import(AccessMigrationBatch $batch, bool $deltaOnly = false, ?string $cutoverDate = null, ?array $reviewedSourceKeys = null): array
     {
         if (! in_array($batch->status, ['masters_imported', 'prices_imported', 'shipments_imported'], true)) {
             throw new RuntimeException("出荷履歴を移行できないバッチ状態です: {$batch->status}");
@@ -25,11 +25,17 @@ class ImportAccessShipments
 
         $cutoverDate = $cutoverDate === null ? null : CarbonImmutable::parse($cutoverDate)->toDateString();
 
-        return DB::transaction(function () use ($batch, $deltaOnly, $cutoverDate): array {
+        // Explicit selections are supplied by an audited correction workflow.
+        // An omitted table means no rows; never fall back to a full import.
+        if ($reviewedSourceKeys !== null && ! $deltaOnly) {
+            throw new RuntimeException('確認済みキーの指定には差分取込モードが必要です。');
+        }
+
+        return DB::transaction(function () use ($batch, $deltaOnly, $cutoverDate, $reviewedSourceKeys): array {
             $context = $this->context($batch);
-            $headerResult = $this->importHeaders($batch, $context, $deltaOnly, $cutoverDate);
-            $lineCount = $this->importLines($batch, $context, $deltaOnly, $cutoverDate);
-            $this->recordMappings($batch, $deltaOnly, $cutoverDate);
+            $headerResult = $this->importHeaders($batch, $context, $deltaOnly, $cutoverDate, $reviewedSourceKeys);
+            $lineCount = $this->importLines($batch, $context, $deltaOnly, $cutoverDate, $reviewedSourceKeys);
+            $this->recordMappings($batch, $deltaOnly, $cutoverDate, $reviewedSourceKeys);
 
             $summary = [
                 'shipment_headers' => $headerResult['count'],
@@ -74,13 +80,13 @@ class ImportAccessShipments
         ];
     }
 
-    private function importHeaders(AccessMigrationBatch $batch, array $context, bool $deltaOnly, ?string $cutoverDate): array
+    private function importHeaders(AccessMigrationBatch $batch, array $context, bool $deltaOnly, ?string $cutoverDate, ?array $reviewedSourceKeys): array
     {
         $count = 0;
         $taxReviewCount = 0;
         $now = now();
 
-        $this->sourceQuery($batch, self::HEADER_TABLE, $deltaOnly, $cutoverDate)->chunkById(500, function ($rows) use ($batch, $context, &$count, &$taxReviewCount, $now): void {
+        $this->sourceQuery($batch, self::HEADER_TABLE, $deltaOnly, $cutoverDate, $reviewedSourceKeys)->chunkById(500, function ($rows) use ($batch, $context, &$count, &$taxReviewCount, $now): void {
             $records = [];
             foreach ($rows as $row) {
                 $source = $this->payload($row);
@@ -153,7 +159,7 @@ class ImportAccessShipments
         return ['count' => $count, 'tax_review_count' => $taxReviewCount];
     }
 
-    private function importLines(AccessMigrationBatch $batch, array $context, bool $deltaOnly, ?string $cutoverDate): int
+    private function importLines(AccessMigrationBatch $batch, array $context, bool $deltaOnly, ?string $cutoverDate, ?array $reviewedSourceKeys): int
     {
         $headers = DB::table('shipment_headers')->whereNotNull('legacy_access_document_number')->pluck('id', 'legacy_access_document_number');
         $liquorTreatments = DB::table('shipment_headers')->whereNotNull('legacy_access_document_number')->pluck('confirmed_liquor_tax_treatment', 'legacy_access_document_number');
@@ -163,7 +169,9 @@ class ImportAccessShipments
                 ->join('shipment_lines', 'shipment_lines.shipment_header_id', '=', 'shipment_headers.id')
                 ->whereNotNull('shipment_headers.legacy_access_document_number')
                 ->groupBy('shipment_headers.legacy_access_document_number')
-                ->pluck(DB::raw('MAX(shipment_lines.line_no)'), 'shipment_headers.legacy_access_document_number')
+                ->selectRaw('shipment_headers.legacy_access_document_number, MAX(shipment_lines.line_no) AS max_line_no')
+                ->get()
+                ->pluck('max_line_no', 'legacy_access_document_number')
                 ->map(fn ($value): int => (int) $value)
                 ->all()
             : [];
@@ -172,7 +180,7 @@ class ImportAccessShipments
         $count = 0;
         $now = now();
 
-        $this->sourceQuery($batch, self::LINE_TABLE, $deltaOnly, $cutoverDate)->chunkById(500, function ($rows) use ($context, $headers, $liquorTreatments, $consumptionTreatments, &$lineNumbers, &$sourceLineNumbersByDocument, &$sourceLineKeysByDocument, &$count, $now, $deltaOnly): void {
+        $this->sourceQuery($batch, self::LINE_TABLE, $deltaOnly, $cutoverDate, $reviewedSourceKeys)->chunkById(500, function ($rows) use ($context, $headers, $liquorTreatments, $consumptionTreatments, &$lineNumbers, &$sourceLineNumbersByDocument, &$sourceLineKeysByDocument, &$count, $now, $deltaOnly): void {
             $records = [];
             foreach ($rows as $row) {
                 $source = $this->payload($row);
@@ -313,10 +321,10 @@ class ImportAccessShipments
         }
     }
 
-    private function recordMappings(AccessMigrationBatch $batch, bool $deltaOnly, ?string $cutoverDate): void
+    private function recordMappings(AccessMigrationBatch $batch, bool $deltaOnly, ?string $cutoverDate, ?array $reviewedSourceKeys): void
     {
         foreach ([self::HEADER_TABLE => ['shipment_headers', 'legacy_access_document_number'], self::LINE_TABLE => ['shipment_lines', 'legacy_access_line_id']] as $sourceTable => [$targetTable, $legacyColumn]) {
-            $this->sourceQuery($batch, $sourceTable, $deltaOnly, $cutoverDate)->chunkById(500, function ($rows) use ($batch, $sourceTable, $targetTable, $legacyColumn): void {
+            $this->sourceQuery($batch, $sourceTable, $deltaOnly, $cutoverDate, $reviewedSourceKeys)->chunkById(500, function ($rows) use ($batch, $sourceTable, $targetTable, $legacyColumn): void {
                 $now = now();
                 $records = [];
                 $sourceKeys = $rows->map(fn ($row) => (string) $row->source_key);
@@ -340,7 +348,7 @@ class ImportAccessShipments
                 }
                 DB::table('access_migration_mappings')->upsert($records, ['batch_id', 'source_table', 'source_key'], ['target_table', 'target_id', 'action', 'source_payload_sha256', 'updated_at']);
             });
-            $this->sourceQuery($batch, $sourceTable, $deltaOnly, $cutoverDate)->update(['status' => 'imported', 'target_table' => $targetTable, 'updated_at' => now()]);
+            $this->sourceQuery($batch, $sourceTable, $deltaOnly, $cutoverDate, $reviewedSourceKeys)->update(['status' => 'imported', 'target_table' => $targetTable, 'updated_at' => now()]);
         }
     }
 
@@ -351,7 +359,7 @@ class ImportAccessShipments
             ->pluck('target_id', 'source_key');
     }
 
-    private function sourceQuery(AccessMigrationBatch $batch, string $table, bool $deltaOnly = false, ?string $cutoverDate = null)
+    private function sourceQuery(AccessMigrationBatch $batch, string $table, bool $deltaOnly = false, ?string $cutoverDate = null, ?array $reviewedSourceKeys = null)
     {
         return DB::table('access_migration_staging_rows')
             ->where('batch_id', $batch->id)
@@ -367,7 +375,8 @@ class ImportAccessShipments
                         ->whereRaw("cutover_headers.source_key = access_migration_staging_rows.payload->>'伝票番号'")
                         ->whereRaw("CAST(cutover_headers.payload->>'年月日' AS date) >= ?", [$cutoverDate]);
                 }))
-            ->when($deltaOnly, fn ($query) => $query->whereExists(function ($delta) use ($batch): void {
+            ->when($reviewedSourceKeys !== null, fn ($query) => $query->whereIn('source_key', $reviewedSourceKeys[$table] ?? []))
+            ->when($deltaOnly && $reviewedSourceKeys === null, fn ($query) => $query->whereExists(function ($delta) use ($batch): void {
                 $delta->selectRaw('1')
                     ->from('access_migration_deltas')
                     ->whereColumn('access_migration_deltas.current_staging_row_id', 'access_migration_staging_rows.id')
