@@ -6,6 +6,7 @@ use App\Exceptions\Billing\InvoiceCancellationException;
 use App\Models\BillingCycle;
 use App\Models\Customer;
 use App\Models\InvoiceHeader;
+use App\Models\PaymentSchedule;
 use App\Models\PriceList;
 use App\Models\PriceRule;
 use App\Models\Product;
@@ -75,6 +76,53 @@ class CancelInvoiceTest extends TestCase
         $this->expectException(InvoiceCancellationException::class);
 
         app(CancelInvoiceService::class)->cancel($invoice, '   ');
+    }
+
+    public function test_cancelling_carried_forward_invoice_restores_previous_schedule(): void
+    {
+        [$customer] = $this->prepareBaseData();
+        $firstInvoice = InvoiceHeader::create([
+            'invoice_number' => 'I-TEST-PRIOR-001',
+            'status' => 'confirmed',
+            'customer_id' => $customer->id,
+            'billing_cycle_id' => $customer->billing_cycle_id,
+            'invoice_date' => '2026-07-31',
+            'total_amount' => '3300.00',
+        ]);
+        $secondInvoice = InvoiceHeader::create([
+            'invoice_number' => 'I-TEST-CURRENT-001',
+            'status' => 'confirmed',
+            'customer_id' => $customer->id,
+            'billing_cycle_id' => $customer->billing_cycle_id,
+            'invoice_date' => '2026-08-31',
+            'total_amount' => '4950.00',
+        ]);
+        PaymentSchedule::create([
+            'invoice_header_id' => $firstInvoice->id,
+            'customer_id' => $customer->id,
+            'status' => 'closed',
+            'expected_payment_date' => '2026-08-31',
+            'scheduled_amount' => '3300.00',
+            'received_amount' => '0.00',
+            'outstanding_amount' => '0.00',
+            'carried_forward_to_invoice_header_id' => $secondInvoice->id,
+            'closed_at' => now(),
+        ]);
+
+        $this->assertDatabaseHas('payment_schedules', [
+            'invoice_header_id' => $firstInvoice->id,
+            'status' => 'closed',
+            'carried_forward_to_invoice_header_id' => $secondInvoice->id,
+        ]);
+
+        app(CancelInvoiceService::class)->cancel($secondInvoice, 'rebuild billing');
+
+        $this->assertDatabaseHas('payment_schedules', [
+            'invoice_header_id' => $firstInvoice->id,
+            'status' => 'open',
+            'outstanding_amount' => $firstInvoice->total_amount,
+            'carried_forward_to_invoice_header_id' => null,
+        ]);
     }
 
     public function test_it_rejects_cancelling_closed_invoice(): void

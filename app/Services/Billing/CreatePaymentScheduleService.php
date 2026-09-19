@@ -15,8 +15,7 @@ class CreatePaymentScheduleService
     public function __construct(
         private readonly AuditLogService $auditLogService,
         private readonly EnsureReceivableMonthlyBalancePeriodIsOpenService $ensureReceivableMonthlyBalancePeriodIsOpenService,
-    ) {
-    }
+    ) {}
 
     public function create(InvoiceHeader $invoice, ?string $reason = null): PaymentSchedule
     {
@@ -103,7 +102,8 @@ class CreatePaymentScheduleService
                 'status' => 'closed',
                 'outstanding_amount' => '0.00',
                 'closed_at' => now(),
-                'note' => trim((string) $schedule->note . "\n締め請求 {$invoice->invoice_number} へ繰越"),
+                'carried_forward_to_invoice_header_id' => $invoice->id,
+                'note' => trim((string) $schedule->note."\n締め請求 {$invoice->invoice_number} へ繰越"),
             ])->save();
 
             $this->auditLogService->record(new AuditLogData(

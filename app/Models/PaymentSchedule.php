@@ -13,6 +13,7 @@ class PaymentSchedule extends Model
 
     protected $fillable = [
         'invoice_header_id',
+        'carried_forward_to_invoice_header_id',
         'customer_id',
         'status',
         'expected_payment_date',

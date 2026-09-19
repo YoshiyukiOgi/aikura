@@ -25,18 +25,13 @@ class CreateInvoiceDraftService
         private readonly AuditLogService $auditLogService,
         private readonly TaxRoundingService $taxRoundingService,
         private readonly OperationalPeriod $operationalPeriod,
-    ) {
-    }
+    ) {}
 
     public function create(CreateInvoiceDraftData $data): InvoiceHeader
     {
         return DB::transaction(function () use ($data): InvoiceHeader {
             $customer = Customer::query()->findOrFail($data->customerId);
             $shipments = $this->resolveShipments($data);
-
-            if ($shipments->isEmpty()) {
-                throw InvoiceDraftException::noBillableShipments();
-            }
 
             $invoiceNumber = $this->numberSequenceService
                 ->next('invoice_document')
@@ -139,6 +134,11 @@ class CreateInvoiceDraftService
 
             $previousBalance = $this->previousBalanceAmount($customer, $invoice, $data->billingPeriodStart);
             $periodPayment = $this->periodPaymentAmount($customer, $data->billingPeriodStart, $data->billingPeriodEnd);
+
+            if ($shipments->isEmpty() && ! $this->hasReceivableActivity($previousBalance, $periodPayment, $data->includeCarriedForward)) {
+                throw InvoiceDraftException::noBillableShipments();
+            }
+
             $carriedForward = $data->includeCarriedForward
                 ? $this->carriedForwardAmount($previousBalance, $periodPayment)
                 : '0.00';
@@ -249,6 +249,12 @@ class CreateInvoiceDraftService
         return bccomp($amount, '0.00', 2) > 0 ? $amount : '0.00';
     }
 
+    private function hasReceivableActivity(string $previousBalance, string $periodPayment, bool $includeCarriedForward): bool
+    {
+        return $includeCarriedForward
+            && (bccomp($previousBalance, '0.00', 2) !== 0 || bccomp($periodPayment, '0.00', 2) !== 0);
+    }
+
     private function periodPaymentAmount(Customer $customer, ?string $periodStart, ?string $periodEnd): string
     {
         if ($periodStart === null || $periodEnd === null) {
@@ -274,7 +280,7 @@ class CreateInvoiceDraftService
     }
 
     /**
-     * @param array<string, array{amount: string, line_ids: array<int, int>}> $taxableGroups
+     * @param  array<string, array{amount: string, line_ids: array<int, int>}>  $taxableGroups
      */
     private function applyInvoiceUnitTax(InvoiceHeader $invoice, array $taxableGroups, string $roundingMethod): void
     {

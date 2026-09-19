@@ -5,7 +5,9 @@ namespace Tests\Feature;
 use App\Exceptions\Billing\InvoiceDraftException;
 use App\Models\BillingCycle;
 use App\Models\Customer;
+use App\Models\InvoiceHeader;
 use App\Models\Payment;
+use App\Models\PaymentSchedule;
 use App\Models\PriceList;
 use App\Models\PriceRule;
 use App\Models\Product;
@@ -249,6 +251,39 @@ class CreateInvoiceDraftTest extends TestCase
             billingPeriodStart: '2026-07-01',
             billingPeriodEnd: '2026-07-31',
         ));
+    }
+
+    public function test_it_creates_no_line_invoice_for_customer_with_carried_forward_balance(): void
+    {
+        [$customer] = $this->prepareBaseData();
+        $firstInvoice = InvoiceHeader::create([
+            'invoice_number' => 'I-TEST-PRIOR-001',
+            'status' => 'confirmed',
+            'customer_id' => $customer->id,
+            'billing_cycle_id' => $customer->billing_cycle_id,
+            'invoice_date' => '2026-07-31',
+            'total_amount' => '3300.00',
+        ]);
+        PaymentSchedule::create([
+            'invoice_header_id' => $firstInvoice->id,
+            'customer_id' => $customer->id,
+            'status' => 'open',
+            'expected_payment_date' => '2026-08-31',
+            'scheduled_amount' => '3300.00',
+            'received_amount' => '0.00',
+            'outstanding_amount' => '3300.00',
+        ]);
+
+        $invoice = app(CreateInvoiceDraftService::class)->create(new CreateInvoiceDraftData(
+            customerId: $customer->id,
+            invoiceDate: '2026-08-31',
+            billingPeriodStart: '2026-08-01',
+            billingPeriodEnd: '2026-08-31',
+        ));
+
+        $this->assertCount(0, $invoice->lines);
+        $this->assertSame($firstInvoice->total_amount, $invoice->previous_balance_amount);
+        $this->assertSame($firstInvoice->total_amount, $invoice->total_amount);
     }
 
     /**

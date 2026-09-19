@@ -639,8 +639,9 @@
       const month = monthValue();
       const broadPeriod = broadMonthlyPeriod(month);
       const params = qs({ customer_id:'', billing_target_from:broadPeriod.from, billing_target_to:broadPeriod.to });
-      const [billableData, invoiceData] = await Promise.all([
+      const [billableData, targetData, invoiceData] = await Promise.all([
         api(`/api/v1/billing/billable-shipments?${params}`),
+        api(`/api/v1/billing/monthly-targets?${qs({ year: Number(month.slice(0, 4)), month: Number(month.slice(5, 7)) })}`),
         api('/api/v1/billing/invoices?per_page=8')
       ]);
       const keyword = common.customer();
@@ -654,11 +655,20 @@
         const period = periodForClosing(month, shipment.closing_day);
         return (shipment.billing_target_date || '') >= period.from && (shipment.billing_target_date || '') <= period.to;
       });
-      const rows = Object.values(shipments.reduce((acc, shipment) => {
+      const rowsByCustomer = shipments.reduce((acc, shipment) => {
         const period = periodForClosing(month, shipment.closing_day);
         const row = acc[shipment.customer_id] ||= { kind:'monthly', customer_id:shipment.customer_id, customer_name:shipment.customer_name, count:0, dates:[], documents:[], previous_balance_amount:shipment.previous_balance_amount || '0.00', billing_cycle_name:shipment.billing_cycle_name, closing_day:shipment.closing_day, closing_date:closingDateFor(month, shipment.closing_day), period_start:period.from, period_end:period.to };
         row.count += 1; row.dates.push(shipment.billing_target_date); row.documents.push(shipment.document_number); return acc;
-      }, {})).sort((a,b)=>(closingKey(a.closing_day)).localeCompare(closingKey(b.closing_day)) || (a.customer_name || '').localeCompare(b.customer_name || '', 'ja'));
+      }, {});
+      (targetData.targets || []).filter(target => {
+        if(keyword && !(target.customer_name || '').includes(keyword)) return false;
+        if(selectedClosingDay && closingKey(target.closing_day) !== selectedClosingDay) return false;
+        return true;
+      }).forEach(target => {
+        const row = rowsByCustomer[target.customer_id] ||= { kind:'monthly', customer_id:target.customer_id, customer_name:target.customer_name, count:0, dates:[], documents:[], previous_balance_amount:target.previous_balance_amount || '0.00', billing_cycle_name:target.billing_cycle_name, closing_day:target.closing_day, closing_date:target.closing_date, period_start:target.period_start, period_end:target.period_end };
+        row.previous_balance_amount = target.previous_balance_amount || row.previous_balance_amount;
+      });
+      const rows = Object.values(rowsByCustomer).sort((a,b)=>(closingKey(a.closing_day)).localeCompare(closingKey(b.closing_day)) || (a.customer_name || '').localeCompare(b.customer_name || '', 'ja'));
       state.monthlyRows = rows;
       if(!state.monthlySelectionRestored){
         state.selectedMonthlyCustomerIds = new Set(rows.map(row=>Number(row.customer_id)));

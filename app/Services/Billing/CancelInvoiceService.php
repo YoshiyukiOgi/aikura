@@ -19,8 +19,7 @@ class CancelInvoiceService
         private readonly AuditLogService $auditLogService,
         private readonly EnsureConsumptionTaxFilingPeriodIsOpenService $ensureConsumptionTaxFilingPeriodIsOpenService,
         private readonly EnsureReceivableMonthlyBalancePeriodIsOpenService $ensureReceivableMonthlyBalancePeriodIsOpenService,
-    ) {
-    }
+    ) {}
 
     public function cancel(InvoiceHeader $invoice, string $reason): InvoiceHeader
     {
@@ -62,6 +61,7 @@ class CancelInvoiceService
                 'cancelled_reason' => $reason,
             ])->save();
 
+            $this->restoreCarriedForwardSchedules($invoice, $reason);
             $this->closePaymentSchedule($invoice, $reason);
 
             $this->auditLogService->record(new AuditLogData(
@@ -78,6 +78,46 @@ class CancelInvoiceService
 
             return $invoice->refresh()->load(['customer', 'billingCycle', 'lines']);
         });
+    }
+
+    private function restoreCarriedForwardSchedules(InvoiceHeader $invoice, string $reason): void
+    {
+        PaymentSchedule::query()
+            ->where('carried_forward_to_invoice_header_id', $invoice->id)
+            ->lockForUpdate()
+            ->get()
+            ->each(function (PaymentSchedule $schedule) use ($invoice, $reason): void {
+                $outstandingAmount = bcsub((string) $schedule->scheduled_amount, (string) $schedule->received_amount, 2);
+                $status = bccomp($outstandingAmount, '0.00', 2) > 0
+                    ? (bccomp((string) $schedule->received_amount, '0.00', 2) > 0 ? 'partial' : 'open')
+                    : 'closed';
+
+                $before = [
+                    'status' => $schedule->status,
+                    'outstanding_amount' => $schedule->outstanding_amount,
+                    'carried_forward_to_invoice_header_id' => $schedule->carried_forward_to_invoice_header_id,
+                ];
+
+                $schedule->forceFill([
+                    'status' => $status,
+                    'outstanding_amount' => $outstandingAmount,
+                    'closed_at' => $status === 'closed' ? $schedule->closed_at : null,
+                    'carried_forward_to_invoice_header_id' => null,
+                    'note' => trim((string) $schedule->note."\n請求取消により繰越を戻す: {$invoice->invoice_number} / {$reason}"),
+                ])->save();
+
+                $this->auditLogService->record(new AuditLogData(
+                    event: 'payment_schedule.carried_forward_restored',
+                    auditable: $schedule,
+                    beforeValues: $before,
+                    afterValues: [
+                        'status' => $schedule->status,
+                        'outstanding_amount' => $schedule->outstanding_amount,
+                        'carried_forward_to_invoice_header_id' => null,
+                    ],
+                    reason: $reason,
+                ));
+            });
     }
 
     private function closePaymentSchedule(InvoiceHeader $invoice, string $reason): void

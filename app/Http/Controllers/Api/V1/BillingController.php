@@ -25,6 +25,7 @@ use App\Services\Billing\CreateInvoiceDraftService;
 use App\Services\Billing\CreatePaymentScheduleService;
 use App\Services\Billing\CustomerMonthlyStatementRow;
 use App\Services\Billing\CustomerMonthlyStatementService;
+use App\Services\Billing\MonthlyBillingTargetService;
 use App\Services\Billing\ReceivableBalance;
 use App\Services\Billing\ReceivableBalanceService;
 use App\Services\Billing\RegisterPaymentService;
@@ -137,6 +138,18 @@ class BillingController extends ApiController
         return $this->ok([
             'invoices' => $invoices,
             'pagination' => $this->pagination($page, $perPage, $total),
+        ]);
+    }
+
+    public function monthlyBillingTargets(Request $request, MonthlyBillingTargetService $service): JsonResponse
+    {
+        $validated = $request->validate([
+            'year' => ['required', 'integer', 'min:2000', 'max:2100'],
+            'month' => ['required', 'integer', 'min:1', 'max:12'],
+        ]);
+
+        return $this->ok([
+            'targets' => $service->forMonth((int) $validated['year'], (int) $validated['month'])->all(),
         ]);
     }
 

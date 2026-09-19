@@ -1,0 +1,61 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\BillingCycle;
+use App\Models\Customer;
+use App\Models\InvoiceHeader;
+use App\Models\PaymentSchedule;
+use App\Models\SettlementReceivableCategory;
+use App\Models\TransactionCategory;
+use App\Services\Billing\MonthlyBillingTargetService;
+use Database\Seeders\CustomerMasterSeeder;
+use Database\Seeders\ShipmentMasterSeeder;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
+
+class MonthlyBillingTargetServiceTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_it_includes_customer_with_carried_forward_balance_and_no_shipments(): void
+    {
+        $this->seed([CustomerMasterSeeder::class, ShipmentMasterSeeder::class]);
+
+        $customer = Customer::create([
+            'customer_code' => 'MONTHLY-TARGET-001',
+            'name' => '繰越対象取引先',
+            'transaction_category_id' => TransactionCategory::where('code', 'wholesale')->value('id'),
+            'settlement_receivable_category_id' => SettlementReceivableCategory::where('code', 'accounts_receivable_1')->value('id'),
+            'billing_cycle_id' => BillingCycle::where('code', 'monthly_end_next_month_end')->value('id'),
+        ]);
+        $priorInvoice = InvoiceHeader::create([
+            'invoice_number' => 'I-TEST-TARGET-001',
+            'status' => 'confirmed',
+            'customer_id' => $customer->id,
+            'billing_cycle_id' => $customer->billing_cycle_id,
+            'invoice_date' => '2026-07-31',
+            'billing_period_start' => '2026-07-01',
+            'billing_period_end' => '2026-07-31',
+            'total_amount' => '3300.00',
+        ]);
+        PaymentSchedule::create([
+            'invoice_header_id' => $priorInvoice->id,
+            'customer_id' => $customer->id,
+            'status' => 'open',
+            'expected_payment_date' => '2026-08-31',
+            'scheduled_amount' => '3300.00',
+            'received_amount' => '0.00',
+            'outstanding_amount' => '3300.00',
+        ]);
+
+        $target = app(MonthlyBillingTargetService::class)
+            ->forMonth(2026, 8)
+            ->firstWhere('customer_id', $customer->id);
+
+        $this->assertNotNull($target);
+        $this->assertSame(0, $target['shipment_count']);
+        $this->assertSame('3300.00', $target['previous_balance_amount']);
+        $this->assertTrue($target['has_receivable_activity']);
+    }
+}

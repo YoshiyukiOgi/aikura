@@ -246,6 +246,7 @@ Route::prefix('v1')->name('api.v1.')->group(function (): void {
 
         Route::middleware('permission:billing.view')->group(function (): void {
             Route::get('/billing/billable-shipments', [BillingController::class, 'billableShipments'])->name('billing.billable-shipments');
+            Route::get('/billing/monthly-targets', [BillingController::class, 'monthlyBillingTargets'])->name('billing.monthly-targets');
             Route::get('/billing/invoices', [BillingController::class, 'invoices'])->name('billing.invoices');
             Route::get('/billing/invoices/{invoice}', [BillingController::class, 'invoice'])->name('billing.invoices.show');
             Route::get('/billing/payment-schedules', [BillingController::class, 'paymentSchedules'])->name('billing.payment-schedules');
