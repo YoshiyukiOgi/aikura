@@ -213,7 +213,7 @@ class CustomerMonthlyStatementService
         return DB::table('payments')
             ->whereDate('payment_date', '>=', $periodStart)
             ->whereDate('payment_date', '<=', $periodEnd)
-            ->whereIn('status', ['registered', 'confirmed', 'allocated', 'review_required'])
+            ->whereIn('status', ['registered', 'confirmed', 'allocated', 'review_required', 'legacy_imported'])
             ->whereNull('cancelled_at')
             ->selectRaw('customer_id, payment_method, COALESCE(SUM(amount), 0) as amount')
             ->groupBy('customer_id', 'payment_method')

@@ -26,6 +26,7 @@ class MonthlyBillingTargetService
             ->with('billingCycle')
             ->whereHas('billingCycle', fn ($query) => $query->where('billing_method', 'monthly_closing'))
             ->where('is_active', true)
+            ->where('invoice_required', true)
             ->orderBy('customer_code')
             ->get()
             ->map(function (Customer $customer) use ($year, $month): ?array {

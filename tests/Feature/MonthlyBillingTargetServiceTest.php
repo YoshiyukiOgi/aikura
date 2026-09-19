@@ -5,9 +5,11 @@ namespace Tests\Feature;
 use App\Models\BillingCycle;
 use App\Models\Customer;
 use App\Models\InvoiceHeader;
+use App\Models\Payment;
 use App\Models\PaymentSchedule;
 use App\Models\SettlementReceivableCategory;
 use App\Models\TransactionCategory;
+use App\Services\Billing\CustomerMonthlyStatementService;
 use App\Services\Billing\MonthlyBillingTargetService;
 use Database\Seeders\CustomerMasterSeeder;
 use Database\Seeders\ShipmentMasterSeeder;
@@ -57,5 +59,33 @@ class MonthlyBillingTargetServiceTest extends TestCase
         $this->assertSame(0, $target['shipment_count']);
         $this->assertSame('3300.00', $target['previous_balance_amount']);
         $this->assertTrue($target['has_receivable_activity']);
+    }
+
+    public function test_monthly_statement_includes_legacy_imported_payment(): void
+    {
+        $this->seed(CustomerMasterSeeder::class);
+        $customer = Customer::create([
+            'customer_code' => 'MONTHLY-LEGACY-PAYMENT-001',
+            'name' => '移行入金取引先',
+            'transaction_category_id' => TransactionCategory::where('code', 'wholesale')->value('id'),
+            'settlement_receivable_category_id' => SettlementReceivableCategory::where('code', 'accounts_receivable_1')->value('id'),
+            'billing_cycle_id' => BillingCycle::where('code', 'monthly_end_next_month_end')->value('id'),
+        ]);
+        Payment::create([
+            'customer_id' => $customer->id,
+            'status' => 'legacy_imported',
+            'payment_date' => '2026-08-20',
+            'payment_method' => 'bank_transfer',
+            'amount' => '1200.00',
+            'unapplied_amount' => '0.00',
+            'reference_number' => 'LEGACY-PAYMENT-001',
+        ]);
+
+        $row = app(CustomerMonthlyStatementService::class)
+            ->forMonth(2026, 8)
+            ->firstWhere('customerId', $customer->id);
+
+        $this->assertNotNull($row);
+        $this->assertSame('-1200.00', $row->paymentAmount);
     }
 }
