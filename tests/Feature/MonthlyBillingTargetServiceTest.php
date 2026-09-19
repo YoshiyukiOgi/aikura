@@ -88,4 +88,40 @@ class MonthlyBillingTargetServiceTest extends TestCase
         $this->assertNotNull($row);
         $this->assertSame('-1200.00', $row->paymentAmount);
     }
+
+    public function test_it_excludes_no_shipment_customer_when_invoice_is_not_required(): void
+    {
+        $this->seed(CustomerMasterSeeder::class);
+        $customer = Customer::create([
+            'customer_code' => 'MONTHLY-NO-INVOICE-001',
+            'name' => '請求不要取引先',
+            'transaction_category_id' => TransactionCategory::where('code', 'wholesale')->value('id'),
+            'settlement_receivable_category_id' => SettlementReceivableCategory::where('code', 'accounts_receivable_1')->value('id'),
+            'billing_cycle_id' => BillingCycle::where('code', 'monthly_end_next_month_end')->value('id'),
+            'invoice_required' => false,
+        ]);
+        $priorInvoice = InvoiceHeader::create([
+            'invoice_number' => 'I-TEST-NO-INVOICE-001',
+            'status' => 'confirmed',
+            'customer_id' => $customer->id,
+            'billing_cycle_id' => $customer->billing_cycle_id,
+            'invoice_date' => '2026-07-31',
+            'total_amount' => '3300.00',
+        ]);
+        PaymentSchedule::create([
+            'invoice_header_id' => $priorInvoice->id,
+            'customer_id' => $customer->id,
+            'status' => 'open',
+            'expected_payment_date' => '2026-08-31',
+            'scheduled_amount' => '3300.00',
+            'received_amount' => '0.00',
+            'outstanding_amount' => '3300.00',
+        ]);
+
+        $target = app(MonthlyBillingTargetService::class)
+            ->forMonth(2026, 8)
+            ->firstWhere('customer_id', $customer->id);
+
+        $this->assertNull($target);
+    }
 }

@@ -26,7 +26,6 @@ class MonthlyBillingTargetService
             ->with('billingCycle')
             ->whereHas('billingCycle', fn ($query) => $query->where('billing_method', 'monthly_closing'))
             ->where('is_active', true)
-            ->where('invoice_required', true)
             ->orderBy('customer_code')
             ->get()
             ->map(function (Customer $customer) use ($year, $month): ?array {
@@ -41,7 +40,7 @@ class MonthlyBillingTargetService
                     ->count();
                 $hasReceivableActivity = $this->hasReceivableActivity($customer, $period['start'], $period['end']);
 
-                if ($shipmentCount === 0 && ! $hasReceivableActivity) {
+                if ($shipmentCount === 0 && (! $hasReceivableActivity || ! $customer->invoice_required)) {
                     return null;
                 }
 
