@@ -28,6 +28,9 @@ class CreatePaymentScheduleService
             if ($invoice->status !== 'confirmed') {
                 throw PaymentScheduleException::invoiceNotConfirmed($invoice->id, $invoice->status);
             }
+            if ($invoice->document_type === 'internal_statement') {
+                throw new PaymentScheduleException('社内請求は入金予定を作成できません。社内残高として月次締めを行ってください。');
+            }
 
             $existingSchedule = PaymentSchedule::query()
                 ->where('invoice_header_id', $invoice->id)

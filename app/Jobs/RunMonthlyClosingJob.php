@@ -4,7 +4,9 @@ namespace App\Jobs;
 
 use App\Exceptions\Operations\OperationJobException;
 use App\Services\Billing\CloseReceivableMonthlyBalanceService;
+use App\Services\Billing\CloseInternalMonthlyBalanceService;
 use App\Services\Billing\ConfirmReceivableMonthlyBalanceService;
+use App\Services\Billing\ConfirmInternalMonthlyBalanceService;
 use App\Services\Inventory\ConfirmStockMonthlyBalanceService;
 use App\Services\Operations\OperationJobService;
 use App\Services\Tax\ConfirmConsumptionTaxMonthlyFilingService;
@@ -34,6 +36,8 @@ class RunMonthlyClosingJob implements ShouldQueue
         ConfirmStockMonthlyBalanceService $stockConfirmService,
         ConfirmReceivableMonthlyBalanceService $receivableConfirmService,
         CloseReceivableMonthlyBalanceService $receivableCloseService,
+        ConfirmInternalMonthlyBalanceService $internalConfirmService,
+        CloseInternalMonthlyBalanceService $internalCloseService,
         ConfirmLiquorTaxMonthlyFilingService $liquorTaxConfirmService,
         ConfirmConsumptionTaxMonthlyFilingService $consumptionTaxConfirmService,
     ): mixed {
@@ -51,6 +55,8 @@ class RunMonthlyClosingJob implements ShouldQueue
                 'stock_lot_monthly_balance_confirm' => $stockConfirmService->confirm($this->year, $this->month, $this->reason),
                 'receivable_monthly_balance_confirm' => $receivableConfirmService->confirm($this->year, $this->month, $this->reason),
                 'receivable_monthly_balance_close' => $receivableCloseService->close($this->year, $this->month, $this->reason),
+                'internal_monthly_balance_confirm' => $internalConfirmService->confirm($this->year, $this->month, $this->reason),
+                'internal_monthly_balance_close' => $internalCloseService->close($this->year, $this->month, $this->reason),
                 'liquor_tax_filing_confirm' => $liquorTaxConfirmService->confirm($this->year, $this->month, $this->reason),
                 'consumption_tax_filing_confirm' => $consumptionTaxConfirmService->confirm($this->year, $this->month, $this->reason),
                 default => throw OperationJobException::unsupportedClosingType($this->closingType),

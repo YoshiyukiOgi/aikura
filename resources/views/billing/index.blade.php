@@ -895,7 +895,7 @@
       return dateFromParts(year, month, lastDayOfMonth(year, month));
     };
     const canIssueInvoiceFor = invoice => invoice.status === 'draft' && invoice.document_type !== 'credit_memo';
-    const canCreateScheduleFor = invoice => invoice.status === 'confirmed' && invoice.document_type !== 'credit_memo' && !invoice.payment_schedule_id;
+    const canCreateScheduleFor = invoice => invoice.status === 'confirmed' && !['credit_memo','internal_statement'].includes(invoice.document_type) && !invoice.payment_schedule_id;
     const invoiceStepDone = (invoice, mode) => mode === 'issue' ? invoice.status === 'confirmed' : Boolean(invoice.payment_schedule_id);
     const invoiceSelectionSet = mode => mode === 'issue' ? state.selectedIssueInvoiceIds : state.selectedScheduleInvoiceIds;
     const canSelectInvoiceFor = (invoice, mode) => mode === 'issue' ? canIssueInvoiceFor(invoice) : canCreateScheduleFor(invoice);

@@ -5,10 +5,14 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Requests\Api\V1\ShipmentActionReasonRequest;
 use App\Http\Requests\Api\V1\StoreMonthlyClosingRequest;
 use App\Models\ReceivableMonthlyBalance;
+use App\Models\InternalMonthlyBalance;
 use App\Models\StockLotMonthlyBalance;
 use App\Services\Billing\CloseReceivableMonthlyBalanceService;
 use App\Services\Billing\ConfirmReceivableMonthlyBalanceService;
 use App\Services\Billing\CreateReceivableMonthlyBalanceDraftService;
+use App\Services\Billing\CreateInternalMonthlyBalanceDraftService;
+use App\Services\Billing\ConfirmInternalMonthlyBalanceService;
+use App\Services\Billing\CloseInternalMonthlyBalanceService;
 use App\Services\Inventory\ConfirmStockMonthlyBalanceService;
 use App\Services\Inventory\CreateStockMonthlyBalanceDraftService;
 use Illuminate\Http\JsonResponse;
@@ -148,6 +152,31 @@ class MonthlyClosingController extends ApiController
         return $this->ok(['receivable_monthly_balances' => $this->serializeReceivableBalances($balances)]);
     }
 
+    public function internalBalances(Request $request): JsonResponse
+    {
+        $validated = $request->validate(['year' => ['nullable', 'integer', 'min:2000', 'max:2100'], 'month' => ['nullable', 'integer', 'min:1', 'max:12']]);
+        $query = InternalMonthlyBalance::query()->orderByDesc('year')->orderByDesc('month')->orderBy('customer_code');
+        if (isset($validated['year'])) { $query->where('year', (int) $validated['year']); }
+        if (isset($validated['month'])) { $query->where('month', (int) $validated['month']); }
+        return $this->ok(['internal_monthly_balances' => $this->serializeInternalBalances($query->limit(100)->get())]);
+    }
+
+    public function createInternalBalances(StoreMonthlyClosingRequest $request, CreateInternalMonthlyBalanceDraftService $service): JsonResponse
+    {
+        $validated = $request->validated();
+        return $this->created(['internal_monthly_balances' => $this->serializeInternalBalances($service->create((int) $validated['year'], (int) $validated['month'], $validated['reason'] ?? null))]);
+    }
+
+    public function confirmInternalBalances(ShipmentActionReasonRequest $request, int $year, int $month, ConfirmInternalMonthlyBalanceService $service): JsonResponse
+    {
+        return $this->ok(['internal_monthly_balances' => $this->serializeInternalBalances($service->confirm($year, $month, $request->validated('reason')))]);
+    }
+
+    public function closeInternalBalances(ShipmentActionReasonRequest $request, int $year, int $month, CloseInternalMonthlyBalanceService $service): JsonResponse
+    {
+        return $this->ok(['internal_monthly_balances' => $this->serializeInternalBalances($service->close($year, $month, $request->validated('reason')))]);
+    }
+
     private function lotBalances(int $year, int $month): array
     {
         return StockLotMonthlyBalance::query()->with(['productionLot.capacityUnit', 'stockLocation', 'unit'])
@@ -209,5 +238,19 @@ class MonthlyClosingController extends ApiController
             'closed_at' => $balance->closed_at?->toISOString(),
             'reason' => $balance->reason,
         ];
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function serializeInternalBalances(Collection $balances): array
+    {
+        return $balances->map(fn (InternalMonthlyBalance $balance): array => [
+            'id' => $balance->id, 'status' => $balance->status, 'year' => $balance->year, 'month' => $balance->month,
+            'period_start' => $balance->period_start?->toDateString(), 'period_end' => $balance->period_end?->toDateString(),
+            'customer_id' => $balance->customer_id, 'customer_code' => $balance->customer_code, 'customer_name' => $balance->customer_name,
+            'opening_amount' => $balance->opening_amount, 'charge_amount' => $balance->charge_amount,
+            'settlement_amount' => $balance->settlement_amount, 'closing_amount' => $balance->closing_amount,
+            'calculated_at' => $balance->calculated_at?->toISOString(), 'confirmed_at' => $balance->confirmed_at?->toISOString(),
+            'closed_at' => $balance->closed_at?->toISOString(), 'reason' => $balance->reason,
+        ])->values()->all();
     }
 }

@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Exceptions\Operations\OperationJobException;
 use App\Services\Billing\CreateReceivableMonthlyBalanceDraftService;
+use App\Services\Billing\CreateInternalMonthlyBalanceDraftService;
 use App\Services\Inventory\CreateStockMonthlyBalanceDraftService;
 use App\Services\Operations\OperationJobService;
 use App\Services\Tax\CreateConsumptionTaxMonthlyFilingDraftService;
@@ -33,6 +34,7 @@ class RunMonthlyAggregationJob implements ShouldQueue
         CreateLiquorTaxMonthlyFilingDraftService $liquorTaxDraftService,
         CreateConsumptionTaxMonthlyFilingDraftService $consumptionTaxDraftService,
         CreateReceivableMonthlyBalanceDraftService $receivableBalanceDraftService,
+        CreateInternalMonthlyBalanceDraftService $internalBalanceDraftService,
         CreateStockMonthlyBalanceDraftService $stockBalanceDraftService,
     ): mixed {
         return $operationJobService->run(
@@ -49,6 +51,7 @@ class RunMonthlyAggregationJob implements ShouldQueue
                 'liquor_tax_filing' => $liquorTaxDraftService->create($this->year, $this->month, $this->reason),
                 'consumption_tax_filing' => $consumptionTaxDraftService->create($this->year, $this->month, $this->reason),
                 'receivable_monthly_balance' => $receivableBalanceDraftService->create($this->year, $this->month, $this->reason),
+                'internal_monthly_balance' => $internalBalanceDraftService->create($this->year, $this->month, $this->reason),
                 'stock_lot_monthly_balance' => $stockBalanceDraftService->create($this->year, $this->month, $this->reason),
                 default => throw OperationJobException::unsupportedAggregationType($this->aggregationType),
             },

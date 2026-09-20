@@ -83,7 +83,7 @@ class ImportAccessMastersTest extends TestCase
         $this->assertSame('ceil', $customer->tax_rounding_method);
         $this->assertSame('invoice', $customer->tax_calculation_unit);
         $this->assertSame(25, $customer->billingCycle->closing_day);
-        $this->assertSame('self_consumption', $customer->settlementReceivableCategory->code);
+        $this->assertSame('internal_balance', $customer->settlementReceivableCategory->code);
 
         $product = Product::query()->where('product_code', 'ITARO-P-00013')->firstOrFail();
         $this->assertSame('主商品名', $product->name);

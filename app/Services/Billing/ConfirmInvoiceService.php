@@ -17,6 +17,7 @@ class ConfirmInvoiceService
         private readonly AuditLogService $auditLogService,
         private readonly EnsureConsumptionTaxFilingPeriodIsOpenService $ensureConsumptionTaxFilingPeriodIsOpenService,
         private readonly EnsureReceivableMonthlyBalancePeriodIsOpenService $ensureReceivableMonthlyBalancePeriodIsOpenService,
+        private readonly EnsureInternalMonthlyBalancePeriodIsOpenService $ensureInternalMonthlyBalancePeriodIsOpenService,
         private readonly CreatePaymentScheduleService $createPaymentScheduleService,
     ) {}
 
@@ -38,8 +39,12 @@ class ConfirmInvoiceService
 
             $this->ensureConsumptionTaxFilingPeriodIsOpenService
                 ->ensureOpen($invoice->invoice_date->toDateString());
-            $this->ensureReceivableMonthlyBalancePeriodIsOpenService
-                ->ensureOpen($invoice->invoice_date->toDateString());
+            $isInternal = $invoice->document_type === 'internal_statement';
+            if ($isInternal) {
+                $this->ensureInternalMonthlyBalancePeriodIsOpenService->ensureOpen($invoice->invoice_date->toDateString());
+            } else {
+                $this->ensureReceivableMonthlyBalancePeriodIsOpenService->ensureOpen($invoice->invoice_date->toDateString());
+            }
 
             $subtotal = '0.00';
             $tax = '0.00';
@@ -90,10 +95,12 @@ class ConfirmInvoiceService
 
             $invoice = $invoice->refresh()->load(['customer', 'billingCycle', 'lines']);
 
-            $this->createPaymentScheduleService->create(
-                $invoice,
-                $reason ?? '請求書発行時に入金予定を自動作成'
-            );
+            if (! $isInternal) {
+                $this->createPaymentScheduleService->create(
+                    $invoice,
+                    $reason ?? '請求書発行時に入金予定を自動作成'
+                );
+            }
 
             return $invoice->refresh()->load(['customer', 'billingCycle', 'lines', 'paymentSchedule']);
         });

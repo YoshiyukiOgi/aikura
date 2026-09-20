@@ -6,12 +6,12 @@ use App\Models\AppSetting;
 use App\Models\BillingCycle;
 use App\Models\Customer;
 use App\Models\Employee;
-use App\Models\PriceList;
-use App\Models\PriceRule;
 use App\Models\Product;
 use App\Models\ProductionLot;
 use App\Models\Role;
 use App\Models\SettlementReceivableCategory;
+use App\Models\ShipmentHeader;
+use App\Models\ShipmentLine;
 use App\Models\StockLocation;
 use App\Models\StockMovement;
 use App\Models\TransactionCategory;
@@ -21,11 +21,6 @@ use App\Services\Billing\ConfirmInvoiceService;
 use App\Services\Billing\CreateInvoiceDraftData;
 use App\Services\Billing\CreateInvoiceDraftService;
 use App\Services\Billing\CreatePaymentScheduleService;
-use App\Services\Shipment\ApplyDraftShipmentPricingService;
-use App\Services\Shipment\ConfirmShipmentService;
-use App\Services\Shipment\CreateDraftShipmentData;
-use App\Services\Shipment\CreateDraftShipmentLineData;
-use App\Services\Shipment\CreateDraftShipmentService;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -189,25 +184,17 @@ class MonthlyClosingApiTest extends TestCase
             'is_alcohol' => true,
         ]);
 
-        PriceRule::create([
-            'price_list_id' => PriceList::where('code', 'common')->firstOrFail()->id,
-            'product_id' => $product->id,
-            'unit_id' => $unit->id,
-            'unit_price' => '1500.0000',
-            'priority' => 300,
-            'effective_from' => '2026-01-01',
+        $shipment = ShipmentHeader::create([
+            'document_number' => 'API-MONTHLY-AR-SHIP-001', 'status' => 'confirmed', 'customer_id' => $customer->id,
+            'transaction_category_id' => $customer->transaction_category_id, 'settlement_receivable_category_id' => $customer->settlement_receivable_category_id,
+            'billing_cycle_id' => $customer->billing_cycle_id, 'document_date' => '2026-06-15', 'billing_target_date' => '2026-06-15',
         ]);
-
-        $shipment = app(CreateDraftShipmentService::class)->create(new CreateDraftShipmentData(
-            customerId: $customer->id,
-            documentDate: '2026-06-15',
-            billingTargetDate: '2026-06-15',
-            lines: [
-                new CreateDraftShipmentLineData($product->id, '2.0000', $unit->id),
-            ],
-        ));
-        $shipment = app(ApplyDraftShipmentPricingService::class)->apply($shipment);
-        $shipment = app(ConfirmShipmentService::class)->confirm($shipment);
+        ShipmentLine::create([
+            'shipment_header_id' => $shipment->id, 'line_no' => 1, 'product_id' => $product->id, 'quantity' => '2.0000', 'unit_id' => $unit->id,
+            'confirmed_product_code' => $product->product_code, 'confirmed_product_name' => $product->name, 'confirmed_display_name' => $product->display_name,
+            'confirmed_product_type' => $product->product_type, 'confirmed_unit_code' => $unit->code, 'confirmed_unit_name' => $unit->name,
+            'confirmed_quantity' => '2.0000', 'confirmed_unit_price' => '1500.0000', 'confirmed_consumption_tax_rate' => '0.1000', 'confirmed_at' => now(),
+        ]);
 
         $invoice = app(CreateInvoiceDraftService::class)->create(new CreateInvoiceDraftData(
             customerId: $customer->id,

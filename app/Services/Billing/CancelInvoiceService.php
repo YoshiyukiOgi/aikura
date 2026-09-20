@@ -19,6 +19,7 @@ class CancelInvoiceService
         private readonly AuditLogService $auditLogService,
         private readonly EnsureConsumptionTaxFilingPeriodIsOpenService $ensureConsumptionTaxFilingPeriodIsOpenService,
         private readonly EnsureReceivableMonthlyBalancePeriodIsOpenService $ensureReceivableMonthlyBalancePeriodIsOpenService,
+        private readonly EnsureInternalMonthlyBalancePeriodIsOpenService $ensureInternalMonthlyBalancePeriodIsOpenService,
     ) {}
 
     public function cancel(InvoiceHeader $invoice, string $reason): InvoiceHeader
@@ -40,8 +41,11 @@ class CancelInvoiceService
             if ($invoice->status !== 'draft') {
                 $this->ensureConsumptionTaxFilingPeriodIsOpenService
                     ->ensureOpen($invoice->invoice_date->toDateString());
-                $this->ensureReceivableMonthlyBalancePeriodIsOpenService
-                    ->ensureOpen($invoice->invoice_date->toDateString());
+                if ($invoice->document_type === 'internal_statement') {
+                    $this->ensureInternalMonthlyBalancePeriodIsOpenService->ensureOpen($invoice->invoice_date->toDateString());
+                } else {
+                    $this->ensureReceivableMonthlyBalancePeriodIsOpenService->ensureOpen($invoice->invoice_date->toDateString());
+                }
             }
 
             try {
@@ -61,8 +65,10 @@ class CancelInvoiceService
                 'cancelled_reason' => $reason,
             ])->save();
 
-            $this->restoreCarriedForwardSchedules($invoice, $reason);
-            $this->closePaymentSchedule($invoice, $reason);
+            if ($invoice->document_type !== 'internal_statement') {
+                $this->restoreCarriedForwardSchedules($invoice, $reason);
+                $this->closePaymentSchedule($invoice, $reason);
+            }
 
             $this->auditLogService->record(new AuditLogData(
                 event: 'invoice.cancelled',

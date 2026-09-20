@@ -59,6 +59,23 @@ class CustomerMasterSeeder extends Seeder
         );
 
         SettlementReceivableCategory::updateOrCreate(
+            ['code' => 'internal_balance'],
+            [
+                'name' => '社内残高',
+                'receivable_method' => 'internal_balance',
+                'export_type' => 'domestic',
+                'liquor_tax_type' => 'taxable',
+                'consumption_tax_type' => 'non_taxable',
+                'invoice_required' => true,
+                'reduces_stock' => true,
+                'requires_tax_review' => true,
+                'requires_evidence' => false,
+                'description' => '社内請求・社内残高として管理する。外部売掛、入金予定、入金消込の対象にはしない。',
+                'is_active' => true,
+            ],
+        );
+
+        SettlementReceivableCategory::updateOrCreate(
             ['code' => 'export'],
             [
                 'name' => '輸出',

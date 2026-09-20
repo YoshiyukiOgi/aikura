@@ -15,6 +15,7 @@ class MonthlyBillingTargetService
     public function __construct(
         private readonly BillableShipmentQuery $billableShipmentQuery,
         private readonly ReceivableBalanceService $receivableBalanceService,
+        private readonly InternalBalanceService $internalBalanceService,
     ) {}
 
     /**
@@ -38,7 +39,10 @@ class MonthlyBillingTargetService
                 $shipmentCount = $this->billableShipmentQuery
                     ->query($customer->id, $period['start'], $period['end'])
                     ->count();
-                $hasReceivableActivity = $this->hasReceivableActivity($customer, $period['start'], $period['end']);
+                $isInternal = $this->internalBalanceService->isInternal($customer);
+                $hasReceivableActivity = $isInternal
+                    ? $this->internalBalanceService->hasActivity($customer, $period['start'])
+                    : $this->hasReceivableActivity($customer, $period['start'], $period['end']);
 
                 if ($shipmentCount === 0 && (! $hasReceivableActivity || ! $customer->invoice_required)) {
                     return null;
@@ -53,7 +57,10 @@ class MonthlyBillingTargetService
                     'period_end' => $period['end'],
                     'closing_date' => $period['end'],
                     'shipment_count' => $shipmentCount,
-                    'previous_balance_amount' => $this->receivableBalanceService->forCustomer($customer)->outstandingAmount,
+                    'previous_balance_amount' => $isInternal
+                        ? $this->internalBalanceService->balanceBefore($customer, $period['start'])
+                        : $this->receivableBalanceService->forCustomer($customer)->outstandingAmount,
+                    'balance_type' => $isInternal ? 'internal' : 'receivable',
                     'has_receivable_activity' => $hasReceivableActivity,
                 ];
             })

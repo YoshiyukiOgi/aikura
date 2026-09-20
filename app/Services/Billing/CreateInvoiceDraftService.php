@@ -25,12 +25,14 @@ class CreateInvoiceDraftService
         private readonly AuditLogService $auditLogService,
         private readonly TaxRoundingService $taxRoundingService,
         private readonly OperationalPeriod $operationalPeriod,
+        private readonly InternalBalanceService $internalBalanceService,
     ) {}
 
     public function create(CreateInvoiceDraftData $data): InvoiceHeader
     {
         return DB::transaction(function () use ($data): InvoiceHeader {
-            $customer = Customer::query()->findOrFail($data->customerId);
+            $customer = Customer::query()->with('settlementReceivableCategory')->findOrFail($data->customerId);
+            $isInternal = $this->internalBalanceService->isInternal($customer);
             $shipments = $this->resolveShipments($data);
 
             $invoiceNumber = $this->numberSequenceService
@@ -40,6 +42,7 @@ class CreateInvoiceDraftService
             $invoice = InvoiceHeader::create([
                 'invoice_number' => $invoiceNumber,
                 'status' => 'draft',
+                'document_type' => $isInternal ? 'internal_statement' : 'invoice',
                 'customer_id' => $customer->id,
                 'billing_cycle_id' => $customer->billing_cycle_id,
                 'invoice_date' => $data->invoiceDate,
@@ -132,8 +135,12 @@ class CreateInvoiceDraftService
                 $total = bcadd($total, $line->total_amount, 2);
             }
 
-            $previousBalance = $this->previousBalanceAmount($customer, $invoice, $data->billingPeriodStart);
-            $periodPayment = $this->periodPaymentAmount($customer, $data->billingPeriodStart, $data->billingPeriodEnd);
+            $previousBalance = $isInternal
+                ? $this->internalBalanceService->balanceBefore($customer, $data->billingPeriodStart ?? $data->invoiceDate)
+                : $this->previousBalanceAmount($customer, $invoice, $data->billingPeriodStart);
+            $periodPayment = $isInternal
+                ? $this->internalBalanceService->periodSettlementAmount($customer, $data->billingPeriodStart, $data->billingPeriodEnd)
+                : $this->periodPaymentAmount($customer, $data->billingPeriodStart, $data->billingPeriodEnd);
 
             if ($shipments->isEmpty() && ! $this->hasReceivableActivity($previousBalance, $periodPayment, $data->includeCarriedForward)) {
                 throw InvoiceDraftException::noBillableShipments();

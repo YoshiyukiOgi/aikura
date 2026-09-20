@@ -379,6 +379,7 @@ Route::prefix('v1')->name('api.v1.')->group(function (): void {
         Route::middleware('permission:monthly_closing.view')->group(function (): void {
             Route::get('/monthly-closing/stock-balances', [MonthlyClosingController::class, 'stockBalances'])->name('monthly-closing.stock-balances');
             Route::get('/monthly-closing/receivable-balances', [MonthlyClosingController::class, 'receivableBalances'])->name('monthly-closing.receivable-balances');
+            Route::get('/monthly-closing/internal-balances', [MonthlyClosingController::class, 'internalBalances'])->name('monthly-closing.internal-balances');
         });
 
         Route::middleware('permission:monthly_closing.execute')->group(function (): void {
@@ -387,6 +388,9 @@ Route::prefix('v1')->name('api.v1.')->group(function (): void {
             Route::post('/monthly-closing/receivable-balances', [MonthlyClosingController::class, 'createReceivableBalances'])->name('monthly-closing.receivable-balances.store');
             Route::post('/monthly-closing/receivable-balances/{year}/{month}/confirm', [MonthlyClosingController::class, 'confirmReceivableBalances'])->name('monthly-closing.receivable-balances.confirm');
             Route::post('/monthly-closing/receivable-balances/{year}/{month}/close', [MonthlyClosingController::class, 'closeReceivableBalances'])->name('monthly-closing.receivable-balances.close');
+            Route::post('/monthly-closing/internal-balances', [MonthlyClosingController::class, 'createInternalBalances'])->name('monthly-closing.internal-balances.store');
+            Route::post('/monthly-closing/internal-balances/{year}/{month}/confirm', [MonthlyClosingController::class, 'confirmInternalBalances'])->name('monthly-closing.internal-balances.confirm');
+            Route::post('/monthly-closing/internal-balances/{year}/{month}/close', [MonthlyClosingController::class, 'closeInternalBalances'])->name('monthly-closing.internal-balances.close');
         });
 
         Route::middleware('permission:search.view')->group(function (): void {

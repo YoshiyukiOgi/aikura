@@ -4,6 +4,8 @@ use App\Jobs\RunMonthlyAggregationJob;
 use App\Jobs\RunMonthlyClosingJob;
 use App\Jobs\RunReportExportRetentionCheckJob;
 use App\Jobs\RunReportGenerationJob;
+use App\Models\Customer;
+use App\Services\Billing\RecordInternalBalanceOpeningService;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
 
@@ -70,6 +72,19 @@ Artisan::command('aikura:monthly-closing {type} {year} {month} {--reason=} {--sy
 
     return self::SUCCESS;
 })->purpose('Run monthly closing through the operation job pipeline.');
+
+Artisan::command('aikura:internal-balance-opening {customer_code} {as_of_date} {amount} {--note=}', function (RecordInternalBalanceOpeningService $service): int {
+    $customer = Customer::query()->where('customer_code', (string) $this->argument('customer_code'))->firstOrFail();
+    $opening = $service->record(
+        $customer,
+        (string) $this->argument('as_of_date'),
+        (string) $this->argument('amount'),
+        (string) ($this->option('note') ?? '社内残高の移行開始残高'),
+    );
+    $this->info("recorded: {$opening->customer_id} {$opening->as_of_date->toDateString()} {$opening->opening_balance_amount}");
+
+    return self::SUCCESS;
+})->purpose('Record or correct an auditable internal-balance opening amount before internal month closing.');
 
 Artisan::command('aikura:report-retention-check {--type=} {--reason=} {--sync}', function (): int {
     $job = new RunReportExportRetentionCheckJob(

@@ -122,7 +122,7 @@
 </head>
 <body>
   <button class="no-print" onclick="window.print()">印刷 / PDF出力</button>
-  <h1>請求書</h1>
+  <h1>{{ $invoice->document_type === 'internal_statement' ? '社内請求書' : '請求書' }}</h1>
   @if($invoice->document_type === 'credit_memo')
     <p class="notice">この伝票は赤伝です。</p>
   @endif

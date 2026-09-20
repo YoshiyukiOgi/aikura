@@ -103,7 +103,7 @@ class ImportAccessMasters
                 default => 'legacy_other',
             };
             $settlementCode = match (true) {
-                ($source['業種区分'] ?? null) === '自家用' => 'self_consumption',
+                ($source['業種区分'] ?? null) === '自家用' => 'internal_balance',
                 ($source['業種区分'] ?? null) === '蔵置所' => 'tax_paid_storage_destination',
                 ($source['業種区分'] ?? null) === '輸出' => 'export',
                 (bool) ($source['酒税未納取引'] ?? false) => 'untaxed_transfer',
