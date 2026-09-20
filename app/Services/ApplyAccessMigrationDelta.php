@@ -46,19 +46,18 @@ class ApplyAccessMigrationDelta
 
         $blockers = DB::table('access_migration_deltas')
             ->where('batch_id', $batch->id)
-            ->where(function ($query): void {
-                $query->where('change_type', 'deleted')
-                    ->orWhere(function ($changed): void {
-                        $changed->where('change_type', 'changed')
-                            ->whereIn('source_table', self::TRANSACTION_TABLES);
-                    });
-            })
+            ->where('change_type', 'deleted')
             ->get(['source_table', 'source_key', 'change_type']);
         if ($blockers->isNotEmpty()) {
             $examples = $blockers->take(5)
                 ->map(fn (object $row): string => "{$row->source_table}/{$row->source_key}({$row->change_type})")
                 ->implode(', ');
-            throw new RuntimeException("自動適用できない変更があります。差分CSVを確認してください: {$examples}");
+            throw new RuntimeException("削除済みの移行元取引があります。自動適用できません: {$examples}");
+        }
+
+        $invoiceBlockers = $this->confirmedInvoiceBlockers($batch);
+        if ($invoiceBlockers !== []) {
+            throw new RuntimeException('請求確定済み伝票の変更があります。請求取消・再作成の訂正手順が必要です: '.implode(', ', array_slice($invoiceBlockers, 0, 5)));
         }
 
         $monthlyBlockers = $this->monthlyClosingBlockers($batch);
@@ -81,7 +80,7 @@ class ApplyAccessMigrationDelta
             $status = 'prices_imported';
         }
         if ($status === 'prices_imported') {
-            $summaries['shipments'] = $this->hasNewRows($batch, ['出荷伝票・取引先', '出荷伝票・商品'])
+            $summaries['shipments'] = $this->hasApplicableRows($batch, ['出荷伝票・取引先', '出荷伝票・商品'])
                 ? $this->shipments->import($batch->fresh(), true)
                 : $this->emptyShipmentSummary();
             if ($batch->fresh()->status !== 'shipments_imported') {
@@ -90,7 +89,7 @@ class ApplyAccessMigrationDelta
             $status = 'shipments_imported';
         }
         if ($status === 'shipments_imported') {
-            $summaries['inventory_history'] = $this->hasNewRows($batch, ['伝票外在庫出入'])
+            $summaries['inventory_history'] = $this->hasApplicableRows($batch, ['伝票外在庫出入'])
                 ? $this->inventoryHistory->import($batch->fresh(), true)
                 : $this->emptyInventoryHistorySummary();
             if ($batch->fresh()->status !== 'inventory_history_imported') {
@@ -99,7 +98,7 @@ class ApplyAccessMigrationDelta
             $status = 'inventory_history_imported';
         }
         if ($status === 'inventory_history_imported') {
-            $summaries['receivables'] = $this->hasNewRows($batch, ['入金'])
+            $summaries['receivables'] = $this->hasApplicableRows($batch, ['入金'])
                 ? $this->receivables->import($batch->fresh(), true)
                 : $this->emptyReceivableSummary();
             if ($batch->fresh()->status !== 'receivables_imported') {
@@ -130,18 +129,13 @@ class ApplyAccessMigrationDelta
         return $summaries;
     }
 
-    /**
-     * Aの月次確定値を維持するため、締め済み月への新規B1取引は自動適用しない。
-     * 変更・削除は呼出元で先に全面停止している。
-     *
-     * @return list<string>
-     */
+    /** @return list<string> */
     private function monthlyClosingBlockers(AccessMigrationBatch $batch): array
     {
         $rows = DB::table('access_migration_deltas as delta')
             ->join('access_migration_staging_rows as staging', 'staging.id', '=', 'delta.current_staging_row_id')
             ->where('delta.batch_id', $batch->id)
-            ->where('delta.change_type', 'new')
+            ->whereIn('delta.change_type', ['new', 'changed'])
             ->whereIn('delta.source_table', self::TRANSACTION_TABLES)
             ->get(['delta.source_table', 'delta.source_key', 'staging.payload']);
 
@@ -239,12 +233,51 @@ class ApplyAccessMigrationDelta
                 ->exists();
     }
 
+    /** @return list<string> */
+    private function confirmedInvoiceBlockers(AccessMigrationBatch $batch): array
+    {
+        $headerKeys = DB::table('access_migration_deltas')
+            ->where('batch_id', $batch->id)
+            ->where('change_type', 'changed')
+            ->where('source_table', '出荷伝票・取引先')
+            ->pluck('source_key');
+        $lineKeys = DB::table('access_migration_deltas')
+            ->where('batch_id', $batch->id)
+            ->where('change_type', 'changed')
+            ->where('source_table', '出荷伝票・商品')
+            ->pluck('source_key');
+
+        $shipmentIds = DB::table('shipment_headers')
+            ->whereIn('legacy_access_document_number', $headerKeys)
+            ->pluck('id')
+            ->merge(DB::table('shipment_lines')
+                ->whereIn('legacy_access_line_id', $lineKeys)
+                ->pluck('shipment_header_id'))
+            ->unique()
+            ->values();
+        if ($shipmentIds->isEmpty()) {
+            return [];
+        }
+
+        return DB::table('invoice_lines as line')
+            ->join('invoice_headers as invoice', 'invoice.id', '=', 'line.invoice_header_id')
+            ->join('shipment_headers as shipment', 'shipment.id', '=', 'line.shipment_header_id')
+            ->whereIn('line.shipment_header_id', $shipmentIds)
+            ->whereIn('invoice.status', ['confirmed', 'closed'])
+            ->whereNull('invoice.cancelled_at')
+            ->select('shipment.legacy_access_document_number', 'invoice.invoice_number')
+            ->distinct()
+            ->get()
+            ->map(fn (object $row): string => "出荷{$row->legacy_access_document_number}/請求{$row->invoice_number}")
+            ->all();
+    }
+
     /** @param list<string> $sourceTables */
-    private function hasNewRows(AccessMigrationBatch $batch, array $sourceTables): bool
+    private function hasApplicableRows(AccessMigrationBatch $batch, array $sourceTables): bool
     {
         return DB::table('access_migration_deltas')
             ->where('batch_id', $batch->id)
-            ->where('change_type', 'new')
+            ->whereIn('change_type', ['new', 'changed'])
             ->whereIn('source_table', $sourceTables)
             ->exists();
     }

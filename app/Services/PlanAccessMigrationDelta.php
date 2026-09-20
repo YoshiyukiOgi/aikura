@@ -146,11 +146,7 @@ class PlanAccessMigrationDelta
         $blockers = DB::table('access_migration_deltas')
             ->where('batch_id', $batch->id)
             ->where(function ($query): void {
-                $query->where('change_type', 'deleted')
-                    ->orWhere(function ($changed): void {
-                        $changed->where('change_type', 'changed')
-                            ->whereIn('source_table', self::TRANSACTION_TABLES);
-                    });
+                $query->where('change_type', 'deleted');
             })
             ->count();
         $reportPath = $this->writeReport($batch);

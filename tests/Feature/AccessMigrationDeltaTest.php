@@ -60,16 +60,21 @@ class AccessMigrationDeltaTest extends TestCase
         File::delete($summary['report_path']);
     }
 
-    public function test_apply_stops_when_transaction_history_was_changed(): void
+    public function test_apply_stops_changed_transaction_in_confirmed_month(): void
     {
         $baseline = $this->createBatch('completed', 'C');
         $current = $this->createBatch('ready', 'D');
-        $this->insertRow($baseline, '入金', '10', ['金額' => -100]);
-        $this->insertRow($current, '入金', '10', ['金額' => -200]);
+        $this->insertRow($baseline, '入金', '10', ['年月日' => '2026-07-15', '金額' => -100]);
+        $this->insertRow($current, '入金', '10', ['年月日' => '2026-07-15', '金額' => -200]);
+        DB::table('liquor_tax_monthly_filings')->insert([
+            'status' => 'confirmed', 'year' => 2026, 'month' => 7,
+            'period_start' => '2026-07-01', 'period_end' => '2026-07-31',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
         app(PlanAccessMigrationDelta::class)->plan($current, $baseline);
 
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('自動適用できない変更');
+        $this->expectExceptionMessage('月次確定・締め済み期間');
 
         app(ApplyAccessMigrationDelta::class)->apply($current->refresh());
     }

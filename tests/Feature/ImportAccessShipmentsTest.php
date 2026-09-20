@@ -4,8 +4,10 @@ namespace Tests\Feature;
 
 use App\Models\AccessMigrationBatch;
 use App\Models\ShipmentHeader;
+use App\Services\ApplyAccessMigrationDelta;
 use App\Services\ImportAccessMasters;
 use App\Services\ImportAccessShipments;
+use App\Services\PlanAccessMigrationDelta;
 use Database\Seeders\CustomerMasterSeeder;
 use Database\Seeders\LiquorTaxMasterSeeder;
 use Database\Seeders\ProductUnitMasterSeeder;
@@ -100,6 +102,96 @@ class ImportAccessShipmentsTest extends TestCase
         $this->assertDatabaseCount('shipment_lines', 1);
         $this->assertDatabaseMissing('access_migration_mappings', [
             'batch_id' => $batch->id, 'source_table' => '出荷伝票・商品', 'source_key' => '201',
+        ]);
+    }
+
+    public function test_delta_import_updates_a_changed_shipment_header_when_the_month_is_open(): void
+    {
+        $this->seed(CustomerMasterSeeder::class);
+        $this->seed(ProductUnitMasterSeeder::class);
+        $this->seed(TaxMasterSeeder::class);
+        $this->seed(LiquorTaxMasterSeeder::class);
+
+        $baseline = $this->createShipmentBatch('D');
+        $current = $this->createShipmentBatch('E');
+        foreach ([$baseline, $current] as $batch) {
+            $this->insertSourceRow($batch, '取引先マスター', '25', ['取引先ID' => 25, '取引先名' => '差分取引先', '取引区分' => '卸価格']);
+            $this->insertSourceRow($batch, '主商品', '11', ['主商品ID' => 11, '主商品名' => '差分商品']);
+            $this->insertSourceRow($batch, '商品マスター', '13', ['商品ID' => 13, '主商品ID' => 11, '商品分類' => '酒', '酒類' => 1, '容量(ml)' => 720, '容量単位' => 'ml', '個数単位' => '本']);
+            $this->insertSourceRow($batch, '出荷伝票・商品', '200', ['ID' => 200, '伝票番号' => 100, '商品ID' => 13, '商品詳細ID' => 77, '個数' => 1, '単価' => 1000, '取引額' => 1000, '商品税額' => 100, '消費税率' => 10]);
+        }
+        $this->insertSourceRow($baseline, '出荷伝票・取引先', '100', ['伝票番号' => 100, '年月日' => '2026-08-01', '取引先ID' => 25, '金額' => 1000, '消費税額' => 100, '合計' => 1100, '酒税区分' => 1]);
+        $this->insertSourceRow($current, '出荷伝票・取引先', '100', ['伝票番号' => 100, '年月日' => '2026-08-01', '取引先ID' => 25, '金額' => 1250, '消費税額' => 125, '合計' => 1375, '酒税区分' => 1]);
+
+        app(ImportAccessMasters::class)->import($baseline);
+        app(ImportAccessShipments::class)->import($baseline->refresh());
+        $baseline->update(['status' => 'completed']);
+        app(PlanAccessMigrationDelta::class)->plan($current, $baseline);
+        app(ImportAccessMasters::class)->import($current->fresh());
+        $current->update(['status' => 'prices_imported']);
+
+        $summary = app(ImportAccessShipments::class)->import($current->fresh(), true);
+
+        $this->assertSame(1, $summary['shipment_headers']);
+        $this->assertSame(0, $summary['shipment_lines']);
+        $this->assertSame('1375.00', ShipmentHeader::query()->where('legacy_access_document_number', '100')->sole()->legacy_access_total_amount);
+    }
+
+    public function test_delta_apply_stops_a_changed_shipment_that_is_already_on_a_confirmed_invoice(): void
+    {
+        $this->seed(CustomerMasterSeeder::class);
+        $this->seed(ProductUnitMasterSeeder::class);
+        $this->seed(TaxMasterSeeder::class);
+        $this->seed(LiquorTaxMasterSeeder::class);
+
+        $baseline = $this->createShipmentBatch('F');
+        $current = $this->createShipmentBatch('G');
+        foreach ([$baseline, $current] as $batch) {
+            $this->insertSourceRow($batch, '取引先マスター', '25', ['取引先ID' => 25, '取引先名' => '請求済差分取引先', '取引区分' => '卸価格']);
+            $this->insertSourceRow($batch, '主商品', '11', ['主商品ID' => 11, '主商品名' => '請求済差分商品']);
+            $this->insertSourceRow($batch, '商品マスター', '13', ['商品ID' => 13, '主商品ID' => 11, '商品分類' => '酒', '酒類' => 1, '容量(ml)' => 720, '容量単位' => 'ml', '個数単位' => '本']);
+            $this->insertSourceRow($batch, '出荷伝票・商品', '200', ['ID' => 200, '伝票番号' => 100, '商品ID' => 13, '商品詳細ID' => 77, '個数' => 1, '単価' => 1000, '取引額' => 1000, '商品税額' => 100, '消費税率' => 10]);
+        }
+        $this->insertSourceRow($baseline, '出荷伝票・取引先', '100', ['伝票番号' => 100, '年月日' => '2026-08-01', '取引先ID' => 25, '金額' => 1000, '消費税額' => 100, '合計' => 1100, '酒税区分' => 1]);
+        $this->insertSourceRow($current, '出荷伝票・取引先', '100', ['伝票番号' => 100, '年月日' => '2026-08-01', '取引先ID' => 25, '金額' => 1250, '消費税額' => 125, '合計' => 1375, '酒税区分' => 1]);
+
+        app(ImportAccessMasters::class)->import($baseline);
+        app(ImportAccessShipments::class)->import($baseline->refresh());
+        $shipment = ShipmentHeader::query()->with('lines')->sole();
+        $line = $shipment->lines->sole();
+        $invoiceId = DB::table('invoice_headers')->insertGetId([
+            'invoice_number' => 'TEST-202608-001', 'status' => 'confirmed',
+            'customer_id' => $shipment->customer_id, 'billing_cycle_id' => $shipment->billing_cycle_id,
+            'invoice_date' => '2026-08-31', 'billing_period_start' => '2026-08-01', 'billing_period_end' => '2026-08-31',
+            'subtotal_amount' => 1000, 'tax_amount' => 100, 'total_amount' => 1100,
+            'confirmed_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('invoice_lines')->insert([
+            'invoice_header_id' => $invoiceId, 'shipment_header_id' => $shipment->id, 'shipment_line_id' => $line->id,
+            'line_no' => 1, 'product_id' => $line->product_id,
+            'product_code' => $line->confirmed_product_code, 'product_name' => $line->confirmed_product_name,
+            'display_name' => $line->confirmed_display_name, 'quantity' => 1,
+            'unit_code' => $line->confirmed_unit_code, 'unit_name' => $line->confirmed_unit_name,
+            'unit_price' => 1000, 'amount' => 1000, 'tax_rate' => 0.1, 'tax_amount' => 100, 'total_amount' => 1100,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $baseline->update(['status' => 'completed']);
+        app(PlanAccessMigrationDelta::class)->plan($current, $baseline);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('請求確定済み伝票の変更');
+        $this->expectExceptionMessage('出荷100/請求TEST-202608-001');
+
+        app(ApplyAccessMigrationDelta::class)->apply($current->refresh());
+    }
+
+    private function createShipmentBatch(string $hashCharacter): AccessMigrationBatch
+    {
+        return AccessMigrationBatch::query()->create([
+            'status' => 'ready', 'source_file_name' => 'Itaro-xp.accdb', 'source_file_path' => 'C:\\source\\Itaro-xp.accdb',
+            'source_sha256' => str_repeat($hashCharacter, 64), 'source_size' => 123, 'extractor_version' => 'test', 'package_version' => 1,
+            'source_table_count' => 5, 'source_row_count' => 5, 'manifest' => [], 'started_at' => now(),
         ]);
     }
 

@@ -390,7 +390,7 @@ class ImportAccessInventoryHistory
                     ->from('access_migration_deltas')
                     ->whereColumn('access_migration_deltas.current_staging_row_id', 'access_migration_staging_rows.id')
                     ->where('access_migration_deltas.batch_id', $batch->id)
-                    ->where('access_migration_deltas.change_type', 'new');
+                    ->whereIn('access_migration_deltas.change_type', ['new', 'changed']);
             }))
             ->orderBy('id');
     }
