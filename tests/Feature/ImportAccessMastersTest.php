@@ -136,6 +136,27 @@ class ImportAccessMastersTest extends TestCase
         $this->assertSame('従/', Customer::query()->where('customer_code', 'ITARO-C-5948')->value('name'));
     }
 
+    public function test_it_keeps_tamagawa_retail_and_individual_arimitsu_as_external_receivables(): void
+    {
+        $this->seed(CustomerMasterSeeder::class);
+        $this->seed(ProductUnitMasterSeeder::class);
+        $this->seed(TaxMasterSeeder::class);
+
+        $batch = AccessMigrationBatch::query()->create([
+            'status' => 'ready', 'source_file_name' => 'Itaro-xp.accdb', 'source_file_path' => 'C:\\source\\Itaro-xp.accdb',
+            'source_sha256' => str_repeat('C', 64), 'source_size' => 123, 'extractor_version' => 'test', 'package_version' => 1,
+            'source_table_count' => 1, 'source_row_count' => 2, 'manifest' => [], 'started_at' => now(),
+        ]);
+        foreach ([['33', '玉川小売'], ['99', '個人 有光']] as [$id, $name]) {
+            $this->insertSourceRow($batch, '取引先マスター', $id, ['取引先ID' => (int) $id, '取引先名' => $name, '取引区分' => '小売価格', '業種区分' => '自家用']);
+        }
+
+        app(ImportAccessMasters::class)->import($batch);
+
+        $this->assertSame('accounts_receivable_1', Customer::query()->where('customer_code', 'ITARO-C-0033')->firstOrFail()->settlementReceivableCategory->code);
+        $this->assertSame('accounts_receivable_1', Customer::query()->where('customer_code', 'ITARO-C-0099')->firstOrFail()->settlementReceivableCategory->code);
+    }
+
     private function insertSourceRow(AccessMigrationBatch $batch, string $table, string $key, array $payload): void
     {
         $json = json_encode($payload, JSON_UNESCAPED_UNICODE);

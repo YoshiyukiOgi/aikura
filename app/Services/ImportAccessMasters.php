@@ -103,6 +103,7 @@ class ImportAccessMasters
                 default => 'legacy_other',
             };
             $settlementCode = match (true) {
+                in_array($sourceKey, ['33', '99'], true) => 'accounts_receivable_1',
                 ($source['業種区分'] ?? null) === '自家用' => 'internal_balance',
                 ($source['業種区分'] ?? null) === '蔵置所' => 'tax_paid_storage_destination',
                 ($source['業種区分'] ?? null) === '輸出' => 'export',
