@@ -53,7 +53,20 @@ class InvoiceTaxRoundingTest extends TestCase
         $this->assertSame('66.66', $invoice->subtotal_amount);
         $this->assertSame('6.67', $invoice->tax_amount);
         $this->assertSame('73.33', $invoice->total_amount);
-        $this->assertSame(['0.00', '6.67'], $invoice->lines->pluck('tax_amount')->all());
+        $this->assertSame(['3.33', '3.34'], $invoice->lines->pluck('tax_amount')->all());
+    }
+
+    public function test_invoice_unit_tax_rounding_separates_access_lines_with_no_tax_rate_id_by_saved_rate(): void
+    {
+        [$customer, $product, $unit] = $this->prepareBaseData('TAX-ROUND-ACCESS', 'invoice', 'round');
+
+        $invoice = $this->createInvoiceWithTwoLines($customer, $product, $unit, ['0.0800', '0.1000']);
+
+        $this->assertSame('66.66', $invoice->subtotal_amount);
+        $this->assertSame('6.00', $invoice->tax_amount);
+        $this->assertSame('72.66', $invoice->total_amount);
+        $this->assertSame(['2.67', '3.33'], $invoice->lines->pluck('tax_amount')->all());
+        $this->assertSame(['0.0800', '0.1000'], $invoice->lines->pluck('tax_rate')->all());
     }
 
     public function test_tax_rounding_method_floor_and_ceil_are_supported(): void
@@ -68,12 +81,13 @@ class InvoiceTaxRoundingTest extends TestCase
         $this->assertSame('6.67', $ceilInvoice->tax_amount);
     }
 
-    private function createInvoiceWithTwoLines(Customer $customer, Product $product, Unit $unit)
+    /** @param list<string>|null $snapshotRates */
+    private function createInvoiceWithTwoLines(Customer $customer, Product $product, Unit $unit, ?array $snapshotRates = null)
     {
         $shipment = app(CreateDraftShipmentService::class)->create(new CreateDraftShipmentData(
             customerId: $customer->id,
-            documentDate: '2026-05-23',
-            billingTargetDate: '2026-05-23',
+            documentDate: '2026-08-23',
+            billingTargetDate: '2026-08-23',
             lines: [
                 new CreateDraftShipmentLineData($product->id, '1.0000', $unit->id),
                 new CreateDraftShipmentLineData($product->id, '1.0000', $unit->id),
@@ -81,11 +95,19 @@ class InvoiceTaxRoundingTest extends TestCase
         ));
         $shipment = app(ApplyDraftShipmentPricingService::class)->apply($shipment);
         $shipment = app(ConfirmShipmentService::class)->confirm($shipment);
+        if ($snapshotRates !== null) {
+            foreach ($shipment->lines()->orderBy('line_no')->get() as $index => $line) {
+                $line->update([
+                    'confirmed_consumption_tax_rate_id' => null,
+                    'confirmed_consumption_tax_rate' => $snapshotRates[$index],
+                ]);
+            }
+        }
 
         return app(CreateInvoiceDraftService::class)
             ->create(new CreateInvoiceDraftData(
                 customerId: $customer->id,
-                invoiceDate: '2026-05-31',
+                invoiceDate: '2026-08-31',
                 shipmentHeaderIds: [$shipment->id],
             ))
             ->load('lines');
@@ -126,6 +148,7 @@ class InvoiceTaxRoundingTest extends TestCase
             'base_unit_id' => $unit->id,
             'sales_unit_id' => $unit->id,
             'inventory_unit_id' => $unit->id,
+            'is_inventory_managed' => false,
             'is_alcohol' => true,
         ]);
 

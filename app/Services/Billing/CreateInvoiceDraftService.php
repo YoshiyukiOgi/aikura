@@ -83,7 +83,10 @@ class CreateInvoiceDraftService
                     $subtotal = bcadd($subtotal, $amount, 2);
 
                     if ($customer->tax_calculation_unit === 'invoice' && $shipmentLine->confirmed_consumption_tax_rate !== null) {
-                        $groupKey = (string) $shipmentLine->confirmed_consumption_tax_rate_id;
+                        $groupKey = $this->taxGroupKey(
+                            $shipmentLine->confirmed_consumption_tax_rate_id,
+                            $shipmentLine->confirmed_consumption_tax_rate,
+                        );
                         $taxableGroups[$groupKey] ??= [
                             'amount' => '0.00',
                             'line_ids' => [],
@@ -284,6 +287,15 @@ class CreateInvoiceDraftService
         }
 
         return $this->taxRoundingService->round(bcmul($amount, (string) $rate, 6), $roundingMethod);
+    }
+
+    private function taxGroupKey(mixed $rateId, mixed $rate): string
+    {
+        if ($rateId !== null) {
+            return 'id:'.(string) $rateId;
+        }
+
+        return 'rate:'.bcadd((string) $rate, '0', 4);
     }
 
     /**
