@@ -10,6 +10,7 @@ use App\Models\PriceList;
 use App\Models\PriceRule;
 use App\Models\Product;
 use App\Models\SettlementReceivableCategory;
+use App\Models\ShipmentHeader;
 use App\Models\TransactionCategory;
 use App\Models\Unit;
 use App\Services\Billing\ConfirmInvoiceService;
@@ -87,6 +88,31 @@ class ConfirmInvoiceTest extends TestCase
         app(ConfirmInvoiceService::class)->confirm($invoice);
     }
 
+    public function test_it_confirms_no_line_invoice_with_carried_forward_balance(): void
+    {
+        [$customer] = $this->prepareBaseData();
+        $invoice = InvoiceHeader::create([
+            'status' => 'draft',
+            'customer_id' => $customer->id,
+            'billing_cycle_id' => $customer->billing_cycle_id,
+            'invoice_date' => '2026-08-31',
+            'previous_balance_amount' => '3300.00',
+            'period_payment_amount' => '1200.00',
+            'carried_forward_amount' => '2100.00',
+        ]);
+
+        $confirmed = app(ConfirmInvoiceService::class)->confirm($invoice, '繰越請求を確定');
+
+        $this->assertSame('confirmed', $confirmed->status);
+        $this->assertSame('0.00', $confirmed->current_invoice_amount);
+        $this->assertSame('2100.00', $confirmed->total_amount);
+        $this->assertDatabaseHas('payment_schedules', [
+            'invoice_header_id' => $confirmed->id,
+            'scheduled_amount' => '2100.00',
+            'outstanding_amount' => '2100.00',
+        ]);
+    }
+
     public function test_confirmed_invoice_line_snapshot_does_not_change_after_product_or_shipment_changes(): void
     {
         [$invoice, $product, $shipment] = $this->prepareInvoiceDraftWithSources();
@@ -112,7 +138,7 @@ class ConfirmInvoiceTest extends TestCase
     }
 
     /**
-     * @return array{0: InvoiceHeader, 1: Product, 2: \App\Models\ShipmentHeader}
+     * @return array{0: InvoiceHeader, 1: Product, 2: ShipmentHeader}
      */
     private function prepareInvoiceDraftWithSources(string $quantity = '1.0000', string $unitPrice = '1500.0000'): array
     {

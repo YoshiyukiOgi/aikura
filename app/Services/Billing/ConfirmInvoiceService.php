@@ -18,8 +18,7 @@ class ConfirmInvoiceService
         private readonly EnsureConsumptionTaxFilingPeriodIsOpenService $ensureConsumptionTaxFilingPeriodIsOpenService,
         private readonly EnsureReceivableMonthlyBalancePeriodIsOpenService $ensureReceivableMonthlyBalancePeriodIsOpenService,
         private readonly CreatePaymentScheduleService $createPaymentScheduleService,
-    ) {
-    }
+    ) {}
 
     public function confirm(InvoiceHeader $invoice, ?string $reason = null): InvoiceHeader
     {
@@ -33,7 +32,7 @@ class ConfirmInvoiceService
                 throw InvoiceConfirmationException::notDraft($invoice->id, $invoice->status);
             }
 
-            if ($invoice->lines->isEmpty()) {
+            if ($invoice->lines->isEmpty() && ! $this->hasReceivableActivity($invoice)) {
                 throw InvoiceConfirmationException::noLines($invoice->id);
             }
 
@@ -105,5 +104,11 @@ class ConfirmInvoiceService
         $amount = bcsub(bcadd($previousBalance, $currentInvoiceAmount, 2), $periodPayment, 2);
 
         return bccomp($amount, '0.00', 2) > 0 ? $amount : '0.00';
+    }
+
+    private function hasReceivableActivity(InvoiceHeader $invoice): bool
+    {
+        return bccomp((string) $invoice->previous_balance_amount, '0.00', 2) !== 0
+            || bccomp((string) $invoice->period_payment_amount, '0.00', 2) !== 0;
     }
 }
