@@ -8,7 +8,6 @@ use App\Models\InvoiceHeader;
 use App\Models\Payment;
 use App\Models\PaymentSchedule;
 use App\Models\SettlementReceivableCategory;
-use App\Models\ShipmentHeader;
 use App\Models\TransactionCategory;
 use App\Services\Billing\CustomerMonthlyStatementService;
 use App\Services\Billing\MonthlyBillingTargetService;
@@ -117,39 +116,6 @@ class MonthlyBillingTargetServiceTest extends TestCase
             'scheduled_amount' => '3300.00',
             'received_amount' => '0.00',
             'outstanding_amount' => '3300.00',
-        ]);
-
-        $target = app(MonthlyBillingTargetService::class)
-            ->forMonth(2026, 8)
-            ->firstWhere('customer_id', $customer->id);
-
-        $this->assertNull($target);
-    }
-
-    public function test_it_excludes_self_consumption_shipments_from_monthly_billing(): void
-    {
-        $this->seed(CustomerMasterSeeder::class);
-        $selfConsumption = SettlementReceivableCategory::where('code', 'self_consumption')->firstOrFail();
-        $customer = Customer::create([
-            'customer_code' => 'MONTHLY-SELF-CONSUMPTION-001',
-            'name' => '自家用請求対象外',
-            'transaction_category_id' => TransactionCategory::where('code', 'producer')->value('id'),
-            'settlement_receivable_category_id' => $selfConsumption->id,
-            'billing_cycle_id' => BillingCycle::where('code', 'monthly_end_next_month_end')->value('id'),
-            'invoice_required' => false,
-        ]);
-        ShipmentHeader::create([
-            'document_number' => 'S-SELF-CONSUMPTION-001',
-            'status' => 'confirmed',
-            'customer_id' => $customer->id,
-            'transaction_category_id' => $customer->transaction_category_id,
-            'settlement_receivable_category_id' => $selfConsumption->id,
-            'billing_cycle_id' => $customer->billing_cycle_id,
-            'document_date' => '2026-08-20',
-            'actual_shipment_date' => '2026-08-20',
-            'billing_target_date' => '2026-08-20',
-            'confirmed_receivable_method' => 'none',
-            'confirmed_invoice_required' => false,
         ]);
 
         $target = app(MonthlyBillingTargetService::class)

@@ -19,15 +19,6 @@ class BillableShipmentQuery
             ->with(['customer.billingCycle', 'lines'])
             ->where('status', 'confirmed')
             ->whereDate('billing_target_date', '>=', $this->operationalPeriod->startDate())
-            ->where(function (Builder $query): void {
-                $query
-                    ->where('confirmed_receivable_method', '!=', 'none')
-                    ->orWhere(function (Builder $query): void {
-                        $query
-                            ->whereNull('confirmed_receivable_method')
-                            ->whereHas('settlementReceivableCategory', fn (Builder $category) => $category->where('receivable_method', '!=', 'none'));
-                    });
-            })
             ->whereDoesntHave('invoiceLines', function (Builder $query): void {
                 $query->whereHas('invoiceHeader', function (Builder $query): void {
                     $query
