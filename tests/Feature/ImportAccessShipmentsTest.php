@@ -50,6 +50,7 @@ class ImportAccessShipmentsTest extends TestCase
         ]);
         $this->insertSourceRow($batch, '出荷伝票・取引先', '100', [
             '伝票番号' => 100, '年月日' => '2025-06-30', '取引先ID' => 25,
+            '請求年' => 2025, '請求月' => 7,
             '金額' => 1000, '消費税額' => 0, '合計' => 1000, '酒税区分' => 6,
             '戻入取引' => false, '酒税未納取引' => false, '輸出取引' => true,
         ]);
@@ -76,6 +77,8 @@ class ImportAccessShipmentsTest extends TestCase
         $this->assertSame('confirmed', $shipment->status);
         $this->assertSame('export_exempt', $shipment->confirmed_liquor_tax_treatment);
         $this->assertSame('1000.00', $shipment->legacy_access_total_amount);
+        $this->assertSame(2025, $shipment->legacy_access_billing_year);
+        $this->assertSame(7, $shipment->legacy_access_billing_month);
         $this->assertSame('0.2000', $line->confirmed_liquor_tax_reduction_rate);
         $this->assertSame('0.000720', $line->confirmed_liquor_taxable_kl);
         $this->assertSame('0.00', $line->confirmed_liquor_tax_estimated_amount);
@@ -120,8 +123,8 @@ class ImportAccessShipmentsTest extends TestCase
             $this->insertSourceRow($batch, '商品マスター', '13', ['商品ID' => 13, '主商品ID' => 11, '商品分類' => '酒', '酒類' => 1, '容量(ml)' => 720, '容量単位' => 'ml', '個数単位' => '本']);
             $this->insertSourceRow($batch, '出荷伝票・商品', '200', ['ID' => 200, '伝票番号' => 100, '商品ID' => 13, '商品詳細ID' => 77, '個数' => 1, '単価' => 1000, '取引額' => 1000, '商品税額' => 100, '消費税率' => 10]);
         }
-        $this->insertSourceRow($baseline, '出荷伝票・取引先', '100', ['伝票番号' => 100, '年月日' => '2026-08-01', '取引先ID' => 25, '金額' => 1000, '消費税額' => 100, '合計' => 1100, '酒税区分' => 1]);
-        $this->insertSourceRow($current, '出荷伝票・取引先', '100', ['伝票番号' => 100, '年月日' => '2026-08-01', '取引先ID' => 25, '金額' => 1250, '消費税額' => 125, '合計' => 1375, '酒税区分' => 1]);
+        $this->insertSourceRow($baseline, '出荷伝票・取引先', '100', ['伝票番号' => 100, '年月日' => '2026-08-01', '請求年' => 2026, '請求月' => 8, '取引先ID' => 25, '金額' => 1000, '消費税額' => 100, '合計' => 1100, '酒税区分' => 1]);
+        $this->insertSourceRow($current, '出荷伝票・取引先', '100', ['伝票番号' => 100, '年月日' => '2026-08-01', '請求年' => 2026, '請求月' => 9, '取引先ID' => 25, '金額' => 1250, '消費税額' => 125, '合計' => 1375, '酒税区分' => 1]);
 
         app(ImportAccessMasters::class)->import($baseline);
         app(ImportAccessShipments::class)->import($baseline->refresh());
@@ -134,7 +137,10 @@ class ImportAccessShipmentsTest extends TestCase
 
         $this->assertSame(1, $summary['shipment_headers']);
         $this->assertSame(0, $summary['shipment_lines']);
-        $this->assertSame('1375.00', ShipmentHeader::query()->where('legacy_access_document_number', '100')->sole()->legacy_access_total_amount);
+        $shipment = ShipmentHeader::query()->where('legacy_access_document_number', '100')->sole();
+        $this->assertSame('1375.00', $shipment->legacy_access_total_amount);
+        $this->assertSame(2026, $shipment->legacy_access_billing_year);
+        $this->assertSame(9, $shipment->legacy_access_billing_month);
     }
 
     public function test_delta_apply_stops_a_changed_shipment_that_is_already_on_a_confirmed_invoice(): void

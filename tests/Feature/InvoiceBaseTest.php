@@ -87,6 +87,35 @@ class InvoiceBaseTest extends TestCase
         $this->assertNotContains($cancelled->id, $billableIds);
     }
 
+    public function test_billable_query_uses_access_billing_month_for_migrated_shipments(): void
+    {
+        [$customer] = $this->prepareBaseData();
+
+        $shipment = ShipmentHeader::create([
+            'document_number' => 'ACCESS-BILLING-93604',
+            'status' => 'confirmed',
+            'customer_id' => $customer->id,
+            'transaction_category_id' => $customer->transaction_category_id,
+            'settlement_receivable_category_id' => $customer->settlement_receivable_category_id,
+            'billing_cycle_id' => $customer->billing_cycle_id,
+            'document_date' => '2026-08-28',
+            'billing_target_date' => '2026-08-28',
+            'legacy_access_document_number' => '93604',
+            'legacy_access_billing_year' => 2026,
+            'legacy_access_billing_month' => 9,
+        ]);
+
+        $august = app(BillableShipmentQuery::class)
+            ->query(customerId: $customer->id, billingTargetFrom: '2026-08-01', billingTargetTo: '2026-08-31')
+            ->pluck('id')->all();
+        $september = app(BillableShipmentQuery::class)
+            ->query(customerId: $customer->id, billingTargetFrom: '2026-09-01', billingTargetTo: '2026-09-30')
+            ->pluck('id')->all();
+
+        $this->assertNotContains($shipment->id, $august);
+        $this->assertContains($shipment->id, $september);
+    }
+
     public function test_billable_query_excludes_already_invoiced_shipment(): void
     {
         [$customer, $product, $unit] = $this->prepareBaseData();

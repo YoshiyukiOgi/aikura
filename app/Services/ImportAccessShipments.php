@@ -115,6 +115,7 @@ class ImportAccessShipments
                 $requiresReview = $this->hasTaxFlagMismatch($source, $class);
                 $date = $this->date($source['年月日'] ?? null, "出荷伝票{$sourceDocument}");
                 $issuedAt = $this->dateTime($source['入力日時'] ?? null) ?? $date.' 00:00:00';
+                [$billingYear, $billingMonth] = $this->billingPeriod($source);
 
                 $records[] = [
                     'document_number' => 'ITARO-S-'.$sourceDocument,
@@ -143,6 +144,8 @@ class ImportAccessShipments
                     'confirmed_requires_evidence' => false,
                     'note' => $this->headerNote($batch, $class, $source),
                     'legacy_access_document_number' => $sourceDocument,
+                    'legacy_access_billing_year' => $billingYear,
+                    'legacy_access_billing_month' => $billingMonth,
                     'legacy_access_net_amount' => $this->number($source['金額'] ?? null),
                     'legacy_access_consumption_tax_amount' => $this->number($source['消費税額'] ?? null),
                     'legacy_access_total_amount' => $this->number($source['合計'] ?? null),
@@ -413,6 +416,19 @@ class ImportAccessShipments
             $this->blankToNull($source['摘要'] ?? null),
             ($detail = $this->blankToNull($source['商品詳細ID'] ?? null)) ? "Access商品詳細ID={$detail}" : null,
         ])) ?: null;
+    }
+
+    /** @return array{0: ?int, 1: ?int} */
+    private function billingPeriod(array $source): array
+    {
+        $year = filter_var($source['請求年'] ?? null, FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 2000, 'max_range' => 9999],
+        ]);
+        $month = filter_var($source['請求月'] ?? null, FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 1, 'max_range' => 12],
+        ]);
+
+        return $year === false || $month === false ? [null, null] : [$year, $month];
     }
 
     private function date(mixed $value, string $label): string
