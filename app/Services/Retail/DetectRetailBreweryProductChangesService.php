@@ -70,6 +70,7 @@ class DetectRetailBreweryProductChangesService
 
             $summary['price'] = $this->priceChanges->detect()->count();
             $setting->refresh()->forceFill([
+                'last_detected_at' => now(),
                 'last_detection_summary' => $summary,
                 'last_detection_error' => null,
             ])->save();

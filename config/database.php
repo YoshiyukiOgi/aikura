@@ -17,6 +17,7 @@ return [
             'prefix' => '',
             'prefix_indexes' => true,
             'search_path' => 'public',
+            'timezone' => env('DB_TIMEZONE', 'Asia/Tokyo'),
             'sslmode' => 'prefer',
         ],
         'retail' => [
@@ -31,6 +32,7 @@ return [
             'prefix' => '',
             'prefix_indexes' => true,
             'search_path' => env('RETAIL_DB_SCHEMA', 'public'),
+            'timezone' => env('RETAIL_DB_TIMEZONE', env('DB_TIMEZONE', 'Asia/Tokyo')),
             'sslmode' => env('RETAIL_DB_SSLMODE', 'prefer'),
         ],
     ],

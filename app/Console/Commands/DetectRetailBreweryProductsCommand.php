@@ -24,6 +24,11 @@ class DetectRetailBreweryProductsCommand extends Command
         }
 
         $summary = $service->detect();
+        $setting->forceFill([
+            'last_detected_at' => now(),
+            'last_detection_summary' => $summary,
+            'last_detection_error' => null,
+        ])->save();
         $this->info(json_encode($summary, JSON_UNESCAPED_UNICODE));
 
         return self::SUCCESS;

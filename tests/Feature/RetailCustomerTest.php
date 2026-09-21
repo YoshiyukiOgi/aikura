@@ -503,12 +503,17 @@ class RetailCustomerTest extends TestCase
             ]);
         }
 
+        $total = RetailCustomer::query()
+            ->availableToCompany($company->id)
+            ->where('is_active', true)
+            ->count();
+
         $this->actingAs($user)
             ->withSession(['retail.company' => 'maru'])
             ->get('/retail/customers')
             ->assertOk()
             ->assertSee('data-testid="customer-pagination"', false)
-            ->assertSee('1〜30件 / 全31件')
+            ->assertSee('1〜30件 / 全'.$total.'件')
             ->assertSee('1 / 2ページ')
             ->assertSee('次へ')
             ->assertDontSee('pagination.previous')

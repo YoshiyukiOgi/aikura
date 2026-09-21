@@ -38,7 +38,7 @@ class ApiPermissionMiddlewareTest extends TestCase
         $this->actingAs($user)
             ->getJson('/api/v1/audit-logs')
             ->assertForbidden()
-            ->assertJsonPath('message', 'The user is inactive.');
+            ->assertJsonPath('message', 'ユーザーが無効です。');
     }
 
     public function test_user_with_permission_can_access_permission_protected_api(): void
