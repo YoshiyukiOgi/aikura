@@ -31,7 +31,6 @@ class CalculateMonthlyLiquorTaxAmountsService
         $limit = (string) $setting->legacy_annual_quantity_limit_kl;
         $rate = (string) $setting->legacy_reduction_rate;
         $grossTotal = '0.00';
-        $reliefTotal = '0.00';
         $deductionTotal = '0.00';
         $taxableKlTotal = '0.000000';
         $warningCount = 0;
@@ -46,7 +45,7 @@ class CalculateMonthlyLiquorTaxAmountsService
             $gross = $summary->taxTreatment === 'taxable' ? $summary->grossTaxAmount : '0.00';
             $deduction = $summary->taxTreatment === 'return' ? $summary->grossTaxAmount : '0.00';
             $eligibleKl = '0.000000';
-            $relief = '0.00';
+            $reliefBase = '0.00000000';
 
             if ($summary->taxTreatment === 'taxable') {
                 $taxableKlTotal = bcadd($taxableKlTotal, $summary->taxableKl, 6);
@@ -56,19 +55,18 @@ class CalculateMonthlyLiquorTaxAmountsService
                 $remaining = bcsub($limit, $usedEligibleKl, 6);
                 if (bccomp($remaining, '0', 6) === 1) {
                     $eligibleKl = bccomp($summary->taxableKl, $remaining, 6) === 1 ? $remaining : $summary->taxableKl;
-                    $reliefBase = bcmul($eligibleKl, $summary->taxPerKl, 8);
-                    $relief = $this->roundingService->round(bcmul($reliefBase, $rate, 8), 'floor', 0).'.00';
+                    $reliefBase = bccomp($eligibleKl, $summary->taxableKl, 6) === 0
+                        ? $gross
+                        : $this->roundingService->round(bcmul($eligibleKl, $summary->taxPerKl, 8), 'floor', 0).'.00';
                     $usedEligibleKl = bcadd($usedEligibleKl, $eligibleKl, 6);
                 }
             }
 
-            $net = bcsub(bcsub($gross, $relief, 2), $deduction, 2);
             $requiresReview = $summary->requiresReview;
             if ($requiresReview) {
                 $warningCount++;
             }
             $grossTotal = bcadd($grossTotal, $gross, 2);
-            $reliefTotal = bcadd($reliefTotal, $relief, 2);
             $deductionTotal = bcadd($deductionTotal, $deduction, 2);
             $cumulativeGrossBefore = null;
             $cumulativeGrossAfter = null;
@@ -78,11 +76,17 @@ class CalculateMonthlyLiquorTaxAmountsService
                 'eligible_kl_after' => $usedEligibleKl,
                 'annual_quantity_limit_kl' => $limit,
                 'reduction_rate' => $rate,
-                'relief_base_amount' => $summary->taxPerKl === null ? '0.00' : bcmul($eligibleKl, $summary->taxPerKl, 2),
-                'rounding' => 'floor_to_yen',
+                'relief_base_amount' => bcadd($reliefBase, '0', 2),
+                'rounding' => 'aggregate_floor_to_yen',
             ];
-            $lines[] = compact('summary', 'gross', 'eligibleKl', 'relief', 'deduction', 'net', 'requiresReview', 'cumulativeGrossBefore', 'cumulativeGrossAfter', 'calculationBasis');
+            $lines[] = compact('summary', 'gross', 'eligibleKl', 'reliefBase', 'deduction', 'requiresReview', 'cumulativeGrossBefore', 'cumulativeGrossAfter', 'calculationBasis');
         }
+
+        $reliefTotal = $this->applyLegacyAggregateRelief($lines, $rate);
+        foreach ($lines as &$line) {
+            $line['net'] = bcsub(bcsub($line['gross'], $line['relief'], 2), $line['deduction'], 2);
+        }
+        unset($line);
 
         $netBeforeHundred = bcsub(bcsub($grossTotal, $reliefTotal, 2), $deductionTotal, 2);
         $netPayable = bccomp($netBeforeHundred, '0', 2) === 1
@@ -95,6 +99,52 @@ class CalculateMonthlyLiquorTaxAmountsService
             'net_payable' => $netPayable, 'taxable_kl' => $taxableKlTotal,
             'warning_count' => $warningCount,
         ];
+    }
+
+    /**
+     * The legacy small-producer relief is calculated from the aggregate gross tax
+     * for the applicable monthly declaration unit.  It must not be rounded once
+     * per alcohol-percentage summary line.
+     *
+     * @param array<int, array<string, mixed>> $lines
+     */
+    private function applyLegacyAggregateRelief(array &$lines, string $rate): string
+    {
+        $eligibleIndexes = [];
+        $totalBase = '0.00000000';
+        foreach ($lines as $index => $line) {
+            $base = (string) $line['reliefBase'];
+            $lines[$index]['relief'] = '0.00';
+            if (bccomp($base, '0', 8) !== 1) {
+                continue;
+            }
+            $eligibleIndexes[] = $index;
+            $totalBase = bcadd($totalBase, $base, 8);
+        }
+
+        if ($eligibleIndexes === []) {
+            return '0.00';
+        }
+
+        $totalRelief = $this->roundingService->round(bcmul($totalBase, $rate, 8), 'floor', 0).'.00';
+        $remaining = $totalRelief;
+        $lastPosition = count($eligibleIndexes) - 1;
+        foreach ($eligibleIndexes as $position => $index) {
+            $relief = $position === $lastPosition
+                ? $remaining
+                : $this->roundingService->round(
+                    bcdiv(bcmul($totalRelief, (string) $lines[$index]['reliefBase'], 8), $totalBase, 8),
+                    'floor',
+                    0,
+                ).'.00';
+            $lines[$index]['relief'] = $relief;
+            $lines[$index]['calculationBasis']['e_tax_relief_base_amount'] = bcadd($totalBase, '0', 2);
+            $lines[$index]['calculationBasis']['e_tax_relief_amount'] = $totalRelief;
+            $lines[$index]['calculationBasis']['e_tax_relief_allocation'] = $relief;
+            $remaining = bcsub($remaining, $relief, 2);
+        }
+
+        return $totalRelief;
     }
 
     /**
