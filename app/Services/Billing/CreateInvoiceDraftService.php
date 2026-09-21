@@ -64,11 +64,13 @@ class CreateInvoiceDraftService
             $lineNo = 1;
             $subtotal = '0.00';
             $taxableGroups = [];
+            $legacyAccessTaxGroups = [];
 
             foreach ($shipments as $shipment) {
                 if ($shipment->customer_id !== $customer->id) {
                     throw InvoiceDraftException::shipmentCustomerMismatch($shipment->id);
                 }
+                $legacyAccessTaxAmount = $this->legacyAccessTaxAmount($shipment);
 
                 foreach ($shipment->lines as $shipmentLine) {
                     if ($shipmentLine->confirmed_unit_price === null || $shipmentLine->confirmed_product_code === null) {
@@ -82,7 +84,9 @@ class CreateInvoiceDraftService
                     $lineTotal = bcadd($amount, $taxAmount, 2);
                     $subtotal = bcadd($subtotal, $amount, 2);
 
-                    if ($customer->tax_calculation_unit === 'invoice' && $shipmentLine->confirmed_consumption_tax_rate !== null) {
+                    if ($customer->tax_calculation_unit === 'invoice'
+                        && $legacyAccessTaxAmount === null
+                        && $shipmentLine->confirmed_consumption_tax_rate !== null) {
                         $groupKey = $this->taxGroupKey(
                             $shipmentLine->confirmed_consumption_tax_rate_id,
                             $shipmentLine->confirmed_consumption_tax_rate,
@@ -119,14 +123,26 @@ class CreateInvoiceDraftService
                         'note' => $shipmentLine->note,
                     ]);
 
-                    if ($customer->tax_calculation_unit === 'invoice' && $shipmentLine->confirmed_consumption_tax_rate !== null) {
+                    if ($customer->tax_calculation_unit === 'invoice'
+                        && $legacyAccessTaxAmount === null
+                        && $shipmentLine->confirmed_consumption_tax_rate !== null) {
                         $taxableGroups[$groupKey]['line_ids'][] = $line->id;
+                    }
+                    if ($customer->tax_calculation_unit === 'invoice' && $legacyAccessTaxAmount !== null) {
+                        $legacyAccessTaxGroups[(string) $shipment->id] ??= [
+                            'tax_amount' => $legacyAccessTaxAmount,
+                            'line_ids' => [],
+                            'weights' => [],
+                        ];
+                        $legacyAccessTaxGroups[(string) $shipment->id]['line_ids'][] = $line->id;
+                        $legacyAccessTaxGroups[(string) $shipment->id]['weights'][$line->id] = $this->legacyAccessTaxWeight($shipmentLine);
                     }
                 }
             }
 
             if ($customer->tax_calculation_unit === 'invoice') {
                 $this->applyInvoiceUnitTax($invoice, $taxableGroups, $customer->tax_rounding_method);
+                $this->applyLegacyAccessTax($invoice, $legacyAccessTaxGroups);
             }
 
             $invoice->load('lines');
@@ -296,6 +312,63 @@ class CreateInvoiceDraftService
         }
 
         return 'rate:'.bcadd((string) $rate, '0', 4);
+    }
+
+    private function legacyAccessTaxAmount(ShipmentHeader $shipment): ?string
+    {
+        if ($shipment->legacy_access_document_number === null || $shipment->legacy_access_consumption_tax_amount === null) {
+            return null;
+        }
+
+        return bcadd((string) $shipment->legacy_access_consumption_tax_amount, '0', 2);
+    }
+
+    private function legacyAccessTaxWeight($shipmentLine): string
+    {
+        if ($shipmentLine->legacy_access_consumption_tax_amount === null) {
+            return '0.00';
+        }
+
+        $weight = bcadd((string) $shipmentLine->legacy_access_consumption_tax_amount, '0', 2);
+
+        return bccomp($weight, '0.00', 2) > 0 ? $weight : '0.00';
+    }
+
+    /**
+     * @param array<string, array{tax_amount: string, line_ids: array<int, int>, weights: array<int, string>}> $groups
+     */
+    private function applyLegacyAccessTax(InvoiceHeader $invoice, array $groups): void
+    {
+        $invoice->load('lines');
+
+        foreach ($groups as $group) {
+            $lineIds = $group['line_ids'];
+            if ($lineIds === []) {
+                continue;
+            }
+            $lines = $invoice->lines->whereIn('id', $lineIds)->values();
+            $weights = collect($group['weights']);
+            $totalWeight = $weights->reduce(fn (string $sum, string $weight): string => bcadd($sum, $weight, 2), '0.00');
+            if (bccomp($totalWeight, '0.00', 2) === 0) {
+                $weights = $lines->mapWithKeys(fn ($line): array => [$line->id => (string) $line->amount]);
+                $totalWeight = $weights->reduce(fn (string $sum, string $weight): string => bcadd($sum, $weight, 2), '0.00');
+            }
+
+            $remainingTax = $group['tax_amount'];
+            $lastLineId = $lines->last()?->id;
+            foreach ($lines as $line) {
+                $lineTax = $line->id === $lastLineId
+                    ? $remainingTax
+                    : (bccomp($totalWeight, '0.00', 2) === 0
+                        ? '0.00'
+                        : bcadd(bcdiv(bcmul($group['tax_amount'], (string) $weights->get($line->id, '0.00'), 4), $totalWeight, 4), '0', 2));
+                $line->update([
+                    'tax_amount' => $lineTax,
+                    'total_amount' => bcadd($line->amount, $lineTax, 2),
+                ]);
+                $remainingTax = bcsub($remainingTax, $lineTax, 2);
+            }
+        }
     }
 
     /**

@@ -69,6 +69,18 @@ class InvoiceTaxRoundingTest extends TestCase
         $this->assertSame(['0.0800', '0.1000'], $invoice->lines->pluck('tax_rate')->all());
     }
 
+    public function test_invoice_unit_tax_uses_access_saved_header_tax_for_imported_shipments(): void
+    {
+        [$customer, $product, $unit] = $this->prepareBaseData('TAX-ROUND-ACCESS-SAVED', 'invoice', 'round');
+
+        $invoice = $this->createInvoiceWithTwoLines($customer, $product, $unit, ['0.0800', '0.1000'], '5.99');
+
+        $this->assertSame('66.66', $invoice->subtotal_amount);
+        $this->assertSame('5.99', $invoice->tax_amount);
+        $this->assertSame('72.65', $invoice->total_amount);
+        $this->assertSame(['2.66', '3.33'], $invoice->lines->pluck('tax_amount')->all());
+    }
+
     public function test_tax_rounding_method_floor_and_ceil_are_supported(): void
     {
         [$floorCustomer, $floorProduct, $floorUnit] = $this->prepareBaseData('TAX-ROUND-FLOOR', 'invoice', 'floor');
@@ -82,7 +94,7 @@ class InvoiceTaxRoundingTest extends TestCase
     }
 
     /** @param list<string>|null $snapshotRates */
-    private function createInvoiceWithTwoLines(Customer $customer, Product $product, Unit $unit, ?array $snapshotRates = null)
+    private function createInvoiceWithTwoLines(Customer $customer, Product $product, Unit $unit, ?array $snapshotRates = null, ?string $legacyAccessTaxAmount = null)
     {
         $shipment = app(CreateDraftShipmentService::class)->create(new CreateDraftShipmentData(
             customerId: $customer->id,
@@ -95,12 +107,24 @@ class InvoiceTaxRoundingTest extends TestCase
         ));
         $shipment = app(ApplyDraftShipmentPricingService::class)->apply($shipment);
         $shipment = app(ConfirmShipmentService::class)->confirm($shipment);
+        $lines = $shipment->lines()->orderBy('line_no')->get();
         if ($snapshotRates !== null) {
-            foreach ($shipment->lines()->orderBy('line_no')->get() as $index => $line) {
+            foreach ($lines as $index => $line) {
                 $line->update([
                     'confirmed_consumption_tax_rate_id' => null,
                     'confirmed_consumption_tax_rate' => $snapshotRates[$index],
                 ]);
+            }
+        }
+        if ($legacyAccessTaxAmount !== null) {
+            $shipment->update([
+                'legacy_access_document_number' => 'TEST-LEGACY-'.$customer->id,
+                'legacy_access_net_amount' => '66.66',
+                'legacy_access_consumption_tax_amount' => $legacyAccessTaxAmount,
+                'legacy_access_total_amount' => bcadd('66.66', $legacyAccessTaxAmount, 2),
+            ]);
+            foreach ($lines as $index => $line) {
+                $line->update(['legacy_access_consumption_tax_amount' => $index === 0 ? '2.67' : '3.33']);
             }
         }
 
