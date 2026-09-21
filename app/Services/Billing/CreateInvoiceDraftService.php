@@ -207,11 +207,12 @@ class CreateInvoiceDraftService
     {
         $amount = PaymentSchedule::query()
             ->where('customer_id', $customer->id)
-            ->whereHas('invoiceHeader', function ($query): void {
+            ->whereHas('invoiceHeader', function ($query) use ($invoice): void {
                 $query
                     ->whereNotIn('status', ['draft', 'cancelled'])
                     ->whereNull('cancelled_at')
-                    ->whereDate('invoice_date', '>=', $this->operationalPeriod->startDate());
+                    ->whereDate('invoice_date', '>=', $this->operationalPeriod->startDate())
+                    ->whereDate('invoice_date', '<', $invoice->invoice_date->toDateString());
             })
             ->whereIn('status', ['open', 'partial'])
             ->where('outstanding_amount', '>', 0)

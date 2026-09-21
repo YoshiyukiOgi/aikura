@@ -126,6 +126,36 @@ class CreateInvoiceDraftTest extends TestCase
         $this->assertSame('1650.00', $secondInvoice->total_amount);
     }
 
+    public function test_it_excludes_a_later_invoice_schedule_from_previous_balance_when_reissuing(): void
+    {
+        [$customer, $product, $unit] = $this->prepareBaseData();
+        $futureInvoice = InvoiceHeader::create([
+            'invoice_number' => 'I-TEST-FUTURE-001',
+            'status' => 'confirmed',
+            'customer_id' => $customer->id,
+            'billing_cycle_id' => $customer->billing_cycle_id,
+            'invoice_date' => '2026-08-31',
+            'total_amount' => '1650.00',
+        ]);
+        PaymentSchedule::create([
+            'invoice_header_id' => $futureInvoice->id,
+            'customer_id' => $customer->id,
+            'status' => 'open',
+            'expected_payment_date' => '2026-09-30',
+            'scheduled_amount' => '1650.00',
+            'received_amount' => '0.00',
+            'outstanding_amount' => '1650.00',
+        ]);
+
+        $this->expectException(InvoiceDraftException::class);
+        app(CreateInvoiceDraftService::class)->create(new CreateInvoiceDraftData(
+            customerId: $customer->id,
+            invoiceDate: '2026-07-31',
+            billingPeriodStart: '2026-07-01',
+            billingPeriodEnd: '2026-07-31',
+        ));
+    }
+
     public function test_confirming_invoice_preserves_carried_forward_in_total_amount(): void
     {
         [$customer, $product, $unit] = $this->prepareBaseData();
