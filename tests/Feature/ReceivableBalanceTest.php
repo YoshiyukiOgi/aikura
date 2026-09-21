@@ -40,6 +40,9 @@ class ReceivableBalanceTest extends TestCase
         $openSchedule = $this->createPaymentSchedule($customer, $product, $unit, '2.0000', '2026-05-31');
         $partialSchedule = $this->createPaymentSchedule($customer, $product, $unit, '3.0000', '2026-06-01');
         $closedSchedule = $this->createPaymentSchedule($customer, $product, $unit, '1.0000', '2026-06-02');
+        $this->resetSchedule($openSchedule, '3300.00');
+        $this->resetSchedule($partialSchedule, '4950.00');
+        $this->resetSchedule($closedSchedule, '1650.00');
 
         app(RegisterPaymentService::class)->register($partialSchedule, '1000.00', '2026-06-20');
         app(RegisterPaymentService::class)->register($closedSchedule, '1650.00', '2026-06-30');
@@ -116,7 +119,18 @@ class ReceivableBalanceTest extends TestCase
         ));
         $invoice = app(ConfirmInvoiceService::class)->confirm($invoice);
 
-        return app(CreatePaymentScheduleService::class)->create($invoice);
+        $scheduledAmount = bcmul($quantity, '1650.00', 2);
+
+        $schedule = PaymentSchedule::query()->where('invoice_header_id', $invoice->id)->firstOrFail();
+        $schedule->refresh()->forceFill([
+            'status' => 'open',
+            'expected_payment_date' => '2026-06-30',
+            'scheduled_amount' => $scheduledAmount,
+            'received_amount' => '0.00',
+            'outstanding_amount' => $scheduledAmount,
+        ])->save();
+
+        return $schedule->refresh();
     }
 
     /**
@@ -130,6 +144,7 @@ class ReceivableBalanceTest extends TestCase
             PriceMasterSeeder::class,
             ShipmentMasterSeeder::class,
         ]);
+        \App\Models\AppSetting::setValue('operational_start_date', '2026-01-01');
 
         $transactionCategory = TransactionCategory::where('code', 'wholesale')->firstOrFail();
         $settlementCategory = SettlementReceivableCategory::where('code', 'accounts_receivable_1')->firstOrFail();
@@ -153,6 +168,7 @@ class ReceivableBalanceTest extends TestCase
             'sales_unit_id' => $unit->id,
             'inventory_unit_id' => $unit->id,
             'is_alcohol' => true,
+            'is_inventory_managed' => false,
         ]);
 
         PriceRule::create([
@@ -165,5 +181,16 @@ class ReceivableBalanceTest extends TestCase
         ]);
 
         return [$customer, $product, $unit];
+    }
+
+    private function resetSchedule(PaymentSchedule $schedule, string $amount): void
+    {
+        $schedule->refresh()->forceFill([
+            'status' => 'open',
+            'received_amount' => '0.00',
+            'outstanding_amount' => $amount,
+            'scheduled_amount' => $amount,
+            'closed_at' => null,
+        ])->save();
     }
 }

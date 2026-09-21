@@ -110,6 +110,7 @@ class ClosedReceivableMonthlyBalancePeriodTest extends TestCase
             PriceMasterSeeder::class,
             ShipmentMasterSeeder::class,
         ]);
+        \App\Models\AppSetting::setValue('operational_start_date', '2026-01-01');
 
         $unit = Unit::where('code', 'bottle')->firstOrFail();
 
@@ -130,6 +131,7 @@ class ClosedReceivableMonthlyBalancePeriodTest extends TestCase
             'sales_unit_id' => $unit->id,
             'inventory_unit_id' => $unit->id,
             'is_alcohol' => true,
+            'is_inventory_managed' => false,
         ]);
 
         PriceRule::create([

@@ -27,7 +27,7 @@ class ProductMasterApiTest extends TestCase
         $this->get('/masters/products')
             ->assertOk()
             ->assertSee('商品マスター')
-            ->assertSee('href="/masters/products" class="active">商品マスタ</a>', false);
+            ->assertSee('href="/masters/products" class="active">商品</a>', false);
     }
 
     public function test_admin_can_register_one_product_family_with_multiple_capacities(): void

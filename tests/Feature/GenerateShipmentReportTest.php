@@ -127,6 +127,7 @@ class GenerateShipmentReportTest extends TestCase
             TaxMasterSeeder::class,
             ShipmentMasterSeeder::class,
         ]);
+        \App\Models\AppSetting::setValue('operational_start_date', '2026-01-01');
 
         $transactionCategory = TransactionCategory::where('code', 'wholesale')->firstOrFail();
         $settlementCategory = SettlementReceivableCategory::where('code', 'accounts_receivable_1')->firstOrFail();
@@ -154,6 +155,7 @@ class GenerateShipmentReportTest extends TestCase
             'capacity_unit_id' => $milliliter->id,
             'alcohol_percentage' => '15.50',
             'is_alcohol' => true,
+            'is_inventory_managed' => false,
         ]);
 
         PriceRule::create([

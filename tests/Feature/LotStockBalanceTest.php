@@ -156,7 +156,6 @@ class LotStockBalanceTest extends TestCase
         return ProductionLot::create([
             'lot_code' => $lotCode,
             'display_name' => $lotCode.' Display',
-            'product_id' => $product->id,
             'stock_location_id' => $location->id,
             'production_date' => '2026-06-01',
         ]);
@@ -177,7 +176,6 @@ class LotStockBalanceTest extends TestCase
             'status' => $status,
             'movement_type' => $movementType,
             'movement_date' => $movementDate,
-            'product_id' => $product->id,
             'stock_location_id' => $location->id,
             'unit_id' => $unit->id,
             'quantity' => $quantity,

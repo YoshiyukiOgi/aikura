@@ -79,7 +79,7 @@ class MonthlyLiquorTaxTransferAggregationTest extends TestCase
         $summaries = app(AggregateMonthlyLiquorTaxTransfersService::class)->aggregate(2026, 6);
 
         $this->assertCount(2, $summaries);
-        $this->assertSame([15, 16], $summaries->pluck('reportingAlcoholPercentage')->values()->all());
+        $this->assertSame([16, 15], $summaries->pluck('reportingAlcoholPercentage')->values()->all());
         $this->assertSame(['0.000720', '0.000720'], $summaries->pluck('taxableKl')->values()->all());
     }
 

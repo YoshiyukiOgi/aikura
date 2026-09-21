@@ -246,6 +246,7 @@ class BillingApiTest extends TestCase
             'capacity_unit_id' => $milliliter->id,
             'alcohol_percentage' => '15.50',
             'is_alcohol' => true,
+            'is_inventory_managed' => false,
             'is_sales_available' => true,
             'is_active' => true,
         ]);

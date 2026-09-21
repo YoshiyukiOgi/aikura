@@ -7,6 +7,7 @@ use App\Models\Customer;
 use App\Models\PriceList;
 use App\Models\PriceRule;
 use App\Models\Product;
+use App\Models\ProductionLot;
 use App\Models\SettlementReceivableCategory;
 use App\Models\StockLocation;
 use App\Models\StockMovement;
@@ -18,7 +19,9 @@ use App\Services\SalesOrder\CreateSalesOrderData;
 use App\Services\SalesOrder\CreateSalesOrderLineData;
 use App\Services\SalesOrder\CreateSalesOrderService;
 use App\Services\Shipment\ApplyDraftShipmentPricingService;
+use App\Services\Shipment\AllocateShipmentLineLotService;
 use App\Services\Shipment\ConfirmShipmentService;
+use App\Services\Shipment\CreateDraftShipmentFromInstructionService;
 use App\Services\Shipment\CreateDraftShipmentFromPickData;
 use App\Services\Shipment\CreateDraftShipmentFromPickService;
 use App\Services\ShipmentInstruction\CreateShipmentInstructionData;
@@ -42,7 +45,7 @@ class PickToInvoiceFlowTest extends TestCase
 
     public function test_sales_order_pick_shipment_and_invoice_flow(): void
     {
-        [$customer, $product, $unit, $location] = $this->prepareBaseData();
+        [$customer, $product, $unit, $location, $lot] = $this->prepareBaseData();
 
         $salesOrder = app(CreateSalesOrderService::class)->create(new CreateSalesOrderData(
             customerId: $customer->id,
@@ -62,6 +65,14 @@ class PickToInvoiceFlowTest extends TestCase
                 new CreateShipmentInstructionLineData($salesOrder->lines->first()->id, '5.0000'),
             ],
         ));
+        $pickingShipment = app(CreateDraftShipmentFromInstructionService::class)->create($instruction);
+        app(AllocateShipmentLineLotService::class)->allocate(
+            $pickingShipment->lines()->firstOrFail(),
+            $lot,
+            $location,
+            '5.0000',
+            'test pick allocation',
+        );
 
         $pick = app(PickShipmentInstructionService::class)->pick(new PickShipmentInstructionData(
             shipmentInstructionId: $instruction->id,
@@ -112,7 +123,7 @@ class PickToInvoiceFlowTest extends TestCase
     }
 
     /**
-     * @return array{0: Customer, 1: Product, 2: Unit, 3: StockLocation}
+     * @return array{0: Customer, 1: Product, 2: Unit, 3: StockLocation, 4: ProductionLot}
      */
     private function prepareBaseData(): array
     {
@@ -124,6 +135,7 @@ class PickToInvoiceFlowTest extends TestCase
             StockLocationSeeder::class,
             TaxMasterSeeder::class,
         ]);
+        \App\Models\AppSetting::setValue('operational_start_date', '2026-01-01');
 
         $transactionCategory = TransactionCategory::where('code', 'wholesale')->firstOrFail();
         $settlementCategory = SettlementReceivableCategory::where('code', 'accounts_receivable_1')->firstOrFail();
@@ -152,6 +164,7 @@ class PickToInvoiceFlowTest extends TestCase
             'capacity_unit_id' => $milliliter->id,
             'alcohol_percentage' => '15.50',
             'is_alcohol' => true,
+            'is_inventory_managed' => true,
         ]);
 
         PriceRule::create([
@@ -163,6 +176,29 @@ class PickToInvoiceFlowTest extends TestCase
             'effective_from' => '2026-01-01',
         ]);
 
-        return [$customer, $product, $bottle, $location];
+        $lot = ProductionLot::create([
+            'lot_code' => 'FLOW-LOT-001',
+            'display_name' => 'Flow lot 001',
+            'stock_location_id' => $location->id,
+            'unit_id' => $bottle->id,
+            'capacity_value' => '720.0000',
+            'capacity_unit_id' => $milliliter->id,
+            'alcohol_percentage' => '15.50',
+            'analysis_status' => 'confirmed',
+            'production_date' => '2026-06-01',
+        ]);
+        StockMovement::create([
+            'status' => 'confirmed',
+            'movement_type' => 'inventory_adjustment',
+            'movement_date' => '2026-06-10',
+            'stock_location_id' => $location->id,
+            'unit_id' => $bottle->id,
+            'quantity' => '5.0000',
+            'production_lot_id' => $lot->id,
+            'lot_code' => $lot->lot_code,
+            'confirmed_at' => now(),
+        ]);
+
+        return [$customer, $product, $bottle, $location, $lot];
     }
 }

@@ -87,6 +87,7 @@ class MonthlyConsumptionTaxAggregationTest extends TestCase
             TaxMasterSeeder::class,
             ShipmentMasterSeeder::class,
         ]);
+        \App\Models\AppSetting::setValue('operational_start_date', '2026-01-01');
 
         $transactionCategory = TransactionCategory::where('code', 'wholesale')->firstOrFail();
         $settlementCategory = SettlementReceivableCategory::where('code', 'accounts_receivable_1')->firstOrFail();
@@ -110,6 +111,7 @@ class MonthlyConsumptionTaxAggregationTest extends TestCase
             'sales_unit_id' => $bottle->id,
             'inventory_unit_id' => $bottle->id,
             'is_alcohol' => true,
+            'is_inventory_managed' => false,
         ]);
 
         PriceRule::create([

@@ -39,7 +39,7 @@ class ApiStateControlTest extends TestCase
             ])
             ->assertConflict()
             ->assertJsonPath('error.code', 'business_rule_violation')
-            ->assertJsonPath('error.message', "Shipment [{$shipment->id}] must be draft to confirm, current status is [confirmed].");
+            ->assertJsonPath('error.message', "出荷伝票 [{$shipment->id}] は下書き状態でないと確定できません。現在の状態: confirmed");
     }
 
     public function test_api_returns_business_error_when_confirming_already_confirmed_invoice(): void
@@ -59,7 +59,7 @@ class ApiStateControlTest extends TestCase
             ])
             ->assertConflict()
             ->assertJsonPath('error.code', 'business_rule_violation')
-            ->assertJsonPath('error.message', "Invoice [{$invoice->id}] must be draft to confirm, current status is [confirmed].");
+            ->assertJsonPath('error.message', "請求書 [{$invoice->id}] は下書き状態でないと確定できません。現在の状態: confirmed");
     }
 
     /**
