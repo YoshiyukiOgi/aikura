@@ -178,12 +178,17 @@ class ImportAccessShipments
                 ->map(fn ($value): int => (int) $value)
                 ->all()
             : [];
+        $existingLineNumbersByLegacyId = $deltaOnly
+            ? DB::table('shipment_lines')
+                ->whereNotNull('legacy_access_line_id')
+                ->pluck('line_no', 'legacy_access_line_id')
+            : collect();
         $sourceLineNumbersByDocument = [];
         $sourceLineKeysByDocument = [];
         $count = 0;
         $now = now();
 
-        $this->sourceQuery($batch, self::LINE_TABLE, $deltaOnly, $cutoverDate, $reviewedSourceKeys)->chunkById(500, function ($rows) use ($context, $headers, $liquorTreatments, $consumptionTreatments, &$lineNumbers, &$sourceLineNumbersByDocument, &$sourceLineKeysByDocument, &$count, $now, $deltaOnly): void {
+        $this->sourceQuery($batch, self::LINE_TABLE, $deltaOnly, $cutoverDate, $reviewedSourceKeys)->chunkById(500, function ($rows) use ($context, $headers, $liquorTreatments, $consumptionTreatments, &$lineNumbers, $existingLineNumbersByLegacyId, &$sourceLineNumbersByDocument, &$sourceLineKeysByDocument, &$count, $now, $deltaOnly): void {
             $records = [];
             foreach ($rows as $row) {
                 $source = $this->payload($row);
@@ -196,9 +201,12 @@ class ImportAccessShipments
                     throw new RuntimeException("出荷明細{$row->source_key}の伝票または商品を解決できません。");
                 }
 
-                $lineNumbers[$sourceDocument] = ($lineNumbers[$sourceDocument] ?? 0) + 1;
-                $sourceLineNumbersByDocument[$sourceDocument][] = $lineNumbers[$sourceDocument];
-                $sourceLineKeysByDocument[$sourceDocument][] = (string) $row->source_key;
+                $legacyLineId = (string) $row->source_key;
+                $lineNo = $existingLineNumbersByLegacyId->has($legacyLineId)
+                    ? (int) $existingLineNumbersByLegacyId->get($legacyLineId)
+                    : ($lineNumbers[$sourceDocument] = ($lineNumbers[$sourceDocument] ?? 0) + 1);
+                $sourceLineNumbersByDocument[$sourceDocument][] = $lineNo;
+                $sourceLineKeysByDocument[$sourceDocument][] = $legacyLineId;
                 $unit = $product->salesUnit ?? $product->baseUnit;
                 $taxCategory = $product->consumptionTaxCategory;
                 $quantity = (float) ($source['個数'] ?? 0);
@@ -224,7 +232,7 @@ class ImportAccessShipments
 
                 $records[] = [
                     'shipment_header_id' => $headerId,
-                    'line_no' => $lineNumbers[$sourceDocument],
+                    'line_no' => $lineNo,
                     'product_id' => $product->id,
                     'quantity' => $quantity,
                     'unit_id' => $unit->id,
@@ -263,7 +271,7 @@ class ImportAccessShipments
                     'confirmed_liquor_tax_estimated_amount' => $liquorCategory ? $estimatedTax : 0,
                     'confirmed_at' => $now,
                     'note' => $this->lineNote($source),
-                    'legacy_access_line_id' => (string) $row->source_key,
+                    'legacy_access_line_id' => $legacyLineId,
                     'legacy_access_detail_id' => $this->blankToNull($source['商品詳細ID'] ?? null),
                     'legacy_access_transaction_amount' => $this->number($source['取引額'] ?? null),
                     'legacy_access_consumption_tax_amount' => $this->number($source['商品税額'] ?? null),

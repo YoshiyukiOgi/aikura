@@ -125,6 +125,11 @@ class ImportAccessShipmentsTest extends TestCase
         }
         $this->insertSourceRow($baseline, '出荷伝票・取引先', '100', ['伝票番号' => 100, '年月日' => '2026-08-01', '請求年' => 2026, '請求月' => 8, '取引先ID' => 25, '金額' => 1000, '消費税額' => 100, '合計' => 1100, '酒税区分' => 1]);
         $this->insertSourceRow($current, '出荷伝票・取引先', '100', ['伝票番号' => 100, '年月日' => '2026-08-01', '請求年' => 2026, '請求月' => 9, '取引先ID' => 25, '金額' => 1250, '消費税額' => 125, '合計' => 1375, '酒税区分' => 1]);
+        $changedLine = ['ID' => 200, '伝票番号' => 100, '商品ID' => 13, '商品詳細ID' => 77, '個数' => 1, '単価' => 1000, '取引額' => 1000, '商品税額' => 100, '消費税率' => 10, '摘要' => '変更後の配送指定'];
+        $changedLineJson = json_encode($changedLine, JSON_UNESCAPED_UNICODE);
+        DB::table('access_migration_staging_rows')
+            ->where('batch_id', $current->id)->where('source_table', '出荷伝票・商品')->where('source_key', '200')
+            ->update(['payload' => $changedLineJson, 'payload_sha256' => strtoupper(hash('sha256', $changedLineJson))]);
 
         app(ImportAccessMasters::class)->import($baseline);
         app(ImportAccessShipments::class)->import($baseline->refresh());
@@ -136,11 +141,12 @@ class ImportAccessShipmentsTest extends TestCase
         $summary = app(ImportAccessShipments::class)->import($current->fresh(), true);
 
         $this->assertSame(1, $summary['shipment_headers']);
-        $this->assertSame(0, $summary['shipment_lines']);
+        $this->assertSame(1, $summary['shipment_lines']);
         $shipment = ShipmentHeader::query()->where('legacy_access_document_number', '100')->sole();
         $this->assertSame('1375.00', $shipment->legacy_access_total_amount);
         $this->assertSame(2026, $shipment->legacy_access_billing_year);
         $this->assertSame(9, $shipment->legacy_access_billing_month);
+        $this->assertSame(1, $shipment->lines()->sole()->line_no);
     }
 
     public function test_delta_apply_stops_a_changed_shipment_that_is_already_on_a_confirmed_invoice(): void
