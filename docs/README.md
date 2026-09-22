@@ -14,6 +14,7 @@
 10. `b1-a-b2-migration-security-policy.md`: B1からA、B2を経て本番化する移行サイクル、変更統制、承認、復旧、AI利用のセキュリティ方針。
 11. `lot-inventory-architecture.md`: ロット中心在庫を唯一の正規在庫とし、旧商品在庫を照合・監査専用へ分離する現行設計。
 12. `a-b2-release-readiness-gates.md`: AからB2への完全移行を開始するための段階ゲートと承認条件。
+13. `brewery-b1-a-b2-migration/README.md`: 酒蔵出荷管理システムのB1-A-B2移行を、実行手順、照合表、知見、承認記録、リリース成果物の固定方法としてまとめた運用パッケージ。
 
 ## 文書の優先順位
 
