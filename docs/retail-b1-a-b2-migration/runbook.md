@@ -38,7 +38,7 @@
 
 Tamagawaの基準バッチを記録する。酒蔵側既存取引へ参照を付ける場合は関連キーと一致項目を残し、原本間の番号一致だけで結合しない。桜浜の販売・会計データは今回取り込まない。
 
-**小売専用ステージング・差分コマンドは未整備。** `Stage-AccessMigration.ps1` と `Invoke-AccessDeltaMigration.ps1 -Mode Plan` は、酒蔵用 `aikura:access-stage` 等を呼びAへ書き込む。単なる読取プレビューとして使わない。`Apply` も酒蔵向け処理であり、小売原本へそのまま適用しない。
+**専用作業コピーに `retail:tamagawa-plan` と `retail:tamagawa-release` を実装済み。** [工程③記録](phase3-preparation.md) の通り、計画は書込みなし、取込は確認済みマスターと原値台帳、復元は玉川の所有行と必要な共有依存に限定する。稼働環境への配布・適用は未実行。`Stage-AccessMigration.ps1` と `Invoke-AccessDeltaMigration.ps1 -Mode Plan` は酒蔵用でAへ書き込むため、単なる読取プレビューとして使わない。`Apply` も小売原本へそのまま適用しない。
 
 ### 1-3. 差分確認と隔離検証
 
