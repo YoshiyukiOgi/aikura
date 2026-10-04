@@ -158,3 +158,10 @@ Route::middleware('auth')->group(function (): void {
         ->middleware('web.permission:role.manage')
         ->name('settings.update');
 });
+Route::middleware(['auth'])->prefix('retail')->name('retail.')->group(function () {
+    Route::get('/ledger', [\App\Http\Controllers\Retail\RetailLedgerController::class, 'index'])->name('ledger.index');
+    Route::get('/ledger/closings/{closing}/statement', [\App\Http\Controllers\Retail\RetailLedgerController::class, 'statement'])->name('ledger.statement');
+    Route::post('/ledger', [\App\Http\Controllers\Retail\RetailLedgerController::class, 'store'])->name('ledger.store');
+    Route::post('/ledger/import', [\App\Http\Controllers\Retail\RetailLedgerController::class, 'import'])->name('ledger.import');
+    Route::post('/ledger/close', [\App\Http\Controllers\Retail\RetailLedgerController::class, 'close'])->name('ledger.close');
+});
